@@ -89,6 +89,22 @@ jobs:
       - name: Build unsigned release candidate
         working-directory: android
         run: bash ci/run-gradle-check.sh :app:assembleRelease
+      - name: Verify unsigned release candidate
+        run: |
+          apk=android/app/build/outputs/apk/release/app-release-unsigned.apk
+          tools="$ANDROID_HOME/build-tools/34.0.0"
+          unzip -tqq "$apk"
+          "$tools/aapt" dump badging "$apk" | grep "^package: name='com.myvault.app' "
+          permissions=$("$tools/aapt" dump permissions "$apk")
+          if grep -q 'android.permission.INTERNET' <<< "$permissions"; then
+            echo '::error::The standalone release must not request internet permission.'
+            exit 1
+          fi
+          if "$tools/apksigner" verify "$apk" > /dev/null 2>&1; then
+            echo '::error::The release candidate must be unsigned in PR builds.'
+            exit 1
+          fi
+          echo 'Unsigned candidate is a valid, offline MyVault release APK.'
       - name: Upload unsigned release candidate
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

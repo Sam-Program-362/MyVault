@@ -48,6 +48,32 @@ run_instrumentation() {
   fi
 }
 
+# Optional visual diagnostics use only the fixed, synthetic fixtures in VisualParityTest.
+# This is off by default; it never captures data from a real vault.
+if [[ ${MYVAULT_CAPTURE_FIXTURES:-0} == 1 ]]; then
+  checked 'Install current APK for synthetic screenshots' adb install -r "$app_apk"
+  checked 'Install instrumentation APK for screenshots' adb install -r "$test_apk"
+  run_instrumentation visual com.myvault.app.ui.VisualParityTest -e myvault.capture true
+  for name in welcome dashboard settings editor-short preview; do
+    if ! adb exec-out cat "/sdcard/Android/data/$app_id/files/myvault-$name.jpg" > "$work/$name.jpg" 2> "$work/capture-error.log"; then
+      echo "::warning::Could not retrieve synthetic $name screenshot; offline tests will continue."
+      continue
+    fi
+    python3 - "$work/$name.jpg" "$name" <<'PY' || echo "::warning::Synthetic $name screenshot could not be decoded."
+import base64
+import pathlib
+import sys
+raw = pathlib.Path(sys.argv[1]).read_bytes()
+if not raw.startswith(b"\xff\xd8"):
+    raise SystemExit("Synthetic UI capture is not a JPEG")
+encoded = base64.b64encode(raw).decode()
+chunks = [encoded[i:i+7000] for i in range(0, len(encoded), 7000)]
+for index, chunk in enumerate(chunks, 1):
+    print(f"::notice title=UI fixture {sys.argv[2]} {index:02d} of {len(chunks):02d}::{chunk}", flush=True)
+PY
+  done
+fi
+
 seed_apk=${MYVAULT_PREVIOUS_APK:-$app_apk}
 [[ -f "$seed_apk" ]] || { echo '::error::The APK for the restart fixture is missing.' >&2; exit 1; }
 # The normal test run may already have installed the newer debug version on this emulator.
@@ -56,14 +82,13 @@ checked 'Install previous debug APK' adb install -r -d "$seed_apk"
 checked 'Install instrumentation APK' adb install -r "$test_apk"
 
 restore_network() {
-  adb shell settings put global airplane_mode_on 0 >/dev/null 2>&1 || true
-  adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false >/dev/null 2>&1 || true
+  adb shell cmd connectivity airplane-mode disable >/dev/null 2>&1 || true
   adb shell svc wifi enable >/dev/null 2>&1 || true
   adb shell svc data enable >/dev/null 2>&1 || true
 }
 trap restore_network EXIT
-checked 'Enable airplane mode' adb shell settings put global airplane_mode_on 1
-checked 'Broadcast airplane mode change' adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true
+# ConnectivityService performs the protected broadcast with system privileges (API 30+).
+checked 'Enable airplane mode' adb shell cmd connectivity airplane-mode enable
 checked 'Disable Wi-Fi' adb shell svc wifi disable
 adb shell svc data disable >/dev/null 2>&1 || true
 if [[ $(adb shell settings get global airplane_mode_on | tr -d '\r') != 1 ]]; then
@@ -81,25 +106,4 @@ if [[ -n ${MYVAULT_PREVIOUS_APK:-} ]]; then
   printf '::notice title=Offline upgrade and restart::The previous native APK wrote a vault in airplane mode; an in-place update and force-stop preserved its entries, tags, settings and images.\n'
 else
   printf '::notice title=Offline reinstall and restart::The debug APK wrote a vault in airplane mode; an in-place reinstall and force-stop preserved its data.\n'
-fi
-
-# Optional visual diagnostics use only the fixed, synthetic fixtures in VisualParityTest.
-# This is off by default; it never captures data from a real vault.
-if [[ ${MYVAULT_CAPTURE_FIXTURES:-0} == 1 ]]; then
-  run_instrumentation visual com.myvault.app.ui.VisualParityTest -e myvault.capture true
-  for name in welcome dashboard settings editor-short preview; do
-    adb exec-out cat "/sdcard/Android/data/$app_id/files/myvault-$name.jpg" > "$work/$name.jpg" || exit 1
-    python3 - "$work/$name.jpg" "$name" <<'PY'
-import base64
-import pathlib
-import sys
-raw = pathlib.Path(sys.argv[1]).read_bytes()
-if not raw.startswith(b"\xff\xd8"):
-    raise SystemExit("Synthetic UI capture is not a JPEG")
-encoded = base64.b64encode(raw).decode()
-chunks = [encoded[i:i+7000] for i in range(0, len(encoded), 7000)]
-for index, chunk in enumerate(chunks, 1):
-    print(f"::notice title=UI fixture {sys.argv[2]} {index:02d} of {len(chunks):02d}::{chunk}", flush=True)
-PY
-  done
 fi

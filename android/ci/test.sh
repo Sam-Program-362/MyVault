@@ -104,3 +104,43 @@ expect_failure env FAKE_INVALID=1 "$ci_dir/verify-signing.sh" "$tmp/app-release.
 expect_failure env FAKE_EXTRA_SIGNER=1 "$ci_dir/verify-signing.sh" "$tmp/app-release.apk"
 expect_failure "$ci_dir/verify-signing.sh" "$tmp/nonexistent.apk"
 printf 'APK signature verification checks passed (apksigner output mocked).\n'
+
+# The offline runner must never alter a phone or an emulator without explicit opt-in.
+# A fake adb exercises its guards, diagnostics, and two-phase control flow without a device.
+(
+  fixture="$tmp/offline-fixture"
+  mkdir -p "$fixture/bin" "$fixture/runner" "$fixture/app/build/outputs/apk/debug" \
+    "$fixture/app/build/outputs/apk/androidTest/debug"
+  touch "$fixture/app/build/outputs/apk/debug/app-debug.apk" \
+    "$fixture/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" "$fixture/old.apk"
+  cat > "$fixture/bin/adb" <<'ADB'
+#!/usr/bin/env bash
+set -u
+if [[ ${1:-} == get-serialno ]]; then printf '%s\n' "${MOCK_SERIAL:-emulator-5554}"; exit 0; fi
+if [[ ${1:-} == install && ${MOCK_INSTALL_FAILURE:-0} == 1 ]]; then
+  echo 'simulated install error' >&2
+  exit 4
+fi
+if [[ $* == 'shell settings get global airplane_mode_on' ]]; then printf '1\n'; exit 0; fi
+if [[ $* == 'shell am broadcast '* ]]; then echo 'protected broadcast denied' >&2; exit 4; fi
+if [[ $* == 'shell am instrument '* ]]; then printf 'OK (1 test)\n'; exit 0; fi
+exit 0
+ADB
+  chmod +x "$fixture/bin/adb"
+  cd "$fixture"
+  unset MYVAULT_CAPTURE_FIXTURES MYVAULT_PREVIOUS_APK MYVAULT_DISPOSABLE_EMULATOR MOCK_SERIAL MOCK_INSTALL_FAILURE
+  export PATH="$fixture/bin:$PATH" RUNNER_TEMP="$fixture/runner"
+  expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR bash "$ci_dir/run-offline-restart-test.sh"
+  grep -q 'MYVAULT_DISPOSABLE_EMULATOR=1' "$tmp/output"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \
+    bash "$ci_dir/run-offline-restart-test.sh"
+  grep -q 'not a physical device' "$tmp/output"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_INSTALL_FAILURE=1 \
+    bash "$ci_dir/run-offline-restart-test.sh"
+  grep -q 'simulated install error' "$tmp/output"
+  grep -q '::error title=Offline emulator test failed::' "$tmp/output"
+  env MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$fixture/old.apk" \
+    bash "$ci_dir/run-offline-restart-test.sh" > "$fixture/success"
+  grep -q 'Offline upgrade and restart' "$fixture/success"
+)
+printf 'Offline emulator runner guards and diagnostics passed (adb mocked).\n'
