@@ -37,7 +37,11 @@ class NativeWindowEvidenceTest {
         val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
         // Upsert only these uniquely named CI fixtures. Never clear Room or delete app data.
         runBlocking {
-            app.settings.update { it.copy(mode = "dark", appName = "MyVault") }
+            // The preceding offline fixture enables a tiny test wallpaper. Keep
+            // both visual captures on the same default background without deleting it.
+            app.settings.update {
+                it.copy(mode = "dark", appName = "MyVault", wallpaperEnabled = false)
+            }
             app.settings.updateEntryLayout("cards")
             app.database
                 .spaceDao()
@@ -98,10 +102,12 @@ class NativeWindowEvidenceTest {
             val landmarks =
                 if (screen == "welcome") {
                     val description =
-                        compose.onNodeWithText("Pick a space to jump into", substring = true)
+                        compose
+                            .onNodeWithText("Pick a space to jump into", substring = true)
                             .getUnclippedBoundsInRoot()
                     val firstCardOptions =
-                        compose.onNodeWithContentDescription("Options for Sample space")
+                        compose
+                            .onNodeWithContentDescription("Options for Sample space")
                             .getUnclippedBoundsInRoot()
                     if (phase == "after") {
                         val gap = (firstCardOptions.top - description.bottom).value
@@ -110,7 +116,8 @@ class NativeWindowEvidenceTest {
                     "descriptionBottomDp=${description.bottom} firstCardTopDp=${firstCardOptions.top}"
                 } else {
                     val back =
-                        compose.onNodeWithContentDescription("Back to spaces")
+                        compose
+                            .onNodeWithContentDescription("Back to spaces")
                             .getUnclippedBoundsInRoot()
                     "backDp=$back"
                 }
