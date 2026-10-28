@@ -1,0 +1,54 @@
+name: Android migration smoke (temporary)
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-migration-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  migration:
+    name: API 30 migration diagnostics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+        with:
+          cache-provider: basic
+      - name: Build synthetic test packages
+        working-directory: android
+        run: bash ci/run-gradle-check.sh :app:assembleDebug :app:assembleDebugAndroidTest :app:assemblePreview
+      - name: Sign preview with disposable test key
+        env:
+          FIXTURE_PASSWORD: temporary-test-password
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/fixture.p12" -storetype PKCS12 -alias fixture -keyalg RSA -keysize 2048 -validity 2 -dname 'CN=MyVault temporary smoke test' -storepass:env FIXTURE_PASSWORD -keypass:env FIXTURE_PASSWORD
+          tools="$ANDROID_HOME/build-tools/34.0.0"
+          "$tools/zipalign" -f -p 4 android/app/build/outputs/apk/preview/app-preview-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$tools/apksigner" sign --ks "$RUNNER_TEMP/fixture.p12" --ks-key-alias fixture --ks-pass env:FIXTURE_PASSWORD --key-pass env:FIXTURE_PASSWORD --out "$RUNNER_TEMP/myvault-smoke-preview.apk" "$RUNNER_TEMP/aligned.apk"
+          rm -f "$RUNNER_TEMP/fixture.p12"
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Exercise preview import on API 30
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          disable-spellchecker: true
+          working-directory: android
+          script: MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/run-migration-smoke.sh

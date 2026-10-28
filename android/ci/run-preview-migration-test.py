@@ -51,7 +51,7 @@ def click(label, attribute="text", contains=False, timeout=25):
     node = find(label, attribute, contains, timeout)
     if node is None:
         raise AssertionError(f"Could not find {attribute}={label!r}")
-    trace.append(f"tap {attribute}={label!r}: package={node.get('package')} text={node.get('text')!r} desc={node.get('content-desc')!r} bounds={node.get('bounds')}")
+    trace.append(f"tap {attribute}={label!r}: package={node.get('package')} text={node.get('text')!r} desc={node.get('content-desc')!r} enabled={node.get('enabled')} clickable={node.get('clickable')} bounds={node.get('bounds')}")
     bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
     if not bounds:
         raise AssertionError(f"Invalid bounds for {label!r}")
@@ -80,6 +80,12 @@ def main():
     # may already have selected the document and opened the app's confirmation dialog.
     if find("Import backup?", timeout=4) is None:
         click(name, contains=True)
+        # Older document pickers may first select the row rather than opening it.
+        if find("Import backup?", timeout=8) is None:
+            if find("Open", timeout=3) is not None:
+                click("Open")
+            else:
+                click(name, contains=True)
     if find("Import backup?", timeout=25) is None:
         raise AssertionError("The preview did not show the backup confirmation.")
     click("Also restore appearance settings", "content-desc")
