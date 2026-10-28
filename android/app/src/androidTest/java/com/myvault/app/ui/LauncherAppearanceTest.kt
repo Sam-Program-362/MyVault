@@ -40,19 +40,62 @@ class LauncherAppearanceTest {
         // Inspect the system launcher's app drawer, not an app-provided icon preview.
         shell("input swipe ${width / 2} ${height * 9 / 10} ${width / 2} ${height / 4} 450")
         Thread.sleep(1200)
-        var icons =
-            automation.rootInActiveWindow?.findAccessibilityNodeInfosByText("MyVault").orEmpty()
-        repeat(3) {
+        val appLabel =
+            context.packageManager.getApplicationLabel(context.applicationInfo).toString()
+        fun findIcons() =
+            automation.rootInActiveWindow?.findAccessibilityNodeInfosByText(appLabel).orEmpty()
+        var icons = findIcons()
+        // Launcher indexing may finish after the drawer animation, especially on slower emulators.
+        repeat(6) {
             if (icons.isEmpty()) {
-                shell("input swipe ${width / 2} ${height * 3 / 4} ${width / 2} ${height / 3} 350")
                 Thread.sleep(500)
-                icons =
-                    automation.rootInActiveWindow
-                        ?.findAccessibilityNodeInfosByText("MyVault")
-                        .orEmpty()
+                icons = findIcons()
             }
         }
-        assertTrue("The system launcher should show MyVault in its app drawer", icons.isNotEmpty())
+        repeat(4) {
+            if (icons.isEmpty()) {
+                shell("input swipe ${width / 2} ${height * 3 / 4} ${width / 2} ${height / 3} 350")
+                Thread.sleep(700)
+                icons = findIcons()
+            }
+        }
+        // If scrolling missed the icon, use the launcher's own app search rather than assuming
+        // a particular drawer layout or a fixed app-label width.
+        if (icons.isEmpty()) {
+            fun findSearch(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+                node ?: return null
+                if (node.isEditable || node.className?.toString() == "android.widget.EditText")
+                    return node
+                for (index in 0 until node.childCount) {
+                    findSearch(node.getChild(index))?.let {
+                        return it
+                    }
+                }
+                return null
+            }
+            val search = findSearch(automation.rootInActiveWindow)
+            if (search != null) {
+                search.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                search.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                shell("input text MyVault")
+                Thread.sleep(1200)
+                icons = findIcons()
+            }
+        }
+        fun describe(node: AccessibilityNodeInfo?, depth: Int = 0): String {
+            node ?: return ""
+            val current =
+                "${" ".repeat(depth)}${node.className}: text=${node.text} desc=${node.contentDescription}\n"
+            return current +
+                (0 until node.childCount).joinToString("") { index ->
+                    describe(node.getChild(index), depth + 1)
+                }
+        }
+        assertTrue(
+            "The system launcher should show $appLabel in its app drawer. " +
+                describe(automation.rootInActiveWindow).take(5000),
+            icons.isNotEmpty(),
+        )
         val screenshot = automation.takeScreenshot()
         assertNotNull("Could not capture the system launcher", screenshot)
         val image = requireNotNull(screenshot)

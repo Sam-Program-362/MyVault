@@ -21,6 +21,10 @@ on:
           - release
         default: debug
         required: true
+      release_installed_package_id:
+        description: "Installed package ID: com.myvault.app, or none only for a confirmed fresh install"
+        type: string
+        required: false
       release_cert_sha256:
         description: "Public SHA-256 certificate fingerprint of the installed release (or chosen key for a confirmed fresh install)"
         type: string
@@ -108,7 +112,7 @@ jobs:
           ANDROID_EXPECTED_CERT_SHA256=$(keytool -J-Duser.language=en -J-Duser.country=US -list -v \
             -keystore "$ANDROID_KEYSTORE_PATH" -storepass:env ANDROID_KEYSTORE_PASSWORD -alias myvault-test | \
             awk '/^[[:space:]]*SHA256:/ && !seen++ {print $2}')
-          export ANDROID_EXPECTED_CERT_SHA256 ANDROID_INSTALLED_VERSION_CODE=3
+          export ANDROID_EXPECTED_CERT_SHA256 ANDROID_INSTALLED_PACKAGE_ID=com.myvault.app ANDROID_INSTALLED_VERSION_CODE=3
           bash android/ci/verify-release-update.sh android/app/build/outputs/apk/release/app-release.apk
       - name: Remove disposable key
         if: ${{ always() }}
@@ -231,6 +235,13 @@ jobs:
             --out "$RUNNER_TEMP/myvault-preview.apk" "$RUNNER_TEMP/myvault-preview-aligned.apk"
           "$tools/apksigner" verify "$RUNNER_TEMP/myvault-incompatible-debug.apk"
           "$tools/apksigner" verify "$RUNNER_TEMP/myvault-preview.apk"
+          if bash android/ci/check-apk-update.sh android/app/build/outputs/apk/debug/app-debug.apk \
+            "$RUNNER_TEMP/myvault-incompatible-debug.apk" > "$RUNNER_TEMP/incompatible-identity.log" 2>&1; then
+            echo '::error::The incompatible-update fixture unexpectedly matches the debug signing key.'; exit 1
+          fi
+          grep -q 'Signing certificates differ' "$RUNNER_TEMP/incompatible-identity.log"
+          preview_identity=$(bash android/ci/apk-identity.sh "$RUNNER_TEMP/myvault-preview.apk")
+          [[ $(cut -f1 <<< "$preview_identity") == com.myvault.app.preview ]] || { echo '::error::Unexpected signed preview package ID.'; exit 1; }
           rm -f "$RUNNER_TEMP/myvault-incompatible-test.p12"
       - name: Build the previous native APK for the offline update test
         run: |
@@ -298,11 +309,12 @@ jobs:
           persist-credentials: false
       - name: Require release reference metadata
         env:
+          INSTALLED_PACKAGE: ${{ inputs.release_installed_package_id }}
           EXPECTED_CERT: ${{ inputs.release_cert_sha256 }}
           INSTALLED_VERSION: ${{ inputs.release_installed_version_code }}
         run: |
-          if [[ -z "$EXPECTED_CERT" || -z "$INSTALLED_VERSION" ]]; then
-            echo '::error::Provide the installed release certificate SHA-256 and versionCode (0 only for a confirmed fresh install).'
+          if [[ -z "$INSTALLED_PACKAGE" || -z "$EXPECTED_CERT" || -z "$INSTALLED_VERSION" ]]; then
+            echo '::error::Provide the installed package ID, certificate SHA-256 and versionCode (none and 0 only for a confirmed fresh install).'
             exit 1
           fi
       - name: Check Android app sources
@@ -341,6 +353,7 @@ jobs:
         run: bash android/ci/verify-signing.sh android/app/build/outputs/apk/release/app-release.apk
       - name: Verify release update identity against the supplied reference
         env:
+          ANDROID_INSTALLED_PACKAGE_ID: ${{ inputs.release_installed_package_id }}
           ANDROID_EXPECTED_CERT_SHA256: ${{ inputs.release_cert_sha256 }}
           ANDROID_INSTALLED_VERSION_CODE: ${{ inputs.release_installed_version_code }}
         run: bash android/ci/verify-release-update.sh android/app/build/outputs/apk/release/app-release.apk

@@ -139,8 +139,14 @@ for name in release-old release-new release-same release-other debug-old debug-n
 done
 export ANDROID_EXPECTED_CERT_SHA256
 ANDROID_EXPECTED_CERT_SHA256=$(printf 'A:%.0s' {1..63}; printf A)
-export ANDROID_INSTALLED_VERSION_CODE=2
+export ANDROID_INSTALLED_PACKAGE_ID=com.myvault.app ANDROID_INSTALLED_VERSION_CODE=2
 "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk" >/dev/null
+env ANDROID_INSTALLED_PACKAGE_ID=none ANDROID_INSTALLED_VERSION_CODE=0 \
+  "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk" >/dev/null
+expect_failure env -u ANDROID_INSTALLED_PACKAGE_ID "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
+expect_failure env ANDROID_INSTALLED_PACKAGE_ID=com.myvault.app.debug "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
+expect_failure env ANDROID_INSTALLED_PACKAGE_ID=none "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
+expect_failure env ANDROID_INSTALLED_VERSION_CODE=0 "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
 expect_failure env -u ANDROID_EXPECTED_CERT_SHA256 "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
 expect_failure env -u ANDROID_INSTALLED_VERSION_CODE "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
 expect_failure env ANDROID_EXPECTED_CERT_SHA256=bad "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
