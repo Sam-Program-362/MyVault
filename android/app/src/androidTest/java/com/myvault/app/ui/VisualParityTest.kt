@@ -1,6 +1,5 @@
 package com.myvault.app.ui
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -10,25 +9,20 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertWidthIsAtLeast
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.myvault.app.data.AppSettings
 import com.myvault.app.data.EntryEntity
 import com.myvault.app.data.EntryTagCrossRef
@@ -36,14 +30,13 @@ import com.myvault.app.data.SpaceEntity
 import com.myvault.app.data.TagEntity
 import com.myvault.app.ui.editor.EditorSaveState
 import com.myvault.app.ui.editor.EntryEditorScreen
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** UI fixtures are synthetic; optional captures never contain a user's vault. */
+/** Synthetic UI fixtures exercise the native layouts and interactions. */
 @RunWith(AndroidJUnit4::class)
 class VisualParityTest {
     @get:Rule val compose = createComposeRule()
@@ -192,7 +185,6 @@ class VisualParityTest {
             .onNodeWithContentDescription("New entry")
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
-        capture("dashboard")
         compose.onNodeWithContentDescription("Search entries").performTextInput("missing")
         compose
             .onNodeWithText("No matching entries. Try another search or filter.")
@@ -226,7 +218,6 @@ class VisualParityTest {
             }
         }
         compose.onNodeWithText("Settings").assertIsDisplayed()
-        capture("settings")
         compose.onNodeWithText("Tags").performClick()
         compose.onNodeWithText("No tags yet.").assertIsDisplayed()
         compose.onNodeWithText("Import / Export").performScrollTo().performClick()
@@ -303,28 +294,5 @@ class VisualParityTest {
         }
         compose.onNodeWithContentDescription("Entry title").assertTextContains("A thoughtful note")
         compose.onNodeWithContentDescription("Close editor").assertIsDisplayed()
-        capture("editor")
-    }
-
-    private fun capture(name: String) {
-        if (InstrumentationRegistry.getArguments().getString("myvault.capture") != "true") return
-        compose.waitForIdle()
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val node = if (name == "settings") compose.onNode(isDialog()) else compose.onRoot()
-        val original = node.captureToImage().asAndroidBitmap()
-        val width = 260
-        val scaled =
-            Bitmap.createScaledBitmap(
-                original,
-                width,
-                original.height * width / original.width,
-                true,
-            )
-        val dir = instrumentation.targetContext.filesDir
-        File(dir, "myvault-$name.jpg").outputStream().use {
-            scaled.compress(Bitmap.CompressFormat.JPEG, 30, it)
-        }
-        scaled.recycle()
-        original.recycle()
     }
 }

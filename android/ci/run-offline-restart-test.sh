@@ -48,32 +48,6 @@ run_instrumentation() {
   fi
 }
 
-# Optional visual diagnostics use only the fixed, synthetic fixtures in VisualParityTest.
-# This is off by default; it never captures data from a real vault.
-if [[ ${MYVAULT_CAPTURE_FIXTURES:-0} == 1 ]]; then
-  checked 'Install current APK for synthetic screenshots' adb install -r "$app_apk"
-  checked 'Install instrumentation APK for screenshots' adb install -r "$test_apk"
-  run_instrumentation visual com.myvault.app.ui.VisualParityTest -e myvault.capture true
-  for name in dashboard settings editor; do
-    if ! adb exec-out run-as "$app_id" cat "files/myvault-$name.jpg" > "$work/$name.jpg" 2> "$work/capture-error.log"; then
-      echo "::warning::Could not retrieve synthetic $name screenshot; offline tests will continue."
-      continue
-    fi
-    python3 - "$work/$name.jpg" "$name" <<'PY' || echo "::warning::Synthetic $name screenshot could not be decoded."
-import base64
-import pathlib
-import sys
-raw = pathlib.Path(sys.argv[1]).read_bytes()
-if not raw.startswith(b"\xff\xd8"):
-    raise SystemExit("Synthetic UI capture is not a JPEG")
-encoded = base64.b64encode(raw).decode()
-chunks = [encoded[i:i+3500] for i in range(0, len(encoded), 3500)]
-for index, chunk in enumerate(chunks, 1):
-    print(f"::notice title=UI fixture {sys.argv[2]} {index:02d} of {len(chunks):02d}::{chunk}", flush=True)
-PY
-  done
-fi
-
 seed_apk=${MYVAULT_PREVIOUS_APK:-$app_apk}
 [[ -f "$seed_apk" ]] || { echo '::error::The APK for the restart fixture is missing.' >&2; exit 1; }
 # The normal test run may already have installed the newer debug version on this emulator.

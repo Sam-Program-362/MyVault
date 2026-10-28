@@ -128,7 +128,7 @@ exit 0
 ADB
   chmod +x "$fixture/bin/adb"
   cd "$fixture"
-  unset MYVAULT_CAPTURE_FIXTURES MYVAULT_PREVIOUS_APK MYVAULT_DISPOSABLE_EMULATOR MOCK_SERIAL MOCK_INSTALL_FAILURE
+  unset MYVAULT_PREVIOUS_APK MYVAULT_DISPOSABLE_EMULATOR MOCK_SERIAL MOCK_INSTALL_FAILURE
   export PATH="$fixture/bin:$PATH" RUNNER_TEMP="$fixture/runner"
   expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR bash "$ci_dir/run-offline-restart-test.sh"
   grep -q 'MYVAULT_DISPOSABLE_EMULATOR=1' "$tmp/output"
