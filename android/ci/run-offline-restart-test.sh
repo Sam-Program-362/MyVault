@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # This test changes airplane mode and force-stops the app: run ONLY on a disposable emulator.
 set -uo pipefail
+if [[ ${MYVAULT_DISPOSABLE_EMULATOR:-0} != 1 ]]; then
+  echo '::error::Set MYVAULT_DISPOSABLE_EMULATOR=1 only for a disposable emulator; this test writes data and changes network settings.' >&2
+  exit 1
+fi
 serial=$(adb get-serialno)
 if [[ "$serial" != emulator-* ]]; then
   echo '::error::Offline restart test requires a disposable emulator, not a physical device.' >&2
@@ -34,8 +38,35 @@ run_instrumentation() {
   fi
 }
 
-adb install -r "$app_apk" >/dev/null || exit 1
+seed_apk=${MYVAULT_PREVIOUS_APK:-$app_apk}
+[[ -f "$seed_apk" ]] || { echo '::error::The APK for the restart fixture is missing.' >&2; exit 1; }
+adb install -r "$seed_apk" >/dev/null || exit 1
 adb install -r "$test_apk" >/dev/null || exit 1
+
+restore_network() {
+  adb shell settings put global airplane_mode_on 0 >/dev/null 2>&1 || true
+  adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false >/dev/null 2>&1 || true
+  adb shell svc wifi enable >/dev/null 2>&1 || true
+  adb shell svc data enable >/dev/null 2>&1 || true
+}
+trap restore_network EXIT
+adb shell settings put global airplane_mode_on 1 || exit 1
+adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true >/dev/null || exit 1
+adb shell svc wifi disable || exit 1
+adb shell svc data disable >/dev/null 2>&1 || true
+[[ $(adb shell settings get global airplane_mode_on | tr -d '\r') == 1 ]] || exit 1
+run_instrumentation seed com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase seed
+adb shell am force-stop "$app_id" || exit 1
+# Both debug APKs are signed by this runner's same disposable debug key. -r retains app data.
+adb install -r "$app_apk" >/dev/null || exit 1
+adb shell am force-stop "$app_id" || exit 1
+adb shell am start -n "$app_id/com.myvault.app.MainActivity" >/dev/null || exit 1
+run_instrumentation verify com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase verify
+if [[ -n ${MYVAULT_PREVIOUS_APK:-} ]]; then
+  printf '::notice title=Offline upgrade and restart::The previous native APK wrote a vault in airplane mode; an in-place update and force-stop preserved its entries, tags, settings and images.\n'
+else
+  printf '::notice title=Offline reinstall and restart::The debug APK wrote a vault in airplane mode; an in-place reinstall and force-stop preserved its data.\n'
+fi
 
 # Optional visual diagnostics use only the fixed, synthetic fixtures in VisualParityTest.
 # This is off by default; it never captures data from a real vault.
@@ -57,20 +88,3 @@ for index, chunk in enumerate(chunks, 1):
 PY
   done
 fi
-
-restore_network() {
-  adb shell settings put global airplane_mode_on 0 >/dev/null 2>&1 || true
-  adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false >/dev/null 2>&1 || true
-  adb shell svc wifi enable >/dev/null 2>&1 || true
-}
-trap restore_network EXIT
-adb shell settings put global airplane_mode_on 1 || exit 1
-adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true >/dev/null || exit 1
-adb shell svc wifi disable || exit 1
-adb shell svc data disable >/dev/null 2>&1 || true
-[[ $(adb shell settings get global airplane_mode_on | tr -d '\r') == 1 ]] || exit 1
-run_instrumentation seed com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase seed
-adb shell am force-stop "$app_id" || exit 1
-adb shell am start -n "$app_id/com.myvault.app.MainActivity" >/dev/null || exit 1
-run_instrumentation verify com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase verify
-printf '::notice title=Offline restart test::Created and edited a vault in airplane mode, force-stopped the app, and verified its data and appearance after restart.\n'

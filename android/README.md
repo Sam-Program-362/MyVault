@@ -2,7 +2,7 @@
 
 ## Native app
 
-The Android app uses native Compose screens, the existing Room database and DataStore settings; it does not wrap the website. Create a space, add an entry, and use the editor's preview button for the sliding Markdown preview. Changes are autosaved and are flushed before the editor closes. Spaces, tags, pinning, cover images, text/Markdown import, search, theme settings and JSON import/export are available in the app. Android and the web app keep separate data; there is no automatic sync.
+The Android app uses native Compose screens, the existing Room database and DataStore settings; it does not wrap the website. The dark welcome screen uses the saved app name, accent and optional wallpaper. The dashboard, editor and settings honor the saved light/dark/system appearance. Create a space, add an entry, and use the editor's preview button for the sliding Markdown preview. Changes are autosaved and are flushed before the editor closes. Spaces, tags, pinning, cover images, text/Markdown import, search, theme settings and JSON import/export are available in the app. Android and the web app keep separate data; there is no automatic sync.
 
 Images selected with the Android document picker are copied to private app storage (up to 12 MB per image). Android JSON exports embed readable local covers and wallpaper as data URIs. Imports merge matching spaces and tags by name and add entries without deleting existing entries; appearance settings are restored only if selected. Importing the same backup twice adds the entries twice. Text imports are limited to 4 MB and JSON imports to 128 MB. When importing into the web app, its existing importer assigns new timestamps and creates new tags as reusable; server request-size limits can also affect large image-containing backups.
 
@@ -10,7 +10,7 @@ Backups from older versions or from the web can contain external URLs, temporary
 
 ## APK workflow
 
-`.github/workflows/android-apk.yml` runs unit tests, builds a **debug APK**, verifies a release build with a disposable test key (never uploaded), and runs Room, backup and Compose UI tests on an Android emulator for Android-related pull requests and pushes to `main`. It can also be started manually from **Actions → Android APK → Run workflow**, choosing `debug` or `release`. Manual signed releases are restricted to the default branch; the workflow must first be merged into that branch before the Run workflow button is available.
+`.github/workflows/android-apk.yml` runs unit tests, builds a **debug APK**, verifies a release build with a disposable test key (never uploaded), and runs Room, backup and Compose UI tests on an Android emulator for Android-related pull requests and pushes to `main`. Its offline upgrade check builds the previous native APK from commit `8f28127`, seeds a synthetic vault in airplane mode, updates in place to the new APK with the same disposable debug key, force-stops and restarts it, then checks the saved notes, tags, settings, private image and JSON backup. This is an emulator check, not a physical-phone or actual-release-key test. The workflow can also be started manually from **Actions → Android APK → Run workflow**, choosing `debug` or `release`. Manual signed releases are restricted to the default branch; the workflow must first be merged into that branch before the Run workflow button is available.
 
 After a successful run, download `myvault-debug-apk` or `myvault-release-apk` from the run's **Artifacts** section. Artifacts expire after 14 days. Debug APKs use Android's debug key and the `.debug` application ID; they are for testing, not publishing, and do not update the release app. Debug keys can differ between workflow runs. If an old debug installation must be uninstalled to install a new one, export its data first: uninstalling deletes its private data. No signing secrets are required for debug builds.
 
@@ -80,3 +80,15 @@ bash android/ci/test.sh
 ```
 
 Those helper tests use a disposable key and a mocked `apksigner`; they do not replace a real Android build, signature verification or device test.
+
+## Physical-phone verification
+
+A CI emulator is not a substitute for testing your actual phone and signing key. Before updating an existing installation, export a JSON backup, keep a separate copy of any original images, and verify the backup. **Do not uninstall or clear app data to resolve a signing error.** Uninstalling removes that installation's local vault.
+
+1. For an isolated trial, install the debug artifact. It has package ID `com.myvault.app.debug` and cannot see or update the release app's data. Import a copy of a backup if you want to test with realistic content.
+2. To test preservation on a release installation, use a release APK with the same `com.myvault.app` package ID and the **same signing certificate** as the installed app. If Android refuses the update, stop and check the signing key rather than uninstalling. A CI debug key or disposable release-test key is not suitable for updating a release installation.
+3. Check the welcome screen and both empty and populated spaces. Open an entry; edit its title and Markdown, cover, tags and pin; try preview, Back, search, settings and dialogs. Let the save indicator finish.
+4. Export and verify a JSON backup; try importing a copy into an isolated test vault. Enable airplane mode and disable Wi-Fi, reopen the app, and confirm reading and editing still work.
+5. After a save finishes, force-stop the app from Android's App info screen and launch it again. Check entries, tags, appearance and images. Test your phone's keyboard and screen rotation as well.
+
+The extra CI script changes emulator network settings and writes synthetic vault data. It refuses a physical device and requires `MYVAULT_DISPOSABLE_EMULATOR=1`; use it only on an emulator whose data can be discarded.

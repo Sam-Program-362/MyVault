@@ -115,7 +115,9 @@ fun SettingsScreen(
                             fontSize = 18.sp,
                             modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = onBack) { Icon(Icons.Default.Close, "Back") }
+                        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.Close, "Back")
+                        }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
                     Row(
@@ -198,7 +200,10 @@ fun SettingsScreen(
                                             fontSize = 13.sp,
                                         )
                                     }
-                                    IconButton(onClick = { creating = true }) {
+                                    IconButton(
+                                        onClick = { creating = true },
+                                        modifier = Modifier.size(48.dp),
+                                    ) {
                                         Icon(Icons.Default.Add, "Create tag")
                                     }
                                 }
@@ -214,7 +219,9 @@ fun SettingsScreen(
                                         border =
                                             BorderStroke(
                                                 1.dp,
-                                                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                                MaterialTheme.colorScheme.outline.copy(
+                                                    alpha = 0.2f
+                                                ),
                                             ),
                                     ) {
                                         Row(
@@ -255,7 +262,10 @@ fun SettingsScreen(
                                                 TextButton(onClick = { onSetReusable(tag, true) }) {
                                                     Text("Save")
                                                 }
-                                            IconButton(onClick = { deleting = tag }) {
+                                            IconButton(
+                                                onClick = { deleting = tag },
+                                                modifier = Modifier.size(48.dp),
+                                            ) {
                                                 Icon(
                                                     Icons.Default.DeleteOutline,
                                                     "Delete ${tag.name} tag",

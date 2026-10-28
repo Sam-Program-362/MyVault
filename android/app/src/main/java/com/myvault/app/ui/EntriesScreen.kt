@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -314,7 +315,7 @@ private fun DashboardHeader(
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.Default.GridView,
                     "Back to spaces",
@@ -342,7 +343,11 @@ private fun DashboardHeader(
                 border =
                     if (allSpaces) null
                     else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
-                modifier = Modifier.semantics { contentDescription = "All spaces" },
+                modifier =
+                    Modifier.semantics {
+                        contentDescription = "All spaces"
+                        selected = allSpaces
+                    },
             ) {
                 Box(
                     Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp),
@@ -356,7 +361,9 @@ private fun DashboardHeader(
                     )
                 }
             }
-            IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
+            IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.Settings, "Settings")
+            }
         }
     }
 }
@@ -411,7 +418,7 @@ private fun DashboardSearch(
                     inner()
                 }
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { onChange("") }) {
+                    IconButton(onClick = { onChange("") }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Clear, "Clear search", modifier = Modifier.size(18.dp))
                     }
                 } else Spacer(Modifier.width(8.dp))
@@ -429,8 +436,10 @@ private fun SpaceNavigationChip(
 ) {
     val color = parseColor(space.color)
     val foreground = if (color.luminance() > 0.179f) Color(0xFF171717) else Color.White
+    val isSelected = selected
     Surface(
         onClick = onClick,
+        modifier = Modifier.semantics { this.selected = isSelected },
         shape = MaterialTheme.shapes.medium,
         color = if (selected) color else Color.Transparent,
         contentColor = if (selected) foreground else MaterialTheme.colorScheme.onSurface,

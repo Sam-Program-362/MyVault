@@ -164,7 +164,7 @@ fun SpacesScreen(
         }
         IconButton(
             onClick = onSettings,
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(48.dp),
         ) {
             Icon(
                 Icons.Default.Settings,
@@ -305,7 +305,7 @@ private fun SpaceCard(
             }
         }
         Box(Modifier.align(Alignment.TopEnd)) {
-            IconButton(onClick = { menu = true }) {
+            IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.Default.MoreVert,
                     "Options for ${space.name}",
@@ -498,7 +498,7 @@ private fun SpaceIconChoices(selected: String, onChoose: (String) -> Unit) {
             IconButton(
                 onClick = { onChoose(choice) },
                 modifier =
-                    Modifier.semantics {
+                    Modifier.size(48.dp).semantics {
                         contentDescription = "Space icon $choice"
                         stateDescription = if (selected == choice) "Selected" else "Not selected"
                     },
@@ -529,7 +529,7 @@ fun ColorChoices(selected: String, onChoose: (String) -> Unit) {
             IconButton(
                 onClick = { onChoose(color) },
                 modifier =
-                    Modifier.semantics {
+                    Modifier.size(48.dp).semantics {
                         contentDescription = "Color $color"
                         stateDescription =
                             if (selected.equals(color, true)) "Selected" else "Not selected"

@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -88,6 +89,34 @@ class VisualParityTest {
         compose.onNodeWithText("Edit space").performClick()
         compose.onNodeWithText("Space name").assertIsDisplayed()
         compose.onNodeWithText("Cancel").performClick()
+    }
+
+    @Test
+    fun emptyWelcomeCanCreateOrCancelWithoutChangingExistingData() {
+        var created = false
+        compose.setContent {
+            VaultTheme(settings) { dark ->
+                Box(Modifier.fillMaxSize()) {
+                    VaultBackdrop(settings, dark, splash = true)
+                    SpacesScreen(
+                        "MyVault",
+                        emptyList(),
+                        emptyList(),
+                        onOpen = {},
+                        onSettings = {},
+                        onCreate = { _, _, _, _ -> created = true },
+                        onUpdate = { _, _, _, _, _ -> },
+                        onDelete = {},
+                    )
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("New space").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Create & enter").assertIsNotEnabled()
+        compose.onNodeWithText("Space name").performTextInput("A private space")
+        compose.onNodeWithText("Cancel").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("New space").assertIsDisplayed()
+        assertEquals(false, created)
     }
 
     @Test
