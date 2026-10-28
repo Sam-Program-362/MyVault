@@ -35,7 +35,7 @@ class VaultUiTest {
         }
         compose.onNodeWithContentDescription("New space").performClick()
         compose.onNodeWithText("Space name").performTextInput(space)
-        compose.onNodeWithText("Create").performClick()
+        compose.onNodeWithText("Create & enter").performScrollTo().performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
         }

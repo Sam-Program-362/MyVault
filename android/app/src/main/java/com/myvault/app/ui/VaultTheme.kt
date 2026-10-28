@@ -26,7 +26,11 @@ fun parseColor(value: String, fallback: Color = Color(0xFF6366F1)): Color = runC
     .getOrDefault(fallback)
 
 @Composable
-fun VaultTheme(settings: AppSettings, content: @Composable (dark: Boolean) -> Unit) {
+fun VaultTheme(
+    settings: AppSettings,
+    forceDarkSystemBars: Boolean = false,
+    content: @Composable (dark: Boolean) -> Unit,
+) {
     val dark =
         when (settings.mode) {
             "light" -> false
@@ -40,33 +44,33 @@ fun VaultTheme(settings: AppSettings, content: @Composable (dark: Boolean) -> Un
             darkColorScheme(
                 primary = accent,
                 onPrimary = onAccent,
-                background = Color(0xFF171717),
-                onBackground = Color(0xFFF5F5F5),
+                background = Color(0xFF191918),
+                onBackground = Color(0xFFEAE9E4),
                 surface = Color(0xFF202020),
-                onSurface = Color(0xFFF5F5F5),
-                surfaceVariant = Color(0xFF2C2C2C),
-                onSurfaceVariant = Color(0xFFD0D0D0),
+                onSurface = Color(0xFFEAE9E4),
+                surfaceVariant = Color(0xFF2C2C2B),
+                onSurfaceVariant = Color(0xFFB8B7B1),
                 outline = Color(0xFF767676),
             )
         else
             lightColorScheme(
                 primary = accent,
                 onPrimary = onAccent,
-                background = Color(0xFFFAFAFA),
-                onBackground = Color(0xFF171717),
+                background = Color(0xFFF6F5F2),
+                onBackground = Color(0xFF292825),
                 surface = Color.White,
-                onSurface = Color(0xFF171717),
-                surfaceVariant = Color(0xFFF1F1F1),
-                onSurfaceVariant = Color(0xFF525252),
+                onSurface = Color(0xFF292825),
+                surfaceVariant = Color(0xFFF2F1EE),
+                onSurfaceVariant = Color(0xFF64635E),
                 outline = Color(0xFF737373),
             )
     val radius =
         when (settings.radius) {
             "none" -> 0
-            "sm" -> 4
-            "md" -> 8
-            "xl" -> 20
-            else -> 12
+            "sm" -> 6
+            "md" -> 11
+            "xl" -> 24
+            else -> 16
         }.dp
     val shapes =
         Shapes(
@@ -87,11 +91,13 @@ fun VaultTheme(settings: AppSettings, content: @Composable (dark: Boolean) -> Un
     val activity = LocalContext.current as? Activity
     SideEffect {
         activity?.window?.let { window ->
-            window.statusBarColor = scheme.background.toArgb()
-            window.navigationBarColor = scheme.background.toArgb()
+            val darkBars = dark || forceDarkSystemBars
+            val barColor = if (forceDarkSystemBars) Color(0xFF191918) else scheme.background
+            window.statusBarColor = barColor.toArgb()
+            window.navigationBarColor = barColor.toArgb()
             WindowCompat.getInsetsController(window, window.decorView).apply {
-                isAppearanceLightStatusBars = !dark
-                isAppearanceLightNavigationBars = !dark
+                isAppearanceLightStatusBars = !darkBars
+                isAppearanceLightNavigationBars = !darkBars
             }
         }
     }

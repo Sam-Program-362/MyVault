@@ -33,16 +33,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import com.myvault.app.data.MediaFiles
 import com.myvault.app.ui.editor.EditorContentUpdate
 import com.myvault.app.ui.editor.EntryEditorScreen
 
@@ -127,24 +122,10 @@ fun MyVaultApp(vault: VaultViewModel) {
                 }
         }
 
-    VaultTheme(settings) { dark ->
+    VaultTheme(settings, forceDarkSystemBars = editor == null && screen == "spaces") { dark ->
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (
-                settings.wallpaperEnabled &&
-                    settings.wallpaperUri != null &&
-                    editor == null &&
-                    screen != "settings"
-            ) {
-                AsyncImage(
-                    model =
-                        remember(settings.wallpaperUri) { MediaFiles.displayModel(settings.wallpaperUri) },
-                    contentDescription = null,
-                    modifier =
-                        Modifier.fillMaxSize()
-                            .alpha(settings.wallpaperOpacity.coerceIn(0, 100) / 100f)
-                            .blur(settings.wallpaperBlur.coerceIn(0, 20).dp),
-                    contentScale = ContentScale.Crop,
-                )
+            if (editor == null && screen != "settings") {
+                VaultBackdrop(settings, dark = dark, splash = screen == "spaces")
             }
             val draftState = editor
             if (draftState != null) {
@@ -262,16 +243,20 @@ fun MyVaultApp(vault: VaultViewModel) {
                     "entries" -> {
                         BackHandler(enabled = !busy) { screen = "spaces" }
                         EntriesScreen(
-                            spaces,
-                            selectedSpaceId,
-                            entries,
-                            tags,
-                            refs,
+                            appName = settings.appName,
+                            spaces = spaces,
+                            selectedSpaceId = selectedSpaceId,
+                            entries = entries,
+                            tags = tags,
+                            tagRefs = refs,
                             onSelectSpace = { selectedSpaceId = it },
                             onBack = { screen = "spaces" },
                             onSettings = {
                                 settingsReturn = "entries"
                                 screen = "settings"
+                            },
+                            onNewSpace = { name, description, color, icon ->
+                                vault.createSpace(name, description, color, icon) { id -> selectedSpaceId = id }
                             },
                             onNewEntry = vault::createEntry,
                             onOpenEntry = vault::openEntry,
