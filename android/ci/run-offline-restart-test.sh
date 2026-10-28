@@ -27,6 +27,16 @@ print(f"::error title=Offline emulator test failed::{text}", flush=True)
 PY
   exit 1
 }
+checked() {
+  local label=$1
+  shift
+  local log="$work/setup.log"
+  printf '%s\n' "$label" > "$log"
+  if ! "$@" >> "$log" 2>&1; then
+    cat "$log"
+    fail_with_log "$log"
+  fi
+}
 run_instrumentation() {
   local label=$1 test_class=$2
   shift 2
@@ -40,8 +50,10 @@ run_instrumentation() {
 
 seed_apk=${MYVAULT_PREVIOUS_APK:-$app_apk}
 [[ -f "$seed_apk" ]] || { echo '::error::The APK for the restart fixture is missing.' >&2; exit 1; }
-adb install -r "$seed_apk" >/dev/null || exit 1
-adb install -r "$test_apk" >/dev/null || exit 1
+# The normal test run may already have installed the newer debug version on this emulator.
+# -d is allowed only for debuggable APKs; no uninstall or data clearing is performed.
+checked 'Install previous debug APK' adb install -r -d "$seed_apk"
+checked 'Install instrumentation APK' adb install -r "$test_apk"
 
 restore_network() {
   adb shell settings put global airplane_mode_on 0 >/dev/null 2>&1 || true
@@ -50,17 +62,20 @@ restore_network() {
   adb shell svc data enable >/dev/null 2>&1 || true
 }
 trap restore_network EXIT
-adb shell settings put global airplane_mode_on 1 || exit 1
-adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true >/dev/null || exit 1
-adb shell svc wifi disable || exit 1
+checked 'Enable airplane mode' adb shell settings put global airplane_mode_on 1
+checked 'Broadcast airplane mode change' adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true
+checked 'Disable Wi-Fi' adb shell svc wifi disable
 adb shell svc data disable >/dev/null 2>&1 || true
-[[ $(adb shell settings get global airplane_mode_on | tr -d '\r') == 1 ]] || exit 1
+if [[ $(adb shell settings get global airplane_mode_on | tr -d '\r') != 1 ]]; then
+  echo '::error::The emulator did not enter airplane mode.' >&2
+  exit 1
+fi
 run_instrumentation seed com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase seed
-adb shell am force-stop "$app_id" || exit 1
+checked 'Force-stop the previous APK' adb shell am force-stop "$app_id"
 # Both debug APKs are signed by this runner's same disposable debug key. -r retains app data.
-adb install -r "$app_apk" >/dev/null || exit 1
-adb shell am force-stop "$app_id" || exit 1
-adb shell am start -n "$app_id/com.myvault.app.MainActivity" >/dev/null || exit 1
+checked 'Update the debug APK without clearing data' adb install -r "$app_apk"
+checked 'Force-stop the updated APK' adb shell am force-stop "$app_id"
+checked 'Restart the updated APK' adb shell am start -n "$app_id/com.myvault.app.MainActivity"
 run_instrumentation verify com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase verify
 if [[ -n ${MYVAULT_PREVIOUS_APK:-} ]]; then
   printf '::notice title=Offline upgrade and restart::The previous native APK wrote a vault in airplane mode; an in-place update and force-stop preserved its entries, tags, settings and images.\n'

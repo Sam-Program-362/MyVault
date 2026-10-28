@@ -115,7 +115,12 @@ fun SpacesScreen(
                 maxWidth >= 600.dp -> 3
                 else -> 2
             }
-        val heroHeight = (maxHeight * 0.48f).coerceIn(230.dp, 420.dp)
+        // Like the web splash, short grids sit near the bottom while the welcome fills
+        // the remaining height. Longer lists keep a minimum hero and scroll naturally.
+        val cardCount = spaces.size + if (creating) 0 else 1
+        val rows = (cardCount + columns - 1) / columns
+        val gridHeight = 136.dp * rows + 12.dp * rows + 48.dp
+        val heroHeight = (maxHeight - gridHeight).coerceAtLeast(230.dp)
         val sidePadding = if (maxWidth >= 600.dp) 36.dp else 24.dp
         val compactHeading = maxWidth < 360.dp
         LazyVerticalGrid(

@@ -12,7 +12,7 @@ Backups from older versions or from the web can contain external URLs, temporary
 
 `.github/workflows/android-apk.yml` runs unit tests, builds a **debug APK**, verifies a release build with a disposable test key (never uploaded), and runs Room, backup and Compose UI tests on an Android emulator for Android-related pull requests and pushes to `main`. Its offline upgrade check builds the previous native APK from commit `8f28127`, seeds a synthetic vault in airplane mode, updates in place to the new APK with the same disposable debug key, force-stops and restarts it, then checks the saved notes, tags, settings, private image and JSON backup. This is an emulator check, not a physical-phone or actual-release-key test. The workflow can also be started manually from **Actions → Android APK → Run workflow**, choosing `debug` or `release`. Manual signed releases are restricted to the default branch; the workflow must first be merged into that branch before the Run workflow button is available.
 
-After a successful run, download `myvault-debug-apk` or `myvault-release-apk` from the run's **Artifacts** section. Artifacts expire after 14 days. Debug APKs use Android's debug key and the `.debug` application ID; they are for testing, not publishing, and do not update the release app. Debug keys can differ between workflow runs. If an old debug installation must be uninstalled to install a new one, export its data first: uninstalling deletes its private data. No signing secrets are required for debug builds.
+After a successful run, download `myvault-debug-apk`, `myvault-unsigned-release-apk`, or (from a trusted release run) `myvault-release-apk` from the run's **Artifacts** section. Artifacts expire after 14 days. The unsigned release candidate cannot be installed until it is signed; it is provided for private local signing, not as a finished release. Debug APKs use Android's debug key and the `.debug` application ID; they are for testing, not publishing, and do not update the release app. Debug keys can differ between workflow runs. If an old debug installation must be uninstalled to install a new one, export its data first: uninstalling deletes its private data. No signing secrets are required for debug or unsigned builds.
 
 A release run requires all four secrets below. It validates the keystore, builds with required release signing, verifies the APK signature and certificate against the provided key, deletes the temporary keystore, and only then uploads the signed APK. It does not publish a GitHub Release or upload to Google Play. The workflow uses GitHub's automatically supplied read-only token; no personal access token is required.
 
@@ -73,6 +73,16 @@ For a signed local release, set `ANDROID_KEYSTORE_PATH` to the **absolute path**
 
 The `requireReleaseSigning` flag makes missing or incomplete credentials fail the build. Without signing credentials, a local release build is unsigned; it never falls back to the debug key.
 
+Alternatively, sign the downloaded **unsigned** candidate on your own computer using the Android SDK build tools and your existing keystore. `apksigner` prompts for passwords when they are not supplied on the command line:
+
+```sh
+"$ANDROID_HOME/build-tools/34.0.0/zipalign" -f -p 4 app-release-unsigned.apk app-aligned.apk
+"$ANDROID_HOME/build-tools/34.0.0/apksigner" sign --ks /secure/path/to/keystore --ks-key-alias YOUR_ALIAS --out myvault-release.apk app-aligned.apk
+"$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs myvault-release.apk
+```
+
+Replace the path and alias locally; never share the keystore or passwords. Verify the displayed certificate is the one required by the existing installation before attempting an update. The default-branch release workflow is the alternative that signs with the configured GitHub secrets.
+
 The workflow's source and signing helper checks can be run separately with a JDK on `PATH`:
 
 ```sh
@@ -86,7 +96,7 @@ Those helper tests use a disposable key and a mocked `apksigner`; they do not re
 A CI emulator is not a substitute for testing your actual phone and signing key. Before updating an existing installation, export a JSON backup, keep a separate copy of any original images, and verify the backup. **Do not uninstall or clear app data to resolve a signing error.** Uninstalling removes that installation's local vault.
 
 1. For an isolated trial, install the debug artifact. It has package ID `com.myvault.app.debug` and cannot see or update the release app's data. Import a copy of a backup if you want to test with realistic content.
-2. To test preservation on a release installation, use a release APK with the same `com.myvault.app` package ID and the **same signing certificate** as the installed app. If Android refuses the update, stop and check the signing key rather than uninstalling. A CI debug key or disposable release-test key is not suitable for updating a release installation.
+2. To test preservation on a release installation, use a release APK with the same `com.myvault.app` package ID, a suitable version code, and the **same signing certificate** as the installed app. This branch's APK is version `1.0.1` (version code `2`); verify the installed version if its origin is unknown. If Android refuses the update, stop and check the signing key and version rather than uninstalling. A CI debug key or disposable release-test key is not suitable for updating a release installation.
 3. Check the welcome screen and both empty and populated spaces. Open an entry; edit its title and Markdown, cover, tags and pin; try preview, Back, search, settings and dialogs. Let the save indicator finish.
 4. Export and verify a JSON backup; try importing a copy into an isolated test vault. Enable airplane mode and disable Wi-Fi, reopen the app, and confirm reading and editing still work.
 5. After a save finishes, force-stop the app from Android's App info screen and launch it again. Check entries, tags, appearance and images. Test your phone's keyboard and screen rotation as well.

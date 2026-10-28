@@ -84,6 +84,18 @@ jobs:
       - name: Remove disposable key
         if: ${{ always() }}
         run: rm -f "$RUNNER_TEMP/myvault-test.p12"
+      # Keep the release candidate unsigned on PRs; it cannot update an installation until
+      # signed with that installation's real key. Production secrets are never exposed to PR code.
+      - name: Build unsigned release candidate
+        working-directory: android
+        run: bash ci/run-gradle-check.sh :app:assembleRelease
+      - name: Upload unsigned release candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: myvault-unsigned-release-apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload debug APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
