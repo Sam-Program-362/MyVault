@@ -105,6 +105,64 @@ expect_failure env FAKE_EXTRA_SIGNER=1 "$ci_dir/verify-signing.sh" "$tmp/app-rel
 expect_failure "$ci_dir/verify-signing.sh" "$tmp/nonexistent.apk"
 printf 'APK signature verification checks passed (apksigner output mocked).\n'
 
+# Exercise package/version/signer checks with distinct synthetic APK identities.
+cat > "$tmp/aapt" <<'AAPT'
+#!/usr/bin/env bash
+set -eu
+file=${3##*/}
+case "$file" in
+  debug-*) app_id=com.myvault.app.debug ;;
+  preview-*) app_id=com.myvault.app.preview ;;
+  *) app_id=com.myvault.app ;;
+esac
+case "$file" in
+  *-old.apk|*-same.apk) code=2 ;;
+  high.apk) code=2147483648 ;;
+  *) code=3 ;;
+esac
+printf "package: name='%s' versionCode='%s' versionName='1.0.2'\n" "$app_id" "$code"
+AAPT
+cat > "$tmp/identity-signer" <<'SIGNER'
+#!/usr/bin/env bash
+set -eu
+file=${@: -1}
+case "$file" in *unsigned.apk) exit 1 ;; esac
+case "$file" in *-other.apk) digest=$(printf 'b%.0s' {1..64}) ;; *) digest=$(printf 'a%.0s' {1..64}) ;; esac
+if [[ "$file" == *malformed.apk ]]; then digest=not-a-fingerprint; fi
+printf 'Signer #1 certificate SHA-256 digest: %s\n' "$digest"
+if [[ "$file" == *multi.apk ]]; then printf 'Signer #2 certificate SHA-256 digest: %s\n' "$digest"; fi
+SIGNER
+chmod +x "$tmp/aapt" "$tmp/identity-signer"
+export AAPT="$tmp/aapt" APKSIGNER="$tmp/identity-signer"
+for name in release-old release-new release-same release-other debug-old debug-new debug-other preview-new unsigned multi malformed high; do
+  printf 'synthetic %s APK\n' "$name" > "$tmp/$name.apk"
+done
+export ANDROID_EXPECTED_CERT_SHA256
+ANDROID_EXPECTED_CERT_SHA256=$(printf 'A:%.0s' {1..63}; printf A)
+export ANDROID_INSTALLED_VERSION_CODE=2
+"$ci_dir/verify-release-update.sh" "$tmp/release-new.apk" >/dev/null
+expect_failure env -u ANDROID_EXPECTED_CERT_SHA256 "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
+expect_failure env -u ANDROID_INSTALLED_VERSION_CODE "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
+expect_failure env ANDROID_EXPECTED_CERT_SHA256=bad "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
+expect_failure env ANDROID_INSTALLED_VERSION_CODE=02 "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
+expect_failure env ANDROID_INSTALLED_VERSION_CODE=2147483648 "$ci_dir/verify-release-update.sh" "$tmp/release-new.apk"
+expect_failure "$ci_dir/verify-release-update.sh" "$tmp/debug-new.apk"
+expect_failure "$ci_dir/verify-release-update.sh" "$tmp/release-other.apk"
+expect_failure "$ci_dir/verify-release-update.sh" "$tmp/release-same.apk"
+expect_failure "$ci_dir/verify-release-update.sh" "$tmp/high.apk"
+expect_failure "$ci_dir/verify-release-update.sh" "$tmp/unsigned.apk"
+expect_failure "$ci_dir/verify-release-update.sh" "$tmp/multi.apk"
+expect_failure "$ci_dir/verify-release-update.sh" "$tmp/malformed.apk"
+"$ci_dir/check-apk-update.sh" "$tmp/debug-old.apk" "$tmp/debug-new.apk" >/dev/null
+expect_failure "$ci_dir/check-apk-update.sh" "$tmp/debug-old.apk" "$tmp/debug-other.apk"
+grep -q 'Signing certificates differ' "$tmp/output"
+expect_failure "$ci_dir/check-apk-update.sh" "$tmp/debug-old.apk" "$tmp/preview-new.apk"
+grep -q 'separate installations' "$tmp/output"
+expect_failure "$ci_dir/check-apk-update.sh" "$tmp/release-old.apk" "$tmp/release-same.apk"
+expect_failure "$ci_dir/check-apk-update.sh" "$tmp/release-old.apk" "$tmp/unsigned.apk"
+expect_failure "$ci_dir/check-apk-update.sh" "$tmp/release-old.apk" "$tmp/multi.apk"
+printf 'APK identity, incompatible-update and release reference checks passed (tools mocked).\n'
+
 # Unit-test failures should be visible in CI annotations, not only in runner logs.
 (
   fixture="$tmp/gradle-fixture"
@@ -136,8 +194,9 @@ printf 'Emulator workflow commands are independently valid shell.\n'
 # A fake adb exercises its guards, diagnostics, and two-phase control flow without a device.
 (
   fixture="$tmp/offline-fixture"
-  mkdir -p "$fixture/bin" "$fixture/runner" "$fixture/app/build/outputs/apk/debug" \
+  mkdir -p "$fixture/bin" "$fixture/ci" "$fixture/runner" "$fixture/app/build/outputs/apk/debug" \
     "$fixture/app/build/outputs/apk/androidTest/debug"
+  printf 'print("mock preview migration")\n' > "$fixture/ci/run-preview-migration-test.py"
   touch "$fixture/app/build/outputs/apk/debug/app-debug.apk" \
     "$fixture/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk" "$fixture/old.apk"
   cat > "$fixture/bin/adb" <<'ADB'
@@ -147,6 +206,10 @@ if [[ ${1:-} == get-serialno ]]; then printf '%s\n' "${MOCK_SERIAL:-emulator-555
 if [[ ${1:-} == install && ${MOCK_INSTALL_FAILURE:-0} == 1 ]]; then
   echo 'simulated install error' >&2
   exit 4
+fi
+if [[ ${1:-} == install && $* == *conflict.apk && ${MOCK_ACCEPT_CONFLICT:-0} != 1 ]]; then
+  echo 'Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: different signer]' >&2
+  exit 1
 fi
 if [[ $* == 'shell settings get global airplane_mode_on' ]]; then printf '1\n'; exit 0; fi
 if [[ $* == 'shell settings get global '* ]]; then printf '0\n'; exit 0; fi
@@ -162,7 +225,7 @@ exit 0
 ADB
   chmod +x "$fixture/bin/adb"
   cd "$fixture"
-  unset MYVAULT_PREVIOUS_APK MYVAULT_DISPOSABLE_EMULATOR MYVAULT_REQUIRE_CUTOUT MOCK_SERIAL MOCK_INSTALL_FAILURE MOCK_NO_OVERLAY
+  unset MYVAULT_PREVIOUS_APK MYVAULT_CONFLICT_APK MYVAULT_PREVIEW_APK MYVAULT_DISPOSABLE_EMULATOR MYVAULT_REQUIRE_CUTOUT MOCK_SERIAL MOCK_INSTALL_FAILURE MOCK_ACCEPT_CONFLICT MOCK_NO_OVERLAY
   export PATH="$fixture/bin:$PATH" RUNNER_TEMP="$fixture/runner"
   expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR bash "$ci_dir/run-offline-restart-test.sh"
   grep -q 'MYVAULT_DISPOSABLE_EMULATOR=1' "$tmp/output"
@@ -176,6 +239,19 @@ ADB
   env MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$fixture/old.apk" \
     bash "$ci_dir/run-offline-restart-test.sh" > "$fixture/success"
   grep -q 'Offline upgrade and restart' "$fixture/success"
+  env MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$fixture/old.apk" \
+    MYVAULT_CONFLICT_APK="$fixture/conflict.apk" MYVAULT_PREVIEW_APK="$fixture/preview.apk" \
+    bash "$ci_dir/run-offline-restart-test.sh" > "$fixture/conflict-success"
+  grep -q 'Incompatible update rejected safely' "$fixture/conflict-success"
+  grep -q 'Side-by-side preview' "$fixture/conflict-success"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_CONFLICT_APK="$fixture/conflict.apk" \
+    MOCK_ACCEPT_CONFLICT=1 bash "$ci_dir/run-offline-restart-test.sh"
+  grep -q 'unexpectedly accepted' "$tmp/output"
+  expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR python3 "$ci_dir/run-preview-migration-test.py"
+  grep -q 'disposable emulator' "$tmp/output"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \
+    python3 "$ci_dir/run-preview-migration-test.py"
+  grep -q 'disposable emulator' "$tmp/output"
   expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR bash "$ci_dir/run-motion-inset-tests.sh"
   grep -q 'disposable emulator' "$tmp/output"
   expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \

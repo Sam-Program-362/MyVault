@@ -41,8 +41,8 @@ android {
         minSdk = 24
         targetSdk = 34
         // Bump the APK version for in-place updates of the previous native build.
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -70,6 +70,16 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
+        }
+        // A separate, non-debuggable package for safe backup/import from older debug APKs.
+        // CI never signs it: the owner must use a stable key they control, offline.
+        create("preview") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+            signingConfig = null
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
         }
     }
 

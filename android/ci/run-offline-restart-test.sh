@@ -79,6 +79,35 @@ run_instrumentation verify com.myvault.app.ui.OfflineRestartTest -e myvault.rest
 checked 'Force-stop after choosing list layout' adb shell am force-stop "$app_id"
 checked 'Restart with the saved list layout' adb shell am start -n "$app_id/com.myvault.app.MainActivity"
 run_instrumentation verify-layout com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase verifyLayout
+if [[ -n ${MYVAULT_CONFLICT_APK:-} ]]; then
+  # The candidate has the same package ID but a different disposable certificate.
+  # The emulator must reject it without uninstalling or clearing the existing fixture.
+  conflict_log="$work/conflicting-update.log"
+  if adb install -r "$MYVAULT_CONFLICT_APK" > "$conflict_log" 2>&1; then
+    echo '::error::The emulator unexpectedly accepted an APK signed with the wrong key.' >&2
+    exit 1
+  fi
+  if ! grep -q 'INSTALL_FAILED_UPDATE_INCOMPATIBLE' "$conflict_log"; then
+    fail_with_log "$conflict_log"
+  fi
+  checked 'Force-stop after rejected incompatible update' adb shell am force-stop "$app_id"
+  checked 'Restart after rejected incompatible update' adb shell am start -n "$app_id/com.myvault.app.MainActivity"
+  run_instrumentation conflict-retained com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase verifyLayout
+  printf '::notice title=Incompatible update rejected safely::A different-key APK with the same package was rejected and the existing offline vault remained readable.\n'
+fi
+if [[ -n ${MYVAULT_PREVIEW_APK:-} ]]; then
+  checked 'Install separately signed preview alongside debug' adb install -r "$MYVAULT_PREVIEW_APK"
+  checked 'Verify debug package remains installed' adb shell pm path "$app_id"
+  checked 'Verify preview package is separate' adb shell pm path com.myvault.app.preview
+  run_instrumentation export-preview com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase exportForPreview
+  if ! python3 ci/run-preview-migration-test.py; then
+    exit 1
+  fi
+  checked 'Force-stop the preview' adb shell am force-stop com.myvault.app.preview
+  checked 'Restart the retained debug app' adb shell am start -n "$app_id/com.myvault.app.MainActivity"
+  run_instrumentation preview-side-by-side com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase verifyLayout
+  printf '::notice title=Side-by-side preview::The distinct preview package installed and launched without replacing the existing debug vault.\n'
+fi
 if [[ -n ${MYVAULT_PREVIOUS_APK:-} ]]; then
   printf '::notice title=Offline upgrade and restart::The previous native APK wrote a vault in airplane mode; an in-place update and force-stop preserved its entries, tags, settings, images and the new list preference.\n'
 else

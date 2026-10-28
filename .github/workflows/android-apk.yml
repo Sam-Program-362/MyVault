@@ -21,6 +21,14 @@ on:
           - release
         default: debug
         required: true
+      release_cert_sha256:
+        description: "Public SHA-256 certificate fingerprint of the installed release (or chosen key for a confirmed fresh install)"
+        type: string
+        required: false
+      release_installed_version_code:
+        description: "Installed com.myvault.app versionCode; use 0 only after confirming a fresh install"
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -60,6 +68,17 @@ jobs:
       - name: Run unit tests and build debug APK
         working-directory: android
         run: bash ci/run-gradle-check.sh :app:testDebugUnitTest :app:assembleDebug
+      - name: Record the debug APK's public identity
+        working-directory: android
+        run: |
+          identity=$(bash ci/apk-identity.sh app/build/outputs/apk/debug/app-debug.apk)
+          app_id=$(cut -f1 <<< "$identity")
+          [[ "$app_id" == com.myvault.app.debug ]] || { echo '::error::Unexpected debug package ID.'; exit 1; }
+          {
+            echo 'TEST ONLY: this debug APK has a runner-generated signing key and may not update debug APKs from other runs.'
+            printf 'package ID\tversionCode\tversionName\tpublic certificate SHA-256\n%s\n' "$identity"
+          } > app/build/outputs/apk/debug/DEBUG-APK-IDENTITY.txt
+          printf '::notice title=Debug APK public identity::%s\n' "$identity"
       # The disposable key below never leaves this runner and is NOT a release credential.
       # It verifies that the real app can also be optimized and signed without exposing secrets to PRs.
       - name: Create disposable release-test key
@@ -81,6 +100,16 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: temporary-test-password
           ANDROID_KEY_ALIAS: myvault-test
         run: bash android/ci/verify-signing.sh android/app/build/outputs/apk/release/app-release.apk
+      - name: Check release update identity with disposable reference
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/myvault-test.p12
+          ANDROID_KEYSTORE_PASSWORD: temporary-test-password
+        run: |
+          ANDROID_EXPECTED_CERT_SHA256=$(keytool -J-Duser.language=en -J-Duser.country=US -list -v \
+            -keystore "$ANDROID_KEYSTORE_PATH" -storepass:env ANDROID_KEYSTORE_PASSWORD -alias myvault-test | \
+            awk '/^[[:space:]]*SHA256:/ && !seen++ {print $2}')
+          export ANDROID_EXPECTED_CERT_SHA256 ANDROID_INSTALLED_VERSION_CODE=3
+          bash android/ci/verify-release-update.sh android/app/build/outputs/apk/release/app-release.apk
       - name: Remove disposable key
         if: ${{ always() }}
         run: rm -f "$RUNNER_TEMP/myvault-test.p12"
@@ -105,6 +134,37 @@ jobs:
             exit 1
           fi
           echo 'Unsigned candidate is a valid, offline MyVault release APK.'
+      - name: Build unsigned side-by-side preview
+        working-directory: android
+        run: bash ci/run-gradle-check.sh :app:assemblePreview
+      - name: Verify unsigned side-by-side preview
+        run: |
+          apk=android/app/build/outputs/apk/preview/app-preview-unsigned.apk
+          tools="$ANDROID_HOME/build-tools/34.0.0"
+          unzip -tqq "$apk"
+          badging=$("$tools/aapt" dump badging "$apk")
+          grep "^package: name='com.myvault.app.preview' " <<< "$badging"
+          if grep -q '^application-debuggable' <<< "$badging"; then
+            echo '::error::The preview must not be debuggable.'; exit 1
+          fi
+          permissions=$("$tools/aapt" dump permissions "$apk")
+          if grep -q 'android.permission.INTERNET' <<< "$permissions"; then
+            echo '::error::The preview must not request internet permission.'; exit 1
+          fi
+          if "$tools/apksigner" verify "$apk" > /dev/null 2>&1; then
+            echo '::error::The preview candidate must be unsigned in PR builds.'; exit 1
+          fi
+          cp android/PREVIEW-README.md "$(dirname "$apk")/PREVIEW-README.md"
+          echo 'Preview is unsigned, non-debuggable, offline, and has its own package ID.'
+      - name: Upload unsigned side-by-side preview
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: myvault-preview-unsigned-apk
+          path: |
+            android/app/build/outputs/apk/preview/app-preview-unsigned.apk
+            android/app/build/outputs/apk/preview/PREVIEW-README.md
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload unsigned release candidate
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -116,37 +176,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: myvault-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/DEBUG-APK-IDENTITY.txt
           if-no-files-found: error
           retention-days: 14
-
-  apk-forensics:
-    # Temporary audit of public APK metadata. No release or debug private keys are accessed.
-    name: Inspect historical debug APK identities
-    if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - name: Check out sources
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - name: Set up Java 17
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
-        with:
-          packages: "build-tools;34.0.0"
-      - name: Compare published debug package IDs, versions and public certificates
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash android/ci/inspect-historical-debug.sh
 
   emulator-tests:
     name: Android emulator tests (API ${{ matrix.api }})
@@ -177,9 +211,27 @@ jobs:
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
         with:
           cache-provider: basic
-      - name: Compile the app and instrumentation tests
+      - name: Compile the app, preview and instrumentation tests
         working-directory: android
-        run: bash ci/run-gradle-check.sh :app:assembleDebug :app:assembleDebugAndroidTest
+        run: bash ci/run-gradle-check.sh :app:assembleDebug :app:assembleDebugAndroidTest :app:assemblePreview
+      - name: Sign disposable incompatible-update and preview fixtures
+        env:
+          FIXTURE_PASSWORD: temporary-test-password
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/myvault-incompatible-test.p12" -storetype PKCS12 \
+            -alias myvault-test -keyalg RSA -keysize 2048 -validity 2 \
+            -dname 'CN=MyVault emulator fixture only' -storepass:env FIXTURE_PASSWORD -keypass:env FIXTURE_PASSWORD
+          tools="$ANDROID_HOME/build-tools/34.0.0"
+          "$tools/apksigner" sign --ks "$RUNNER_TEMP/myvault-incompatible-test.p12" --ks-key-alias myvault-test \
+            --ks-pass env:FIXTURE_PASSWORD --key-pass env:FIXTURE_PASSWORD \
+            --out "$RUNNER_TEMP/myvault-incompatible-debug.apk" android/app/build/outputs/apk/debug/app-debug.apk
+          "$tools/zipalign" -f -p 4 android/app/build/outputs/apk/preview/app-preview-unsigned.apk "$RUNNER_TEMP/myvault-preview-aligned.apk"
+          "$tools/apksigner" sign --ks "$RUNNER_TEMP/myvault-incompatible-test.p12" --ks-key-alias myvault-test \
+            --ks-pass env:FIXTURE_PASSWORD --key-pass env:FIXTURE_PASSWORD \
+            --out "$RUNNER_TEMP/myvault-preview.apk" "$RUNNER_TEMP/myvault-preview-aligned.apk"
+          "$tools/apksigner" verify "$RUNNER_TEMP/myvault-incompatible-debug.apk"
+          "$tools/apksigner" verify "$RUNNER_TEMP/myvault-preview.apk"
+          rm -f "$RUNNER_TEMP/myvault-incompatible-test.p12"
       - name: Build the previous native APK for the offline update test
         run: |
           previous="$RUNNER_TEMP/myvault-previous"
@@ -207,7 +259,7 @@ jobs:
             bash ci/run-device-tests.sh
             MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_REQUIRE_CUTOUT=1 bash ci/run-motion-inset-tests.sh
             if [ '${{ matrix.api }}' = '30' ]; then MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/capture-synthetic-ui.sh; fi
-            MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" bash ci/run-offline-restart-test.sh
+            MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_CONFLICT_APK="$RUNNER_TEMP/myvault-incompatible-debug.apk" MYVAULT_PREVIEW_APK="$RUNNER_TEMP/myvault-preview.apk" bash ci/run-offline-restart-test.sh
       - name: Upload synthetic UI screenshots
         if: ${{ always() && matrix.api == 30 }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -244,6 +296,15 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      - name: Require release reference metadata
+        env:
+          EXPECTED_CERT: ${{ inputs.release_cert_sha256 }}
+          INSTALLED_VERSION: ${{ inputs.release_installed_version_code }}
+        run: |
+          if [[ -z "$EXPECTED_CERT" || -z "$INSTALLED_VERSION" ]]; then
+            echo '::error::Provide the installed release certificate SHA-256 and versionCode (0 only for a confirmed fresh install).'
+            exit 1
+          fi
       - name: Check Android app sources
         run: bash android/ci/check-project.sh
       - name: Set up Java 17
@@ -278,6 +339,11 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: bash android/ci/verify-signing.sh android/app/build/outputs/apk/release/app-release.apk
+      - name: Verify release update identity against the supplied reference
+        env:
+          ANDROID_EXPECTED_CERT_SHA256: ${{ inputs.release_cert_sha256 }}
+          ANDROID_INSTALLED_VERSION_CODE: ${{ inputs.release_installed_version_code }}
+        run: bash android/ci/verify-release-update.sh android/app/build/outputs/apk/release/app-release.apk
       - name: Remove the temporary keystore
         if: ${{ always() }}
         run: rm -f "$RUNNER_TEMP/myvault-release.keystore"

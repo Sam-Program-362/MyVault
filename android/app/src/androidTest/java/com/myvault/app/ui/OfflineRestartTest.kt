@@ -1,10 +1,13 @@
 package com.myvault.app.ui
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.Settings
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -69,6 +72,7 @@ class OfflineRestartTest {
             "seed" -> seedOfflineVault(app)
             "verify" -> verifyAfterForceStop(app)
             "verifyLayout" -> verifyLayoutAfterForceStop(app)
+            "exportForPreview" -> exportForPreview(app)
             else -> error("Unknown offline restart phase: $phase")
         }
     }
@@ -202,6 +206,28 @@ class OfflineRestartTest {
         }
         compose.onNodeWithContentDescription("List view").performClick()
         compose.waitUntil(15_000) { runBlocking { app.settings.entryLayoutFlow.first() == "list" } }
+    }
+
+    private fun exportForPreview(app: MyVaultApplication) {
+        // This phase runs only on the guarded disposable emulator. A real MediaStore document
+        // lets the other package import the backup through Android's document picker.
+        val values =
+            ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, "myvault-ci-migration.json")
+                put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+        val uri =
+            requireNotNull(
+                app.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            )
+        runBlocking { app.backups.exportTo(uri) }
+        val contents =
+            requireNotNull(app.contentResolver.openInputStream(uri)).bufferedReader().use {
+                it.readText()
+            }
+        assertTrue(contents.contains("Offline note"))
+        assertTrue(contents.contains("data:image/png;base64,"))
     }
 
     private fun verifyLayoutAfterForceStop(app: MyVaultApplication) {
