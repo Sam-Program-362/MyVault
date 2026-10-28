@@ -100,10 +100,10 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="pop-in ui-radius flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900">
+      <div className="pop-in ui-radius flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden bg-white shadow-2xl dark:bg-neutral-900">
         <div className="flex items-center justify-between border-b border-black/10 px-5 py-4 dark:border-white/10">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Settings</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-black/5 dark:hover:bg-white/10">
+          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Settings</h2>
+          <button onClick={onClose} aria-label="Close settings" className="rounded-lg p-1.5 text-neutral-400 hover:bg-black/5 dark:hover:bg-white/10">
             <X size={18} />
           </button>
         </div>
@@ -120,7 +120,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
               className={`flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-sm font-medium ${
                 tab === id
                   ? "accent-text border-b-2"
-                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  : "text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
               }`}
               style={tab === id ? { borderColor: "var(--accent)" } : undefined}
             >
@@ -133,14 +133,14 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           {tab === "theme" && (
             <div className="flex flex-col gap-6">
               <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <label className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
                   Application name
                 </label>
                 <div className="mt-1.5 flex gap-2">
                   <input
                     value={appName}
                     onChange={(e) => setAppName(e.target.value)}
-                    className="ui-radius flex-1 border border-black/10 bg-white px-3 py-2 text-sm outline-none dark:border-white/10 dark:bg-slate-800 dark:text-white"
+                    className="ui-radius flex-1 border border-black/10 bg-white px-3 py-2 text-sm outline-none dark:border-white/10 dark:bg-neutral-800 dark:text-white"
                   />
                   <button
                     onClick={() => updateSettings({ appName: appName.trim() || "MyVault" })}
@@ -149,22 +149,25 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                     Save
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">Shown on the animated start screen.</p>
+                <p className="mt-1 text-xs text-neutral-400">Shown on the animated start screen.</p>
               </div>
 
               <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Accent color</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Accent color</label>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {ACCENTS.map((c) => (
                     <button
                       key={c}
+                      aria-label={`Accent color ${c}`}
+                      aria-pressed={settings.accent === c}
                       onClick={() => updateSettings({ accent: c })}
-                      className={`h-8 w-8 rounded-full ${settings.accent === c ? "ring-2 ring-offset-2 ring-slate-500" : ""}`}
+                      className={`h-8 w-8 rounded-full ${settings.accent === c ? "ring-2 ring-offset-2 ring-neutral-500" : ""}`}
                       style={{ background: c }}
                     />
                   ))}
                   <input
                     type="color"
+                    aria-label="Custom accent color"
                     value={settings.accent}
                     onChange={(e) => updateSettings({ accent: e.target.value })}
                     className="h-8 w-8 cursor-pointer rounded-full border-none bg-transparent"
@@ -173,7 +176,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
               </div>
 
               <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Theme mode</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Theme mode</label>
                 <div className="mt-2 flex gap-2">
                   {[
                     { value: "light" as const, label: "Light", icon: Sun },
@@ -186,7 +189,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                       className={`ui-radius flex flex-1 items-center justify-center gap-1.5 border px-3 py-2 text-xs font-medium ${
                         settings.mode === value
                           ? "accent-bg border-transparent text-white"
-                          : "border-black/10 text-slate-500 dark:border-white/10 dark:text-slate-300"
+                          : "border-black/10 text-neutral-500 dark:border-white/10 dark:text-neutral-300"
                       }`}
                     >
                       <Icon size={13} /> {label}
@@ -196,7 +199,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
               </div>
 
               <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Text size</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Text size</label>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {FONT_SIZES.map(({ value, label }) => (
                     <button
@@ -205,7 +208,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                       className={`ui-radius border px-3 py-1.5 text-xs font-medium ${
                         settings.fontSize === value
                           ? "accent-bg border-transparent text-white"
-                          : "border-black/10 text-slate-500 dark:border-white/10 dark:text-slate-300"
+                          : "border-black/10 text-neutral-500 dark:border-white/10 dark:text-neutral-300"
                       }`}
                     >
                       {label}
@@ -215,7 +218,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
               </div>
 
               <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Corner roundness</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Corner roundness</label>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {RADII.map(({ value, label }) => (
                     <button
@@ -224,7 +227,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                       className={`border px-3 py-1.5 text-xs font-medium ${
                         settings.radius === value
                           ? "accent-bg border-transparent text-white"
-                          : "border-black/10 text-slate-500 dark:border-white/10 dark:text-slate-300"
+                          : "border-black/10 text-neutral-500 dark:border-white/10 dark:text-neutral-300"
                       }`}
                       style={{ borderRadius: value === "none" ? 0 : value === "sm" ? 6 : value === "md" ? 10 : value === "lg" ? 14 : 20 }}
                     >
@@ -235,19 +238,21 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
               </div>
 
               <div className="border-t border-black/10 pt-4 dark:border-white/10">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Background wallpaper</label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Background wallpaper</label>
                 <div className="mt-2 flex items-center gap-3">
                   {settings.wallpaperUrl ? (
+                    // Wallpaper may be a user-provided URL or local upload.
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={settings.wallpaperUrl} alt="" className="h-16 w-24 rounded-lg object-cover" />
                   ) : (
-                    <div className="flex h-16 w-24 items-center justify-center rounded-lg bg-black/5 text-slate-300 dark:bg-white/10">
+                    <div className="flex h-16 w-24 items-center justify-center rounded-lg bg-black/5 text-neutral-300 dark:bg-white/10">
                       <ImagePlus size={18} />
                     </div>
                   )}
                   <div className="flex flex-col gap-1.5">
                     <button
                       onClick={() => wallpaperInputRef.current?.click()}
-                      className="ui-radius border border-black/10 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-black/5 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                      className="ui-radius border border-black/10 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/10"
                     >
                       {uploadingWallpaper ? "Uploading…" : "Upload image"}
                     </button>
@@ -269,11 +274,11 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                   />
                 </div>
 
-                <label className="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                <label className="mt-3 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
                   <button
                     onClick={() => updateSettings({ wallpaperEnabled: !settings.wallpaperEnabled })}
                     className={`flex h-4 w-4 items-center justify-center rounded border ${
-                      settings.wallpaperEnabled ? "accent-bg border-transparent text-white" : "border-slate-400"
+                      settings.wallpaperEnabled ? "accent-bg border-transparent text-white" : "border-neutral-400"
                     }`}
                   >
                     {settings.wallpaperEnabled && <Check size={11} />}
@@ -282,7 +287,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                 </label>
 
                 <div className="mt-3">
-                  <label className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                  <label className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
                     Opacity <span>{settings.wallpaperOpacity}%</span>
                   </label>
                   <input
@@ -295,7 +300,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                   />
                 </div>
                 <div className="mt-2">
-                  <label className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                  <label className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
                     Blur <span>{settings.wallpaperBlur}px</span>
                   </label>
                   <input
@@ -314,9 +319,9 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           {tab === "tags" && (
             <div className="flex flex-col gap-5">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Saved reusable tags</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Saved reusable tags</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {reusableTags.length === 0 && <p className="text-xs text-slate-400">None yet.</p>}
+                  {reusableTags.length === 0 && <p className="text-xs text-neutral-400">None yet.</p>}
                   {reusableTags.map((tag) => (
                     <span
                       key={tag.id}
@@ -339,9 +344,9 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">One-off tags</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">One-off tags</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {oneOffTags.length === 0 && <p className="text-xs text-slate-400">None yet.</p>}
+                  {oneOffTags.length === 0 && <p className="text-xs text-neutral-400">None yet.</p>}
                   {oneOffTags.map((tag) => (
                     <span
                       key={tag.id}
@@ -368,10 +373,10 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           {tab === "data" && (
             <div className="flex flex-col gap-5">
               <div className="ui-radius border border-black/10 p-4 dark:border-white/10">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-800 dark:text-white">
                   <Download size={15} /> Export everything
                 </h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
                   Download a complete JSON backup of your spaces, entries, tags and settings.
                 </p>
                 <button
@@ -385,10 +390,10 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
               </div>
 
               <div className="ui-radius border border-black/10 p-4 dark:border-white/10">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-800 dark:text-white">
                   <Upload size={15} /> Import from JSON
                 </h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
                   Restores spaces, tags and entries from a previously exported file. Existing data is
                   never deleted — matching spaces/tags are merged and entries are added alongside
                   what you already have.
@@ -396,7 +401,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                 <button
                   onClick={() => importInputRef.current?.click()}
                   disabled={importing}
-                  className="ui-radius mt-3 flex items-center gap-2 border border-black/10 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-black/5 disabled:opacity-60 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
+                  className="ui-radius mt-3 flex items-center gap-2 border border-black/10 px-4 py-2 text-sm font-semibold text-neutral-600 hover:bg-black/5 disabled:opacity-60 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/10"
                 >
                   {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                   Choose JSON file

@@ -2,18 +2,14 @@
 
 import { useAppData } from "@/context/AppDataContext";
 
-export default function Wallpaper() {
+export default function Wallpaper({ splash = false }: { splash?: boolean }) {
   const { settings } = useAppData();
 
   if (!settings?.wallpaperEnabled || !settings.wallpaperUrl) {
     return (
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden"
-        style={{
-          background:
-            "radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--accent) 35%, transparent), transparent 55%), radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--accent) 25%, transparent), transparent 50%), #0b0d14",
-        }}
+        className={`default-wallpaper pointer-events-none absolute inset-0 overflow-hidden ${splash ? "default-wallpaper-splash" : ""}`}
       />
     );
   }
@@ -32,7 +28,7 @@ export default function Wallpaper() {
           transform: blur ? "scale(1.08)" : undefined,
         }}
       />
-      <div className="absolute inset-0 bg-slate-950/40" />
+      <div className={`absolute inset-0 ${splash ? "bg-neutral-950/40" : "bg-white/30 dark:bg-neutral-950/40"}`} />
     </div>
   );
 }

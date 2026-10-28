@@ -1,5 +1,6 @@
 package com.myvault.app.data
 
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.time.Instant
@@ -7,7 +8,7 @@ import java.time.Instant
 /**
  * DTOs mirror the exact JSON shape produced/consumed by the web app's
  * `/api/export` and `/api/import` routes, so a backup made on the web can be
- * restored on Android and vice-versa with zero data loss.
+ * merged on Android or the web. Local image portability is handled separately.
  */
 @Serializable
 data class SettingsDto(
@@ -96,22 +97,18 @@ class ExportImportRepository(
     }
 
     private suspend fun settingsSnapshot(): SettingsDto {
-        var result = SettingsDto()
-        settingsRepository.update { current ->
-            result = SettingsDto(
-                appName = current.appName,
-                accent = current.accent,
-                mode = current.mode,
-                fontSize = current.fontSize,
-                radius = current.radius,
-                wallpaperUrl = current.wallpaperUri,
-                wallpaperEnabled = current.wallpaperEnabled,
-                wallpaperOpacity = current.wallpaperOpacity,
-                wallpaperBlur = current.wallpaperBlur,
-            )
-            current
-        }
-        return result
+        val current = settingsRepository.settingsFlow.first()
+        return SettingsDto(
+            appName = current.appName,
+            accent = current.accent,
+            mode = current.mode,
+            fontSize = current.fontSize,
+            radius = current.radius,
+            wallpaperUrl = current.wallpaperUri,
+            wallpaperEnabled = current.wallpaperEnabled,
+            wallpaperOpacity = current.wallpaperOpacity,
+            wallpaperBlur = current.wallpaperBlur,
+        )
     }
 
     /**
@@ -142,6 +139,7 @@ class ExportImportRepository(
                         color = tag.color,
                         textColor = tag.textColor,
                         reusable = tag.reusable,
+                        createdAt = tag.createdAt.toEpochMillis(),
                     ),
                 )
                 tagsAdded++
@@ -168,6 +166,7 @@ class ExportImportRepository(
                     icon = space.icon,
                     color = space.color,
                     sortOrder = nextOrder++,
+                    createdAt = space.createdAt.toEpochMillis(),
                 )
                 spaceDao.upsert(entity)
                 spaceByName[key] = entity
@@ -197,10 +196,12 @@ class ExportImportRepository(
                 EntryEntity(
                     id = newEntryId,
                     spaceId = targetSpaceId!!,
-                    title = entry.title.ifBlank { "Untitled entry" },
+                    title = entry.title,
                     content = entry.content,
                     coverImagePath = entry.coverImage,
                     pinned = entry.pinned,
+                    createdAt = entry.createdAt.toEpochMillis(),
+                    updatedAt = entry.updatedAt.toEpochMillis(),
                 ),
             )
             entriesAdded++
@@ -262,3 +263,5 @@ private fun EntryEntity.toDto(tags: List<TagDto>) = EntryDto(
     updatedAt = Instant.ofEpochMilli(updatedAt).toString(),
     tags = tags,
 )
+
+private fun String.toEpochMillis(): Long = runCatching { Instant.parse(this).toEpochMilli() }.getOrElse { System.currentTimeMillis() }

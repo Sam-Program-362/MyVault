@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  AlertCircle,
   Check,
   Code2,
-  Columns2,
   Eye,
   FileUp,
   ImagePlus,
@@ -12,7 +12,6 @@ import {
   Pin,
   PinOff,
   Replace,
-  Save,
   Search,
   Trash2,
   X,
@@ -22,17 +21,10 @@ import type { Entry, Tag } from "@/lib/types";
 import TagPicker from "@/components/TagPicker";
 import Markdown from "@/components/Markdown";
 
-type ViewMode = "edit" | "split" | "preview";
-
-function escapeRegExp(str: string) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function escapeHtml(str: string) {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function searchRegex(query: string, wholeWord: boolean, flags: string) {
+  if (!query) return null;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(wholeWord ? `\\b${escaped}\\b` : escaped, flags);
 }
 
 interface Props {
@@ -42,16 +34,25 @@ interface Props {
   onDeleted: () => void;
 }
 
+type Draft = { title: string; content: string };
+type EntryPatch = Partial<Entry> & { tagIds?: string[] };
+
+type SaveState = "saving" | "saved" | "error";
+
 export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Props) {
   const [entry, setEntry] = useState<Entry | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [pinned, setPinned] = useState(false);
   const [entryTags, setEntryTags] = useState<Tag[]>([]);
-  const [viewMode, setViewMode] = useState<ViewMode>("edit");
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [closing, setClosing] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [importingFile, setImportingFile] = useState(false);
+  const [creatingTag, setCreatingTag] = useState(false);
 
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -62,10 +63,23 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const [pendingImportName, setPendingImportName] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const previewButtonRef = useRef<HTMLButtonElement>(null);
+  const previewCloseRef = useRef<HTMLButtonElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const loaded = useRef(false);
+  const draftRef = useRef<Draft>({ title: "", content: "" });
+  const dirtyDraft = useRef(false);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const draftSave = useRef<Promise<void> | null>(null);
+  const pendingSaves = useRef(0);
+  const failedPatches = useRef<EntryPatch>({});
+  const onSavedRef = useRef(onSaved);
+
+  useEffect(() => {
+    onSavedRef.current = onSaved;
+  }, [onSaved]);
 
   useEffect(() => {
     let active = true;
@@ -74,56 +88,126 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
       setEntry(data);
       setTitle(data.title);
       setContent(data.content);
+      draftRef.current = { title: data.title, content: data.content };
       setCoverImage(data.coverImage);
       setPinned(data.pinned);
       setEntryTags(data.tags);
-      loaded.current = true;
+    }).catch(() => {
+      if (active) setLoadError(true);
     });
     return () => {
       active = false;
     };
   }, [entryId]);
 
-  const persist = useCallback(
-    async (patch: Partial<Entry> & { tagIds?: string[] }) => {
-      setSaveState("saving");
-      await api.entries.update(entryId, patch);
-      setSaveState("saved");
-      onSaved();
-    },
-    [entryId, onSaved],
-  );
-
-  const scheduleSave = useCallback(
-    (patch: Partial<Entry> & { tagIds?: string[] }) => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => persist(patch), 700);
-    },
-    [persist],
-  );
-
-  useEffect(() => {
-    if (!loaded.current) return;
-    scheduleSave({ title, content });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, content]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
+  useEffect(() => () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (!previewOpen) return;
+    previewCloseRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPreviewOpen(false);
+        previewButtonRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewOpen]);
+
+  // Serialize patches so a slower earlier save can never overwrite a later one.
+  const persist = useCallback((patch: EntryPatch) => {
+    setSaveState("saving");
+    pendingSaves.current += 1;
+    const request = saveQueue.current.then(async () => {
+      await api.entries.update(entryId, patch);
+    });
+    saveQueue.current = request.then(() => undefined, () => undefined);
+    return request.then(() => {
+      pendingSaves.current -= 1;
+      // A later successful patch supersedes an earlier failed value for the same field.
+      const remaining = { ...failedPatches.current };
+      for (const key of Object.keys(patch) as (keyof EntryPatch)[]) delete remaining[key];
+      failedPatches.current = remaining;
+      if (!dirtyDraft.current && pendingSaves.current === 0 && Object.keys(remaining).length === 0) setSaveState("saved");
+      onSavedRef.current();
+    }, (error: unknown) => {
+      pendingSaves.current -= 1;
+      failedPatches.current = { ...failedPatches.current, ...patch };
+      setSaveState("error");
+      throw error;
+    });
+  }, [entryId]);
+
+  const scheduleDraftSave = (draft: Draft) => {
+    dirtyDraft.current = true;
+    setSaveState("saving");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      dirtyDraft.current = false;
+      draftSave.current = persist(draft);
+      void draftSave.current.catch(() => {
+        dirtyDraft.current = true;
+      });
+    }, 700);
+  };
+
+  const updateTitle = (nextTitle: string) => {
+    setTitle(nextTitle);
+    draftRef.current = { ...draftRef.current, title: nextTitle };
+    scheduleDraftSave(draftRef.current);
+  };
+
+  const updateContent = (nextContent: string) => {
+    setContent(nextContent);
+    draftRef.current = { ...draftRef.current, content: nextContent };
+    scheduleDraftSave(draftRef.current);
+  };
+
+  const handleClose = async () => {
+    if (closing || uploadingCover || importingFile || creatingTag) return;
+    setClosing(true);
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    // Wait for in-flight changes, then retry the latest draft or other failed patches.
+    await draftSave.current?.catch(() => undefined);
+    await saveQueue.current;
+    if (dirtyDraft.current) {
+      dirtyDraft.current = false;
+      try {
+        await persist(draftRef.current);
+      } catch {
+        dirtyDraft.current = true;
+        setClosing(false);
+        return;
+      }
+    }
+    await saveQueue.current;
+    if (Object.keys(failedPatches.current).length > 0) {
+      try {
+        await persist({ ...failedPatches.current });
+      } catch {
+        setClosing(false);
+        return;
+      }
+    }
+    onClose();
+  };
 
   const handleTagsChange = (next: Tag[]) => {
     setEntryTags(next);
-    persist({ tagIds: next.map((t) => t.id) });
+    void persist({ tagIds: next.map((tag) => tag.id) }).catch(() => undefined);
   };
 
   const togglePin = () => {
-    setPinned((p) => {
-      persist({ pinned: !p });
-      return !p;
-    });
+    const next = !pinned;
+    setPinned(next);
+    void persist({ pinned: next }).catch(() => undefined);
   };
 
   const handleCoverUpload = async (file: File) => {
@@ -131,7 +215,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     try {
       const { url } = await api.upload(file);
       setCoverImage(url);
-      persist({ coverImage: url });
+      await persist({ coverImage: url });
     } catch (err) {
       alert(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -141,348 +225,288 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
   const removeCover = () => {
     setCoverImage(null);
-    persist({ coverImage: null });
+    void persist({ coverImage: null }).catch(() => undefined);
   };
 
   const handleDelete = async () => {
+    if (closing || uploadingCover || importingFile || creatingTag) return;
     if (!confirm("Delete this entry permanently?")) return;
-    await api.entries.remove(entryId);
-    onDeleted();
+    setClosing(true);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    try {
+      await saveQueue.current;
+      await api.entries.remove(entryId);
+      dirtyDraft.current = false;
+      onDeleted();
+    } catch (error) {
+      // A failed deletion must not silently cancel a pending draft save.
+      setClosing(false);
+      if (dirtyDraft.current) scheduleDraftSave(draftRef.current);
+      alert(error instanceof Error ? error.message : "Couldn’t delete this entry.");
+    }
   };
 
-  // --- Import .txt / .md file into this entry ---
   const handleImportFile = async (file: File) => {
     const ok = /\.(txt|md|markdown)$/i.test(file.name) || file.type.startsWith("text/");
     if (!ok) {
       alert("Only .txt or .md files can be imported into an entry.");
       return;
     }
-    const text = await file.text();
-    if (!content.trim()) {
-      setContent(text);
-      if (!title.trim() || title === "Untitled entry") {
-        setTitle(file.name.replace(/\.[^.]+$/, ""));
+    setImportingFile(true);
+    try {
+      const text = await file.text();
+      if (!content.trim()) {
+        updateContent(text);
+        if (!title.trim() || title === "Untitled entry") {
+          updateTitle(file.name.replace(/\.[^.]+$/, ""));
+        }
+      } else {
+        setPendingImport(text);
+        setPendingImportName(file.name);
       }
-    } else {
-      setPendingImport(text);
-      setPendingImportName(file.name);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Couldn’t read this file.");
+    } finally {
+      setImportingFile(false);
     }
   };
 
   const resolveImport = (mode: "replace" | "insert" | "cancel") => {
     if (mode === "replace" && pendingImport !== null) {
-      setContent(pendingImport);
+      updateContent(pendingImport);
     } else if (mode === "insert" && pendingImport !== null) {
       const el = textareaRef.current;
       if (el) {
         const start = el.selectionStart ?? content.length;
         const end = el.selectionEnd ?? content.length;
-        const next = content.slice(0, start) + pendingImport + content.slice(end);
-        setContent(next);
+        updateContent(content.slice(0, start) + pendingImport + content.slice(end));
       } else {
-        setContent((prev) => `${prev}\n\n${pendingImport}`);
+        updateContent(`${content}\n\n${pendingImport}`);
       }
     }
     setPendingImport(null);
     setPendingImportName("");
   };
 
-  // --- Find & replace ---
-  const buildRegex = (flags: string) => {
-    if (!findQuery) return null;
-    const pattern = wholeWord ? `\\b${escapeRegExp(findQuery)}\\b` : escapeRegExp(findQuery);
-    try {
-      return new RegExp(pattern, flags);
-    } catch {
-      return null;
-    }
-  };
+  const matchCount = useMemo(() => {
+    const re = searchRegex(findQuery, wholeWord, "gi");
+    return re ? (content.match(re) ?? []).length : 0;
+  }, [content, findQuery, wholeWord]);
 
-  const matchCount = (() => {
-    const re = buildRegex("gi");
-    if (!re) return 0;
-    return (content.match(re) ?? []).length;
-  })();
-
-  const findNext = () => {
-    const el = textareaRef.current;
-    const re = buildRegex("gi");
-    if (!el || !re) return;
-    re.lastIndex = 0;
-    const from = el.selectionEnd ?? 0;
+  const highlightedContent = useMemo(() => {
+    const re = findOpen ? searchRegex(findQuery, wholeWord, "gi") : null;
+    if (!re || !content) return null;
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
     let match: RegExpExecArray | null;
-    let found: RegExpExecArray | null = null;
     while ((match = re.exec(content))) {
-      if (match.index >= from) {
-        found = match;
-        break;
-      }
+      parts.push(content.slice(lastIndex, match.index));
+      parts.push(<mark key={match.index}>{match[0]}</mark>);
+      lastIndex = match.index + match[0].length;
     }
-    if (!found) {
+    parts.push(content.slice(lastIndex), "\u200b");
+    return parts;
+  }, [content, findOpen, findQuery, wholeWord]);
+
+  useEffect(() => {
+    if (highlightRef.current && textareaRef.current) {
+      highlightRef.current.scrollTop = textareaRef.current.scrollTop;
+      highlightRef.current.scrollLeft = textareaRef.current.scrollLeft;
+    }
+  }, [content, findOpen, findQuery, wholeWord]);
+
+  const selectNextMatch = (text: string, from: number) => {
+    const el = textareaRef.current;
+    const re = searchRegex(findQuery, wholeWord, "gi");
+    if (!el || !re) return;
+    re.lastIndex = from;
+    let match = re.exec(text);
+    if (!match) {
       re.lastIndex = 0;
-      found = re.exec(content);
+      match = re.exec(text);
     }
-    if (found) {
+    if (match) {
       el.focus();
-      el.setSelectionRange(found.index, found.index + found[0].length);
-      const lineHeight = 20;
-      const linesBefore = content.slice(0, found.index).split("\n").length;
+      el.setSelectionRange(match.index, match.index + match[0].length);
+      const lineHeight = parseFloat(window.getComputedStyle(el).lineHeight) || 24;
+      const linesBefore = text.slice(0, match.index).split("\n").length;
       el.scrollTop = Math.max(0, (linesBefore - 3) * lineHeight);
+      if (highlightRef.current) highlightRef.current.scrollTop = el.scrollTop;
     }
   };
+
+  const findNext = () => selectNextMatch(content, textareaRef.current?.selectionEnd ?? 0);
 
   const replaceCurrent = () => {
     const el = textareaRef.current;
     if (!el || !findQuery) return;
     const selected = content.slice(el.selectionStart, el.selectionEnd);
-    const re = buildRegex("i");
-    if (selected && re && re.test(selected)) {
-      const next = content.slice(0, el.selectionStart) + replaceQuery + content.slice(el.selectionEnd);
-      setContent(next);
-      setTimeout(findNext, 0);
+    const match = searchRegex(findQuery, wholeWord, "i")?.exec(selected);
+    if (selected && match?.[0] === selected) {
+      const start = el.selectionStart;
+      const next = content.slice(0, start) + replaceQuery + content.slice(el.selectionEnd);
+      updateContent(next);
+      requestAnimationFrame(() => selectNextMatch(next, start + replaceQuery.length));
     } else {
       findNext();
     }
   };
 
   const replaceAll = () => {
-    const re = buildRegex("gi");
-    if (!re) return;
-    setContent((prev) => prev.replace(re, replaceQuery));
+    const re = searchRegex(findQuery, wholeWord, "gi");
+    if (re) updateContent(content.replace(re, () => replaceQuery));
   };
-
-  const highlightedHtml = (() => {
-    if (!findQuery) return escapeHtml(content);
-    const re = buildRegex("gi");
-    if (!re) return escapeHtml(content);
-    return escapeHtml(content).replace(
-      new RegExp(wholeWord ? `\\b${escapeRegExp(findQuery)}\\b` : escapeRegExp(findQuery), "gi"),
-      (m) => `<mark>${m}</mark>`,
-    );
-  })();
 
   if (!entry) {
     return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <Loader2 className="animate-spin text-white" size={28} />
+      <div className="entry-editor items-center justify-center">
+        {loadError ? (
+          <div className="flex flex-col items-center gap-3 text-sm">
+            <p>Couldn’t open this entry.</p>
+            <button type="button" onClick={onClose} className="editor-find-action">Go back</button>
+          </div>
+        ) : <Loader2 className="animate-spin" size={24} aria-label="Loading entry" />}
       </div>
     );
   }
 
+  const closePreview = () => {
+    setPreviewOpen(false);
+    previewButtonRef.current?.focus();
+  };
+  const processing = uploadingCover || importingFile || creatingTag;
+  const displayedSaveState = processing && saveState !== "error" ? "saving" : saveState;
+
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/40 backdrop-blur-sm">
-      <div className="pop-in flex h-full w-full max-w-3xl flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900">
-        {/* Top bar */}
-        <div className="flex items-center gap-2 border-b border-black/10 px-4 py-3 dark:border-white/10">
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 hover:bg-black/5 dark:text-slate-300 dark:hover:bg-white/10"
-          >
-            <X size={18} />
+    <div className="entry-editor" aria-label="Entry editor">
+      <header className="editor-toolbar">
+        <div className="editor-toolbar-start">
+          <button type="button" onClick={handleClose} disabled={closing || processing} className="editor-icon-button" aria-label="Close editor" title="Close editor">
+            <X size={19} />
           </button>
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            {saveState === "saving" && <Loader2 size={13} className="animate-spin" />}
-            {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : ""}
-          </div>
-          <div className="ml-auto flex items-center gap-1">
-            <button
-              onClick={togglePin}
-              className={`rounded-lg p-2 ${pinned ? "accent-text" : "text-slate-400"} hover:bg-black/5 dark:hover:bg-white/10`}
-              title={pinned ? "Unpin" : "Pin entry"}
-            >
-              {pinned ? <Pin size={17} /> : <PinOff size={17} />}
-            </button>
-            <button
-              onClick={() => setFindOpen((v) => !v)}
-              className={`rounded-lg p-2 ${findOpen ? "accent-bg text-white" : "text-slate-400"} hover:bg-black/5 dark:hover:bg-white/10`}
-              title="Find & replace"
-            >
-              <Search size={17} />
-            </button>
-            <div className="mx-1 flex items-center rounded-lg border border-black/10 p-0.5 dark:border-white/10">
-              <button
-                onClick={() => setViewMode("edit")}
-                className={`rounded-md p-1.5 ${viewMode === "edit" ? "accent-bg text-white" : "text-slate-400"}`}
-                title="Edit"
-              >
-                <Code2 size={15} />
-              </button>
-              <button
-                onClick={() => setViewMode("split")}
-                className={`rounded-md p-1.5 ${viewMode === "split" ? "accent-bg text-white" : "text-slate-400"}`}
-                title="Split view"
-              >
-                <Columns2 size={15} />
-              </button>
-              <button
-                onClick={() => setViewMode("preview")}
-                className={`rounded-md p-1.5 ${viewMode === "preview" ? "accent-bg text-white" : "text-slate-400"}`}
-                title="Preview"
-              >
-                <Eye size={15} />
-              </button>
-            </div>
-            <button
-              onClick={() => importInputRef.current?.click()}
-              className="rounded-lg p-2 text-slate-400 hover:bg-black/5 dark:hover:bg-white/10"
-              title="Import .txt / .md file"
-            >
-              <FileUp size={17} />
-            </button>
-            <button
-              onClick={handleDelete}
-              className="rounded-lg p-2 text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
-              title="Delete entry"
-            >
-              <Trash2 size={17} />
-            </button>
+          <div className={`editor-save-status ${displayedSaveState === "error" ? "is-error" : ""}`} role="status" aria-live="polite" title={displayedSaveState === "error" ? "Couldn’t save. Try closing again." : undefined}>
+            {displayedSaveState === "saving" ? <Loader2 size={13} className="animate-spin" /> : displayedSaveState === "saved" ? <Check size={13} /> : <AlertCircle size={14} />}
+            <span>{displayedSaveState === "saving" ? "Saving…" : displayedSaveState === "saved" ? "Saved" : "Couldn’t save"}</span>
           </div>
         </div>
-
-        {/* Find & replace bar */}
-        {findOpen && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-black/10 bg-slate-50 px-4 py-2.5 dark:border-white/10 dark:bg-slate-800/60">
-            <input
-              value={findQuery}
-              onChange={(e) => setFindQuery(e.target.value)}
-              placeholder="Find word or phrase…"
-              className="ui-radius min-w-[140px] flex-1 border border-black/10 bg-white px-3 py-1.5 text-sm outline-none dark:border-white/10 dark:bg-slate-900 dark:text-white"
-            />
-            <input
-              value={replaceQuery}
-              onChange={(e) => setReplaceQuery(e.target.value)}
-              placeholder="Replace with…"
-              className="ui-radius min-w-[140px] flex-1 border border-black/10 bg-white px-3 py-1.5 text-sm outline-none dark:border-white/10 dark:bg-slate-900 dark:text-white"
-            />
-            <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-              <input type="checkbox" checked={wholeWord} onChange={(e) => setWholeWord(e.target.checked)} />
-              Whole word
-            </label>
-            <span className="text-xs text-slate-400">{matchCount} match{matchCount === 1 ? "" : "es"}</span>
-            <button onClick={findNext} className="ui-radius border border-black/10 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-black/5 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10">
-              Find next
+        <div className="editor-toolbar-actions" inert={closing}>
+          <button type="button" onClick={togglePin} className={`editor-icon-button ${pinned ? "is-pinned" : ""}`} aria-label={pinned ? "Unpin entry" : "Pin entry"} title={pinned ? "Unpin entry" : "Pin entry"}>
+            {pinned ? <Pin size={17} /> : <PinOff size={17} />}
+          </button>
+          <button type="button" onClick={() => setFindOpen((open) => !open)} className={`editor-icon-button ${findOpen ? "is-active" : ""}`} aria-label="Find and replace" aria-pressed={findOpen} title="Find & replace">
+            <Search size={17} />
+          </button>
+          <div className="editor-view-toggle" role="group" aria-label="Editor view">
+            <button type="button" onClick={() => setPreviewOpen(false)} className={`editor-icon-button ${!previewOpen ? "is-active" : ""}`} aria-label="Write" aria-pressed={!previewOpen} title="Write">
+              <Code2 size={17} />
             </button>
-            <button onClick={replaceCurrent} className="ui-radius border border-black/10 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-black/5 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10">
-              Replace
-            </button>
-            <button
-              onClick={replaceAll}
-              className="ui-radius accent-bg flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white"
-            >
-              <Replace size={13} /> Replace all
+            <button ref={previewButtonRef} type="button" onClick={() => setPreviewOpen((open) => !open)} className={`editor-icon-button ${previewOpen ? "is-active" : ""}`} aria-label="Preview" aria-pressed={previewOpen} aria-expanded={previewOpen} aria-controls="entry-preview" title="Preview">
+              <Eye size={17} />
             </button>
           </div>
+          <button type="button" onClick={() => importInputRef.current?.click()} disabled={importingFile} className="editor-icon-button" aria-label="Import text or Markdown file" title="Import .txt / .md file">
+            <FileUp size={17} />
+          </button>
+          <button type="button" onClick={handleDelete} disabled={processing} className="editor-icon-button is-danger" aria-label="Delete entry" title="Delete entry">
+            <Trash2 size={17} />
+          </button>
+        </div>
+      </header>
+
+      {findOpen && (
+        <div className="editor-find-bar" inert={closing}>
+          <input value={findQuery} onChange={(event) => setFindQuery(event.target.value)} placeholder="Find word or phrase…" aria-label="Find word or phrase" className="editor-find-input" />
+          <input value={replaceQuery} onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Replace with…" aria-label="Replace with" className="editor-find-input" />
+          <label className="editor-find-whole flex items-center gap-1.5 whitespace-nowrap">
+            <input type="checkbox" checked={wholeWord} onChange={(event) => setWholeWord(event.target.checked)} />
+            Whole word
+          </label>
+          <span aria-live="polite">{matchCount} match{matchCount === 1 ? "" : "es"}</span>
+          <button type="button" onClick={findNext} className="editor-find-action">Find next</button>
+          <button type="button" onClick={replaceCurrent} className="editor-find-action">Replace</button>
+          <button type="button" onClick={replaceAll} className="editor-find-action editor-find-action-primary flex items-center gap-1">
+            <Replace size={13} /> Replace all
+          </button>
+        </div>
+      )}
+
+      <div className="editor-document" inert={closing}>
+        {coverImage ? (
+          <div className="editor-cover-image">
+            {/* User-provided uploads can be local paths or remote URLs. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={coverImage} alt="Entry cover" />
+            <button type="button" onClick={removeCover} className="editor-cover-remove" aria-label="Remove cover image" title="Remove cover image"><X size={16} /></button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => coverInputRef.current?.click()} disabled={uploadingCover} className="editor-cover-add">
+            {uploadingCover ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+            Add cover image <span className="opacity-70">(optional)</span>
+          </button>
         )}
+        <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => {
+          if (event.target.files?.[0]) void handleCoverUpload(event.target.files[0]);
+          event.target.value = "";
+        }} />
+        <input ref={importInputRef} type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" className="hidden" onChange={(event) => {
+          if (event.target.files?.[0]) void handleImportFile(event.target.files[0]);
+          event.target.value = "";
+        }} />
 
-        {/* Cover */}
-        <div className="relative">
-          {coverImage ? (
-            <div className="relative h-44 w-full">
-              <img src={coverImage} alt="" className="h-full w-full object-cover" />
-              <button
-                onClick={removeCover}
-                className="absolute right-3 top-3 rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => coverInputRef.current?.click()}
-              className="flex h-20 w-full items-center justify-center gap-2 border-b border-dashed border-black/10 text-sm text-slate-400 hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5"
-            >
-              {uploadingCover ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
-              Add cover image (optional)
-            </button>
-          )}
-          <input
-            ref={coverInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => e.target.files?.[0] && handleCoverUpload(e.target.files[0])}
-          />
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".txt,.md,.markdown,text/plain,text/markdown"
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.[0]) handleImportFile(e.target.files[0]);
-              e.target.value = "";
-            }}
-          />
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Entry title / manual name"
-            className="w-full border-none bg-transparent text-2xl font-bold text-slate-900 outline-none dark:text-white"
-          />
-
-          <div className="mt-3">
-            <TagPicker selected={entryTags} onChange={handleTagsChange} />
+        <div className="editor-paper">
+          <div className="editor-meta">
+            <input value={title} disabled={closing} onChange={(event) => updateTitle(event.target.value)} placeholder="Entry title / manual name" aria-label="Entry title" className="editor-title" />
+            <div className="editor-tags"><TagPicker selected={entryTags} onChange={handleTagsChange} onPendingChange={setCreatingTag} /></div>
           </div>
-
-          <div className="mt-4 grid gap-4" style={{ gridTemplateColumns: viewMode === "split" ? "1fr 1fr" : "1fr" }}>
-            {viewMode !== "preview" && (
-              <div className="relative">
-                {findOpen && findQuery ? (
-                  <div
-                    className="whitespace-pre-wrap break-words rounded-xl border border-black/10 p-3 font-mono text-sm leading-relaxed text-slate-800 dark:border-white/10 dark:text-slate-100"
-                    dangerouslySetInnerHTML={{ __html: `${highlightedHtml}&nbsp;` }}
-                  />
-                ) : (
-                  <textarea
-                    ref={textareaRef}
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    placeholder="Write in Markdown — # headings, **bold**, - lists, `code`, > quotes…"
-                    className="h-[48vh] w-full resize-none rounded-xl border border-black/10 bg-transparent p-3 font-mono text-sm leading-relaxed text-slate-800 outline-none accent-ring dark:border-white/10 dark:text-slate-100"
-                  />
-                )}
-              </div>
-            )}
-            {viewMode !== "edit" && (
-              <div className="h-[48vh] overflow-y-auto rounded-xl border border-black/10 p-3 dark:border-white/10">
-                <Markdown content={content} />
-              </div>
-            )}
+          <div className="editor-writing">
+            {highlightedContent && <div ref={highlightRef} className="editor-highlight" aria-hidden="true">{highlightedContent}</div>}
+            <textarea
+              ref={textareaRef}
+              value={content}
+              disabled={closing}
+              onChange={(event) => updateContent(event.target.value)}
+              onScroll={(event) => {
+                if (highlightRef.current) {
+                  highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+                  highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+                }
+              }}
+              placeholder="Write in Markdown — # headings, **bold**, - lists, `code`, > quotes…"
+              aria-label="Entry content"
+              className={`editor-textarea ${highlightedContent ? "has-highlights" : ""}`}
+            />
           </div>
         </div>
       </div>
 
+      <button type="button" className="editor-preview-backdrop" data-open={previewOpen} onClick={closePreview} tabIndex={-1} aria-hidden="true" />
+      <aside id="entry-preview" className="editor-preview" data-open={previewOpen} aria-label="Markdown preview" aria-hidden={!previewOpen} inert={!previewOpen}>
+        <div className="editor-preview-header">
+          <div>
+            <h2 className="editor-preview-heading">Preview</h2>
+            <p className="editor-preview-caption">Markdown</p>
+          </div>
+          <button ref={previewCloseRef} type="button" className="editor-icon-button editor-preview-close" onClick={closePreview} aria-label="Close preview" title="Close preview"><X size={18} /></button>
+        </div>
+        <div className="editor-preview-content">
+          <h3 className="editor-preview-title">{title || "Untitled entry"}</h3>
+          <Markdown content={content} />
+        </div>
+      </aside>
+
       {pendingImport !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="pop-in ui-radius w-full max-w-md bg-white p-5 shadow-2xl dark:bg-slate-800">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              Import “{pendingImportName}”?
-            </h3>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="import-title">
+          <div className="pop-in ui-radius w-full max-w-md bg-white p-5 shadow-2xl dark:bg-neutral-800">
+            <h3 id="import-title" className="text-base font-bold text-neutral-900 dark:text-white">Import “{pendingImportName}”?</h3>
+            <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-300">
               This entry already has content. Replace it entirely, or insert the file’s content at
               your cursor without removing what’s already here?
             </p>
             <div className="mt-4 flex flex-col gap-2">
-              <button
-                onClick={() => resolveImport("insert")}
-                className="accent-bg ui-radius flex items-center justify-center gap-2 py-2 text-sm font-semibold text-white"
-              >
-                <Check size={15} /> Insert / merge here (keep existing content)
-              </button>
-              <button
-                onClick={() => resolveImport("replace")}
-                className="ui-radius border border-red-300 py-2 text-sm font-semibold text-red-500 hover:bg-red-50 dark:border-red-500/40 dark:hover:bg-red-500/10"
-              >
-                Replace entire entry content
-              </button>
-              <button
-                onClick={() => resolveImport("cancel")}
-                className="py-2 text-sm text-slate-400 hover:text-slate-600"
-              >
-                Cancel
-              </button>
+              <button type="button" onClick={() => resolveImport("insert")} className="accent-bg ui-radius flex items-center justify-center gap-2 py-2 text-sm font-semibold text-white"><Check size={15} /> Insert / merge here (keep existing content)</button>
+              <button type="button" onClick={() => resolveImport("replace")} className="ui-radius border border-red-300 py-2 text-sm font-semibold text-red-500 hover:bg-red-50 dark:border-red-500/40 dark:hover:bg-red-500/10">Replace entire entry content</button>
+              <button type="button" onClick={() => resolveImport("cancel")} className="py-2 text-sm text-neutral-400 hover:text-neutral-600">Cancel</button>
             </div>
           </div>
         </div>

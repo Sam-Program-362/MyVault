@@ -9,7 +9,7 @@ plugins {
 }
 
 // Signing credentials are supplied by CI through environment variables /
-// GitHub Actions secrets (see .github/workflows/android-release.yml), or can
+// GitHub Actions secrets (see .github/workflows/android-apk.yml), or can
 // be provided locally via android/keystore.properties (not committed).
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties()
@@ -20,6 +20,18 @@ if (keystorePropertiesFile.exists()) {
 fun envOrProp(envName: String, propName: String): String? =
     System.getenv(envName) ?: keystoreProperties.getProperty(propName)
 
+val releaseStorePath = envOrProp("ANDROID_KEYSTORE_PATH", "storeFile")
+val releaseStoreFile = releaseStorePath?.takeIf { it.isNotBlank() }?.let { file(it) }
+val releaseStorePassword = envOrProp("ANDROID_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = envOrProp("ANDROID_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = envOrProp("ANDROID_KEY_PASSWORD", "keyPassword")
+val releaseSigningReady = releaseStoreFile?.isFile == true &&
+    listOf(releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { !it.isNullOrBlank() }
+
+if (providers.gradleProperty("requireReleaseSigning").orNull == "true" && !releaseSigningReady) {
+    throw GradleException("Release signing is incomplete: provide a valid keystore path, store password, key alias, and key password.")
+}
+
 android {
     namespace = "com.myvault.app"
     compileSdk = 34
@@ -28,8 +40,9 @@ android {
         applicationId = "com.myvault.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // A newer version is necessary (but not sufficient) for an in-place update.
+        versionCode = 5
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -37,12 +50,11 @@ android {
 
     signingConfigs {
         create("release") {
-            val storeFilePath = envOrProp("ANDROID_KEYSTORE_PATH", "storeFile")
-            if (storeFilePath != null && file(storeFilePath).exists()) {
-                storeFile = file(storeFilePath)
-                storePassword = envOrProp("ANDROID_KEYSTORE_PASSWORD", "storePassword")
-                keyAlias = envOrProp("ANDROID_KEY_ALIAS", "keyAlias")
-                keyPassword = envOrProp("ANDROID_KEY_PASSWORD", "keyPassword")
+            if (releaseSigningReady) {
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
@@ -52,12 +64,22 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            val releaseSigning = signingConfigs.getByName("release")
-            signingConfig = if (releaseSigning.storeFile != null) releaseSigning else signingConfigs.getByName("debug")
+            // Never silently distribute a release signed with the debug key.
+            signingConfig = if (releaseSigningReady) signingConfigs.getByName("release") else null
         }
         debug {
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
+        }
+        // A separate, non-debuggable package for safe backup/import from older debug APKs.
+        // CI never signs it: the owner must use a stable key they control, offline.
+        create("preview") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+            signingConfig = null
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
         }
     }
 
@@ -110,7 +132,8 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     // JSON for import / export (same schema as the web app export)
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
+    // 1.7.x requires the Kotlin 2.0 serialization compiler plugin; this project uses 1.9.24.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
     // Markdown rendering inside entries
     implementation("com.github.jeziellago:compose-markdown:0.5.4")

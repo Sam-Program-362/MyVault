@@ -63,8 +63,8 @@ export default function SplashOverlay() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center overflow-y-auto bg-slate-950">
-      <Wallpaper />
+    <div className="fixed inset-0 z-50 flex flex-col items-center overflow-y-auto bg-neutral-950">
+      <Wallpaper splash />
       <div className="relative z-10 flex w-full flex-1 flex-col items-center px-6 py-14">
         <div className="flex flex-1 flex-col items-center justify-center text-center">
           <div className="fade-up mb-3 flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs uppercase tracking-[0.25em] text-white/70 backdrop-blur">
@@ -136,7 +136,7 @@ export default function SplashOverlay() {
                   <button
                     key={c}
                     onClick={() => setColor(c)}
-                    className={`h-6 w-6 rounded-full ${color === c ? "ring-2 ring-white ring-offset-2 ring-offset-slate-950" : ""}`}
+                    className={`h-6 w-6 rounded-full ${color === c ? "ring-2 ring-white ring-offset-2 ring-offset-neutral-950" : ""}`}
                     style={{ background: c }}
                   />
                 ))}

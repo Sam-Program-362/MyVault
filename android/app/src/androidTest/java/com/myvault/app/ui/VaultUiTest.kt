@@ -1,0 +1,185 @@
+package com.myvault.app.ui
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.isDisplayed
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.printToString
+import androidx.lifecycle.ViewModelProvider
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.myvault.app.MainActivity
+import com.myvault.app.MyVaultApplication
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class VaultUiTest {
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun createWritePreviewCloseAndReopen() {
+        val space = "Test space ${System.currentTimeMillis()}"
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription("New space").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("New space").performClick()
+        compose.onNodeWithText("Space name").performTextInput(space)
+        compose.onNodeWithText("Create & enter").performScrollTo().performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("New entry").performClick()
+        compose.waitUntil(15_000) {
+            compose
+                .onAllNodesWithContentDescription("Entry title")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("Entry title").performTextInput("A saved note")
+        compose
+            .onNodeWithContentDescription("Entry content")
+            .performTextInput("# Hello\nA little Markdown")
+        compose.onNodeWithContentDescription("Pin entry").performClick()
+        compose.onNodeWithContentDescription("Preview").performClick()
+        try {
+            compose.waitUntil(10_000) {
+                compose.onNodeWithContentDescription("Close preview").isDisplayed()
+            }
+            compose.onNodeWithText("Markdown").assertIsDisplayed()
+        } catch (failure: Throwable) {
+            val header =
+                compose.onAllNodesWithText("Markdown", useUnmergedTree = true).printToString()
+            val close =
+                compose
+                    .onAllNodesWithContentDescription("Close preview", useUnmergedTree = true)
+                    .printToString()
+            throw AssertionError("Preview was not visible.\n$header\n$close", failure)
+        }
+        compose.onNodeWithContentDescription("Close preview").assertIsDisplayed()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(10_000) {
+            !compose.onNodeWithContentDescription("Close preview").isDisplayed()
+        }
+        compose.onNodeWithContentDescription("Entry title").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Find and replace").performClick()
+        compose.onNodeWithText("Find").performTextInput("little")
+        compose.onNodeWithText("Replace with").performTextInput("small")
+        compose.onNodeWithText("Replace all").performScrollTo().performClick()
+        compose
+            .onNodeWithContentDescription("Entry content")
+            .assertTextContains("A small Markdown", substring = true)
+        compose.onNodeWithContentDescription("Find and replace").performClick()
+        compose.onNodeWithText("Add tag…", substring = true).performClick()
+        compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
+        val createTagButton = compose.onNodeWithText("Create & add tag").performScrollTo()
+        var busyBeforeTagClick = false
+        compose.runOnIdle {
+            busyBeforeTagClick =
+                ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
+        }
+        createTagButton.performClick()
+        var createTagErrorSeen = false
+        try {
+            compose.waitUntil(15_000) {
+                if (
+                    compose
+                        .onAllNodesWithText("Couldn’t create tag.", substring = true)
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
+                )
+                    createTagErrorSeen = true
+                compose
+                    .onAllNodesWithContentDescription("Remove Journal tag")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+        } catch (failure: Throwable) {
+            // Report only boolean fixture state, never contents of an existing vault.
+            val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
+            val state = runBlocking {
+                val tag = app.database.tagDao().findByName("Journal")
+                val entry =
+                    app.database.entryDao().getAll().firstOrNull { it.title == "A saved note" }
+                val attached =
+                    entry != null &&
+                        tag != null &&
+                        app.database.entryDao().tagRefsForEntry(entry.id).any { it.tagId == tag.id }
+                "fixtureTagExists=${tag != null}, fixtureEntryExists=${entry != null}, attached=$attached"
+            }
+            val errorVisible =
+                compose
+                    .onAllNodesWithText("Couldn’t create tag.", substring = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            val dialogVisible =
+                compose
+                    .onAllNodesWithText("Find or create a tag")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            var busyAtFailure = false
+            compose.runOnIdle {
+                busyAtFailure =
+                    ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
+            }
+            throw AssertionError(
+                "Tag did not appear: $state, errorVisible=$errorVisible, " +
+                    "errorSeen=$createTagErrorSeen, dialogVisible=$dialogVisible, " +
+                    "busyBeforeClick=$busyBeforeTagClick, busyAtFailure=$busyAtFailure",
+                failure,
+            )
+        }
+        compose.onNodeWithContentDescription("Close editor").performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithText("A saved note").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("A saved note").performClick()
+        compose.waitUntil(15_000) {
+            compose
+                .onAllNodesWithContentDescription("Entry content")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("Entry title").assertTextContains("A saved note")
+        compose
+            .onNodeWithContentDescription("Entry content")
+            .assertTextContains("A small Markdown", substring = true)
+        compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Remove Journal tag").assertIsDisplayed()
+    }
+
+    @Test
+    fun appearanceSettingsPersistAcrossNavigation() {
+        val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
+        val original = runBlocking { app.settings.settingsFlow.first() }
+        try {
+            compose.waitUntil(15_000) {
+                compose
+                    .onAllNodesWithContentDescription("Settings")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("Settings").performClick()
+            compose.onNodeWithText("Dark").performClick()
+            compose.waitUntil(15_000) {
+                runBlocking { app.settings.settingsFlow.first().mode == "dark" }
+            }
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithContentDescription("Settings").performClick()
+            compose.onNodeWithText("Dark").assertIsSelected()
+        } finally {
+            runBlocking { app.settings.update { original } }
+        }
+    }
+}
