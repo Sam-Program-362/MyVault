@@ -1,6 +1,7 @@
 package com.myvault.app.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EntryTextTest {
@@ -29,5 +30,19 @@ class EntryTextTest {
             ),
         )
         assertEquals("", listTextPreview(""))
+        assertEquals(
+            "An offline-ready vault uses snake_case & 2 > 1.\nA bullet",
+            listTextPreview("An **offline-ready** vault uses snake_case & 2 > 1.\n- A bullet"),
+        )
+    }
+
+    @Test
+    fun largePreviewsAreBoundedWithoutSplittingUnicodeOrAffectingLineCounts() {
+        val prefix = "x".repeat(16_383)
+        val content = "$prefix\uD83D\uDD12\nLast line"
+        val preview = listTextPreview(content)
+        assertEquals(prefix, preview)
+        assertTrue(preview.length <= 16_384)
+        assertEquals(2, entryLineCount(content))
     }
 }

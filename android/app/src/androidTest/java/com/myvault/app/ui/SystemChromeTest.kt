@@ -34,6 +34,8 @@ class SystemChromeTest {
             compose.onAllNodesWithContentDescription("Settings").fetchSemanticsNodes().isNotEmpty()
         }
         val bounds = compose.onNodeWithContentDescription("Settings").getUnclippedBoundsInRoot()
+        val newSpaceBounds =
+            compose.onNodeWithContentDescription("New space").getUnclippedBoundsInRoot()
         val rootSize = compose.onRoot().fetchSemanticsNode().size
         compose.runOnIdle {
             val activity = compose.activity
@@ -65,6 +67,14 @@ class SystemChromeTest {
             assertTrue(
                 "Settings must clear the right inset",
                 bounds.right.value * density <= rootSize.width - safe.right + 1,
+            )
+            assertTrue(
+                "New space must clear the left gesture/cutout inset",
+                newSpaceBounds.left.value * density + 1 >= safe.left,
+            )
+            assertTrue(
+                "New space must clear the bottom system/gesture inset",
+                newSpaceBounds.bottom.value * density <= rootSize.height - safe.bottom + 1,
             )
             if (
                 InstrumentationRegistry.getArguments().getString("myvault.expectCutout") == "true"

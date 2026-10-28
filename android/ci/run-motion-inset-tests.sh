@@ -59,6 +59,9 @@ if grep -Fq "$overlay" <<< "$overlay_list"; then
   adb shell am start -n "$app_id/com.myvault.app.MainActivity" >/dev/null || exit 1
   run_test cutout com.myvault.app.ui.SystemChromeTest -e myvault.expectCutout true
   printf '::notice title=Android motion and cutout::Motion ran with animations enabled; transparent bars and safe content were checked with an emulated corner cutout.\n'
+elif [[ ${MYVAULT_REQUIRE_CUTOUT:-0} == 1 ]]; then
+  echo '::error::This emulator does not provide the required corner-cutout overlay.' >&2
+  exit 1
 else
   echo '::warning title=Android motion and cutout::Motion ran with animations enabled, but the emulator has no corner-cutout overlay; that phase was skipped.'
 fi

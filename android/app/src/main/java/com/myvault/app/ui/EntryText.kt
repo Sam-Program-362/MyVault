@@ -18,12 +18,33 @@ internal fun entryLineCount(content: String): Int {
     return lines
 }
 
-/** A lightweight plain-text preview; it never decodes or displays an entry's cover image. */
-internal fun listTextPreview(markdown: String): String =
-    markdown
-        .replace(Regex("!\\[.*?]\\(.*?\\)"), "")
-        .replace(Regex("\\[(.*?)]\\(.*?\\)"), "\$1")
-        .replace(Regex("[#>*_`~-]"), "")
+private const val PREVIEW_CHARACTER_LIMIT = 16_384
+private val markdownImage = Regex("!\\[.*?]\\(.*?\\)")
+private val markdownLink = Regex("\\[(.*?)]\\(.*?\\)")
+private val markdownHeading = Regex("(?m)^[ \\t]{0,3}#{1,6}[ \\t]+")
+private val markdownQuote = Regex("(?m)^[ \\t]{0,3}(?:>[ \\t]?)+")
+private val markdownBullet = Regex("(?m)^[ \\t]*[-+*][ \\t]+")
+private val markdownEmphasis = Regex("(?<!\\w)([*_])([^\\n*_]+)\\1(?!\\w)")
+
+/** A bounded text-only preview; entry images are never decoded or displayed in List mode. */
+internal fun listTextPreview(markdown: String): String {
+    // Text is displayed in at most eight lines. Limiting its input avoids processing and
+    // measuring an entire large entry for every visible row; line counts use the raw content.
+    var end = minOf(markdown.length, PREVIEW_CHARACTER_LIMIT)
+    if (end < markdown.length && end > 0 && Character.isHighSurrogate(markdown[end - 1])) end--
+    return markdown
+        .substring(0, end)
+        .replace(markdownImage, "")
+        .replace(markdownLink, "\$1")
+        .replace(markdownHeading, "")
+        .replace(markdownQuote, "")
+        .replace(markdownBullet, "")
+        .replace("**", "")
+        .replace("__", "")
+        .replace("~~", "")
+        .replace(markdownEmphasis, "\$2")
+        .replace("`", "")
         .replace("\r\n", "\n")
         .replace('\r', '\n')
         .trim()
+}

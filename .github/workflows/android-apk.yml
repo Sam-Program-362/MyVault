@@ -177,7 +177,7 @@ jobs:
           script: |
             set -e
             bash ci/run-device-tests.sh
-            MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/run-motion-inset-tests.sh
+            MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_REQUIRE_CUTOUT=1 bash ci/run-motion-inset-tests.sh
             if [ '${{ matrix.api }}' = '30' ]; then
               MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/capture-synthetic-ui.sh
             fi
