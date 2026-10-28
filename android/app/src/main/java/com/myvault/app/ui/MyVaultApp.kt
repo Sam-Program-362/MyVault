@@ -95,7 +95,9 @@ fun MyVaultApp(vault: VaultViewModel) {
             uri?.let(vault::setWallpaper)
         }
     val exportPicker =
-        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/json")
+        ) { uri ->
             uri?.let(vault::exportBackup)
         }
     val importPicker =
@@ -122,11 +124,12 @@ fun MyVaultApp(vault: VaultViewModel) {
                 }
         }
 
-    VaultTheme(settings, forceDarkSystemBars = editor == null && screen == "spaces") { dark ->
+    val contentScreen = if (screen == "settings") settingsReturn else screen
+    VaultTheme(settings, forceDarkSystemBars = editor == null && contentScreen == "spaces") { dark
+        ->
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (editor == null && screen != "settings") {
-                VaultBackdrop(settings, dark = dark, splash = screen == "spaces")
-            }
+            if (editor == null)
+                VaultBackdrop(settings, dark = dark, splash = contentScreen == "spaces")
             val draftState = editor
             if (draftState != null) {
                 val entry = draftState.value
@@ -223,10 +226,21 @@ fun MyVaultApp(vault: VaultViewModel) {
                                     onClick = {
                                         val current = vault.currentDraft()
                                         if (current != null && current.id == importTarget) {
-                                            val start = selectionStart.coerceIn(0, current.content.length)
-                                            val end = selectionEnd.coerceIn(start, current.content.length)
-                                            val next = current.content.replaceRange(start, end, text.content)
-                                            applyImportedText(next, null, start + text.content.length)
+                                            val start =
+                                                selectionStart.coerceIn(0, current.content.length)
+                                            val end =
+                                                selectionEnd.coerceIn(start, current.content.length)
+                                            val next =
+                                                current.content.replaceRange(
+                                                    start,
+                                                    end,
+                                                    text.content,
+                                                )
+                                            applyImportedText(
+                                                next,
+                                                null,
+                                                start + text.content.length,
+                                            )
                                         }
                                         importedText = null
                                     }
@@ -235,13 +249,15 @@ fun MyVaultApp(vault: VaultViewModel) {
                                 }
                             }
                         },
-                        dismissButton = { TextButton(onClick = { importedText = null }) { Text("Cancel") } },
+                        dismissButton = {
+                            TextButton(onClick = { importedText = null }) { Text("Cancel") }
+                        },
                     )
                 }
-            } else
-                when (screen) {
+            } else {
+                when (contentScreen) {
                     "entries" -> {
-                        BackHandler(enabled = !busy) { screen = "spaces" }
+                        BackHandler(enabled = !busy && screen != "settings") { screen = "spaces" }
                         EntriesScreen(
                             appName = settings.appName,
                             spaces = spaces,
@@ -256,44 +272,12 @@ fun MyVaultApp(vault: VaultViewModel) {
                                 screen = "settings"
                             },
                             onNewSpace = { name, description, color, icon ->
-                                vault.createSpace(name, description, color, icon) { id -> selectedSpaceId = id }
+                                vault.createSpace(name, description, color, icon) { id ->
+                                    selectedSpaceId = id
+                                }
                             },
                             onNewEntry = vault::createEntry,
                             onOpenEntry = vault::openEntry,
-                        )
-                    }
-                    "settings" -> {
-                        BackHandler(enabled = !busy) { screen = settingsReturn }
-                        SettingsScreen(
-                            settings,
-                            tags,
-                            onBack = { screen = settingsReturn },
-                            onUpdate = vault::updateSettings,
-                            onChooseWallpaper = { wallpaperPicker.launch(arrayOf("image/*")) },
-                            onCreateTag = { name, color, reusable ->
-                                vault.createTag(name, color, reusable, false)
-                            },
-                            onSetReusable = vault::setTagReusable,
-                            onDeleteTag = vault::deleteTag,
-                            onExport = {
-                                val fileName =
-                                    settings.appName
-                                        .lowercase()
-                                        .replace(Regex("[^a-z0-9_-]+"), "-")
-                                        .trim('-')
-                                        .ifBlank { "myvault" }
-                                exportPicker.launch("$fileName-export.json")
-                            },
-                            onImport = {
-                                importPicker.launch(
-                                    arrayOf(
-                                        "application/json",
-                                        "text/json",
-                                        "text/plain",
-                                        "application/octet-stream",
-                                    )
-                                )
-                            },
                         )
                     }
                     else ->
@@ -323,6 +307,41 @@ fun MyVaultApp(vault: VaultViewModel) {
                             },
                         )
                 }
+                if (screen == "settings") {
+                    BackHandler(enabled = !busy) { screen = settingsReturn }
+                    SettingsScreen(
+                        settings,
+                        tags,
+                        onBack = { screen = settingsReturn },
+                        onUpdate = vault::updateSettings,
+                        onChooseWallpaper = { wallpaperPicker.launch(arrayOf("image/*")) },
+                        onCreateTag = { name, color, reusable ->
+                            vault.createTag(name, color, reusable, false)
+                        },
+                        onSetReusable = vault::setTagReusable,
+                        onDeleteTag = vault::deleteTag,
+                        onExport = {
+                            val fileName =
+                                settings.appName
+                                    .lowercase()
+                                    .replace(Regex("[^a-z0-9_-]+"), "-")
+                                    .trim('-')
+                                    .ifBlank { "myvault" }
+                            exportPicker.launch("$fileName-export.json")
+                        },
+                        onImport = {
+                            importPicker.launch(
+                                arrayOf(
+                                    "application/json",
+                                    "text/json",
+                                    "text/plain",
+                                    "application/octet-stream",
+                                )
+                            )
+                        },
+                    )
+                }
+            }
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
             if (busy) {
                 // Don't let system Back finish the activity while a save or import is in progress.
@@ -346,7 +365,10 @@ fun MyVaultApp(vault: VaultViewModel) {
                         Text(
                             "Existing entries will not be deleted. Entries from the file will be added; matching spaces and tags will be reused."
                         )
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Checkbox(
                                 checked = applySettings,
                                 onCheckedChange = { applySettings = it },
@@ -369,7 +391,9 @@ fun MyVaultApp(vault: VaultViewModel) {
                         Text("Import")
                     }
                 },
-                dismissButton = { TextButton(onClick = { pendingBackup = null }) { Text("Cancel") } },
+                dismissButton = {
+                    TextButton(onClick = { pendingBackup = null }) { Text("Cancel") }
+                },
             )
         }
     }

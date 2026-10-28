@@ -1,48 +1,52 @@
 package com.myvault.app.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -54,19 +58,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.myvault.app.data.AppSettings
 import com.myvault.app.data.MediaFiles
 import com.myvault.app.data.TagEntity
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
@@ -83,130 +89,229 @@ fun SettingsScreen(
     var tab by rememberSaveable { mutableStateOf(0) }
     var deleting by remember { mutableStateOf<TagEntity?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text("Settings", fontWeight = FontWeight.SemiBold) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                    },
-                    colors =
-                        TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.background
-                        ),
-                )
-                TabRow(selectedTabIndex = tab, containerColor = MaterialTheme.colorScheme.background) {
-                    listOf("Appearance", "Tags", "Data").forEachIndexed { index, title ->
-                        Tab(
-                            selected = tab == index,
-                            onClick = { tab = index },
-                            text = { Text(title, maxLines = 1) },
-                        )
-                    }
-                }
-            }
-        },
-    ) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+    Dialog(
+        onDismissRequest = onBack,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        BoxWithConstraints(
+            Modifier.fillMaxSize().imePadding().padding(16.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            when (tab) {
-                0 -> AppearanceSettings(settings, onUpdate, onChooseWallpaper)
-                1 -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Your tags", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-                            Text(
-                                "Reusable tags appear as suggestions in the editor.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 13.sp,
-                            )
-                        }
-                        IconButton(onClick = { creating = true }) { Icon(Icons.Default.Add, "Create tag") }
+            Surface(
+                modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().fillMaxHeight(0.88f),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 24.dp,
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .padding(start = 20.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Settings",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = onBack) { Icon(Icons.Default.Close, "Back") }
                     }
-                    if (tags.isEmpty())
-                        Text("No tags yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    tags.forEach { tag ->
-                        Surface(
-                            shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                        ) {
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val tabs =
+                            listOf(
+                                "Appearance" to Icons.Default.Palette,
+                                "Tags" to Icons.Default.Sell,
+                                "Import / Export" to Icons.Default.Download,
+                            )
+                        tabs.forEachIndexed { index, (title, icon) ->
+                            Column(
+                                Modifier.selectable(
+                                        selected = tab == index,
+                                        role = Role.Tab,
+                                        onClick = { tab = index },
+                                    )
+                                    .padding(horizontal = 12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                Surface(color = parseColor(tag.color), shape = MaterialTheme.shapes.small) {
+                                Row(
+                                    Modifier.heightIn(min = 48.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint =
+                                            if (tab == index) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.width(6.dp))
                                     Text(
-                                        tag.name,
-                                        color = parseColor(tag.textColor, Color.White),
+                                        title,
                                         fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color =
+                                            if (tab == index) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                     )
                                 }
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    if (tag.reusable) "Reusable" else "One-off",
-                                    modifier = Modifier.weight(1f),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 12.sp,
+                                Box(
+                                    Modifier.fillMaxWidth()
+                                        .height(2.dp)
+                                        .background(
+                                            if (tab == index) MaterialTheme.colorScheme.primary
+                                            else Color.Transparent
+                                        )
                                 )
-                                if (!tag.reusable)
-                                    TextButton(onClick = { onSetReusable(tag, true) }) { Text("Save") }
-                                IconButton(onClick = { deleting = tag }) {
-                                    Icon(Icons.Default.DeleteOutline, "Delete ${tag.name} tag")
-                                }
                             }
                         }
                     }
-                }
-                else -> {
-                    SettingsCard(
-                        "Export everything",
-                        "Save a JSON backup of spaces, entries, tags and settings. Local covers and wallpaper are embedded in the file.",
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
+                    Column(
+                        Modifier.weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
                     ) {
-                        Button(onClick = onExport) {
-                            Icon(Icons.Default.Download, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Export JSON")
+                        when (tab) {
+                            0 -> AppearanceSettings(settings, onUpdate, onChooseWallpaper)
+                            1 -> {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            "Your tags",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 18.sp,
+                                        )
+                                        Text(
+                                            "Reusable tags appear as suggestions in the editor.",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 13.sp,
+                                        )
+                                    }
+                                    IconButton(onClick = { creating = true }) {
+                                        Icon(Icons.Default.Add, "Create tag")
+                                    }
+                                }
+                                if (tags.isEmpty())
+                                    Text(
+                                        "No tags yet.",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                tags.forEach { tag ->
+                                    Surface(
+                                        shape = MaterialTheme.shapes.medium,
+                                        color = MaterialTheme.colorScheme.surface,
+                                        border =
+                                            BorderStroke(
+                                                1.dp,
+                                                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                            ),
+                                    ) {
+                                        Row(
+                                            Modifier.fillMaxWidth()
+                                                .padding(
+                                                    start = 12.dp,
+                                                    top = 4.dp,
+                                                    bottom = 4.dp,
+                                                    end = 4.dp,
+                                                ),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Surface(
+                                                color = parseColor(tag.color),
+                                                shape = MaterialTheme.shapes.small,
+                                            ) {
+                                                Text(
+                                                    tag.name,
+                                                    color = parseColor(tag.textColor, Color.White),
+                                                    fontSize = 13.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier =
+                                                        Modifier.padding(
+                                                            horizontal = 10.dp,
+                                                            vertical = 6.dp,
+                                                        ),
+                                                )
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                if (tag.reusable) "Reusable" else "One-off",
+                                                modifier = Modifier.weight(1f),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 12.sp,
+                                            )
+                                            if (!tag.reusable)
+                                                TextButton(onClick = { onSetReusable(tag, true) }) {
+                                                    Text("Save")
+                                                }
+                                            IconButton(onClick = { deleting = tag }) {
+                                                Icon(
+                                                    Icons.Default.DeleteOutline,
+                                                    "Delete ${tag.name} tag",
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {
+                                SettingsCard(
+                                    "Export everything",
+                                    "Save a JSON backup of spaces, entries, tags and settings. Local covers and wallpaper are embedded in the file.",
+                                ) {
+                                    Button(onClick = onExport) {
+                                        Icon(Icons.Default.Download, null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Export JSON")
+                                    }
+                                }
+                                SettingsCard(
+                                    "Import from JSON",
+                                    "Import merges spaces and tags by name and adds entries. Existing entries are not deleted. You can choose whether to restore appearance settings.",
+                                ) {
+                                    OutlinedButton(onClick = onImport) {
+                                        Icon(Icons.Default.Upload, null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Choose JSON file")
+                                    }
+                                }
+                                Text(
+                                    "Backups can contain personal notes and images. Store them somewhere you trust. External image links from older or web backups may need to be re-selected.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 13.sp,
+                                )
+                            }
                         }
+                        Spacer(Modifier.height(12.dp))
                     }
-                    SettingsCard(
-                        "Import from JSON",
-                        "Import merges spaces and tags by name and adds entries. Existing entries are not deleted. You can choose whether to restore appearance settings.",
-                    ) {
-                        OutlinedButton(onClick = onImport) {
-                            Icon(Icons.Default.Upload, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Choose JSON file")
-                        }
-                    }
-                    Text(
-                        "Backups can contain personal notes and images. Store them somewhere you trust. External image links from older or web backups may need to be re-selected.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                    )
                 }
             }
-            Spacer(Modifier.height(12.dp))
         }
     }
-    if (creating)
+    if (creating) {
         TagCreateDialog(onDismiss = { creating = false }) { name, color, reusable ->
             creating = false
             onCreateTag(name, color, reusable)
         }
+    }
     deleting?.let { tag ->
         AlertDialog(
             onDismissRequest = { deleting = null },
             title = { Text("Delete ${tag.name}?") },
-            text = { Text("This removes the tag from every entry. The entries themselves will remain.") },
+            text = {
+                Text("This removes the tag from every entry. The entries themselves will remain.")
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -278,7 +383,10 @@ private fun AppearanceSettings(
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionLabel("Theme")
-        ChoiceRow(listOf("system" to "System", "light" to "Light", "dark" to "Dark"), settings.mode) { mode ->
+        ChoiceRow(
+            listOf("light" to "Light", "dark" to "Dark", "system" to "System"),
+            settings.mode,
+        ) { mode ->
             onUpdate { it.copy(mode = mode) }
         }
     }
@@ -311,7 +419,10 @@ private fun AppearanceSettings(
         SectionLabel("Background wallpaper")
         if (settings.wallpaperUri != null) {
             AsyncImage(
-                model = remember(settings.wallpaperUri) { MediaFiles.displayModel(settings.wallpaperUri) },
+                model =
+                    remember(settings.wallpaperUri) {
+                        MediaFiles.displayModel(settings.wallpaperUri)
+                    },
                 contentDescription = "Wallpaper preview",
                 modifier = Modifier.fillMaxWidth().height(120.dp),
                 contentScale = ContentScale.Crop,
@@ -328,7 +439,9 @@ private fun AppearanceSettings(
             }
             if (settings.wallpaperUri != null)
                 TextButton(
-                    onClick = { onUpdate { it.copy(wallpaperUri = null, wallpaperEnabled = false) } }
+                    onClick = {
+                        onUpdate { it.copy(wallpaperUri = null, wallpaperEnabled = false) }
+                    }
                 ) {
                     Text("Remove")
                 }
@@ -374,21 +487,36 @@ private fun AppearanceSettings(
 @Composable
 private fun SectionLabel(label: String) {
     Text(
-        label,
-        fontSize = 13.sp,
+        label.uppercase(),
+        fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.6.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
 @Composable
-private fun ChoiceRow(choices: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+private fun ChoiceRow(
+    choices: List<Pair<String, String>>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
     Row(
         Modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         choices.forEach { (value, label) ->
-            FilterChip(selected = value == selected, onClick = { onSelect(value) }, label = { Text(label) })
+            FilterChip(
+                selected = value == selected,
+                onClick = { onSelect(value) },
+                label = { Text(label) },
+                shape = MaterialTheme.shapes.medium,
+                colors =
+                    FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+            )
         }
     }
 }
@@ -400,7 +528,10 @@ private fun SettingsCard(title: String, description: String, content: @Composabl
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
     ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             content()
@@ -430,7 +561,10 @@ fun TagCreateDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -
                     Checkbox(
                         checked = reusable,
                         onCheckedChange = { reusable = it },
-                        modifier = Modifier.semantics { contentDescription = "Save tag for future entries" },
+                        modifier =
+                            Modifier.semantics {
+                                contentDescription = "Save tag for future entries"
+                            },
                     )
                     Text("Save for future entries", fontSize = 13.sp)
                 }

@@ -24,40 +24,47 @@ fun VaultBackdrop(settings: AppSettings, dark: Boolean, splash: Boolean) {
     val isDark = dark || splash
     val base = if (isDark) Color(0xFF191918) else Color(0xFFF6F5F2)
     val accent = parseColor(settings.accent)
-    val wallpaper = settings.wallpaperUri.takeIf { settings.wallpaperEnabled && !it.isNullOrBlank() }
+    val wallpaper =
+        settings.wallpaperUri.takeIf { settings.wallpaperEnabled && !it.isNullOrBlank() }
     Box(Modifier.fillMaxSize().background(base)) {
         if (wallpaper == null) {
             Canvas(Modifier.fillMaxSize()) {
                 val radius = maxOf(size.width, size.height) * 0.65f
                 val glowAlpha = if (isDark) 0.16f else 0.08f
                 drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(accent.copy(alpha = glowAlpha), Color.Transparent),
-                        center = Offset(size.width * 0.2f, size.height * 0.2f),
-                        radius = radius,
-                    )
+                    brush =
+                        Brush.radialGradient(
+                            colors = listOf(accent.copy(alpha = glowAlpha), Color.Transparent),
+                            center = Offset(size.width * 0.2f, size.height * 0.2f),
+                            radius = radius,
+                        )
                 )
                 drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(accent.copy(alpha = glowAlpha * 0.65f), Color.Transparent),
-                        center = Offset(size.width * 0.8f, 0f),
-                        radius = radius * 0.9f,
-                    )
+                    brush =
+                        Brush.radialGradient(
+                            colors =
+                                listOf(accent.copy(alpha = glowAlpha * 0.65f), Color.Transparent),
+                            center = Offset(size.width * 0.8f, 0f),
+                            radius = radius * 0.9f,
+                        )
                 )
             }
         } else {
             AsyncImage(
                 model = remember(wallpaper) { MediaFiles.displayModel(wallpaper) },
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize()
-                    .alpha(settings.wallpaperOpacity.coerceIn(0, 100) / 100f)
-                    .blur(settings.wallpaperBlur.coerceIn(0, 20).dp),
+                modifier =
+                    Modifier.fillMaxSize()
+                        .alpha(settings.wallpaperOpacity.coerceIn(0, 100) / 100f)
+                        .blur(settings.wallpaperBlur.coerceIn(0, 20).dp),
                 contentScale = ContentScale.Crop,
             )
             Box(
-                Modifier.fillMaxSize().background(
-                    if (isDark) Color.Black.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.3f)
-                )
+                Modifier.fillMaxSize()
+                    .background(
+                        if (isDark) Color.Black.copy(alpha = 0.4f)
+                        else Color.White.copy(alpha = 0.3f)
+                    )
             )
         }
     }

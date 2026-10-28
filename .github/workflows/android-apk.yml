@@ -132,7 +132,7 @@ jobs:
           disable-animations: true
           disable-spellchecker: true
           working-directory: android
-          script: bash ci/run-device-tests.sh
+          script: bash ci/run-device-tests.sh && MYVAULT_CAPTURE_FIXTURES=1 bash ci/run-offline-restart-test.sh
       - name: Upload test report on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

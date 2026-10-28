@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -17,11 +18,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -73,8 +76,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.myvault.app.data.TagEntity
 import com.myvault.app.data.MediaFiles
+import com.myvault.app.data.TagEntity
 import dev.jeziellago.compose.markdowntext.MarkdownText
 
 /** The host owns persistence, file pickers, tag management and deletion confirmation. */
@@ -130,7 +133,8 @@ private val darkEditorPalette =
  * Supply the current entry and update it immediately in the change callbacks. The host must persist
  * changes (including flushing a pending save before [onClose]), and provide the existing
  * cover/import/tag pickers and delete confirmation through the remaining callbacks. Host-originated
- * text changes must be supplied through [externalUpdate] so stale persistence echoes cannot erase typing.
+ * text changes must be supplied through [externalUpdate] so stale persistence echoes cannot erase
+ * typing.
  */
 @Composable
 fun EntryEditorScreen(
@@ -176,13 +180,15 @@ fun EntryEditorScreen(
     LaunchedEffect(entryId, externalUpdate?.sequence) {
         if (externalUpdate != null && externalUpdate.entryId == entryId) {
             editorTitle = externalUpdate.title
-            editorValue = TextFieldValue(
-                externalUpdate.content,
-                TextRange(externalUpdate.cursor.coerceIn(0, externalUpdate.content.length)),
-            )
+            editorValue =
+                TextFieldValue(
+                    externalUpdate.content,
+                    TextRange(externalUpdate.cursor.coerceIn(0, externalUpdate.content.length)),
+                )
         }
     }
     BackHandler(enabled = previewOpen) { previewOpen = false }
+    BackHandler(enabled = findOpen && !previewOpen) { findOpen = false }
 
     fun updateBody(next: TextFieldValue) {
         val changed = next.text != editorValue.text
@@ -218,6 +224,8 @@ fun EntryEditorScreen(
     BoxWithConstraints(modifier.fillMaxSize().imePadding().background(palette.background)) {
         val narrow = maxWidth < 380.dp
         val compact = maxWidth < 420.dp
+        val findMaxHeight = maxHeight * 0.4f
+        val bodyHeight = (maxHeight - if (narrow) 245.dp else 200.dp).coerceAtLeast(220.dp)
         Column(Modifier.fillMaxSize()) {
             if (narrow) {
                 Row(
@@ -297,6 +305,7 @@ fun EntryEditorScreen(
 
             if (findOpen) {
                 FindBar(
+                    modifier = Modifier.heightIn(max = findMaxHeight),
                     query = findQuery,
                     onQueryChange = { findQuery = it },
                     replacement = replaceQuery,
@@ -309,155 +318,176 @@ fun EntryEditorScreen(
                     onFindNext = ::findNext,
                     onReplace = ::replaceCurrent,
                     onReplaceAll = {
-                        val next = replaceEditorMatches(editorValue.text, findQuery, replaceQuery, wholeWord)
+                        val next =
+                            replaceEditorMatches(
+                                editorValue.text,
+                                findQuery,
+                                replaceQuery,
+                                wholeWord,
+                            )
                         updateBody(TextFieldValue(next, TextRange(next.length)))
                     },
                 )
             }
 
-            if (coverImage == null) {
-                TextButton(
-                    onClick = onChooseCover,
-                    modifier = Modifier.padding(start = 12.dp, top = 4.dp),
-                ) {
-                    Icon(
-                        Icons.Default.AddPhotoAlternate,
-                        contentDescription = null,
-                        tint = palette.muted,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text("  Add cover image (optional)", color = palette.muted, fontSize = 12.sp)
-                }
-            } else {
-                Box(Modifier.fillMaxWidth().height(132.dp)) {
-                    AsyncImage(
-                        model = remember(coverImage) { MediaFiles.displayModel(coverImage) },
-                        contentDescription = "Entry cover",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    )
-                    IconButton(
-                        onClick = onRemoveCover,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+            // Keep the cover and metadata scrollable when the keyboard or a short window leaves
+            // little room for writing; the editor itself retains its own text scrolling.
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                if (coverImage == null) {
+                    TextButton(
+                        onClick = onChooseCover,
+                        modifier = Modifier.padding(start = 12.dp, top = 4.dp),
                     ) {
                         Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Remove cover image",
-                            tint = Color.White,
-                        )
-                    }
-                }
-            }
-
-            Column(Modifier.weight(1f).fillMaxWidth()) {
-                BasicTextField(
-                    value = editorTitle,
-                    onValueChange = { next ->
-                        if (next != editorTitle) {
-                            editorTitle = next
-                            onTitleChange(next)
-                        }
-                    },
-                    singleLine = true,
-                    textStyle =
-                        TextStyle(
-                            color = palette.foreground,
-                            fontSize = 22.sp,
-                            lineHeight = 29.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    cursorBrush = SolidColor(accent),
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 10.dp)
-                            .semantics { contentDescription = "Entry title" },
-                    decorationBox = { inner ->
-                        Box {
-                            if (editorTitle.isEmpty())
-                                Text(
-                                    "Entry title",
-                                    color = palette.placeholder,
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            inner()
-                        }
-                    },
-                )
-                Row(
-                    Modifier.fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    tags.forEach { tag ->
-                        val tagColor = runCatching {
-                            Color(android.graphics.Color.parseColor(tag.color))
-                        }
-                            .getOrDefault(palette.subtle)
-                        val tagTextColor = runCatching {
-                            Color(android.graphics.Color.parseColor(tag.textColor))
-                        }
-                            .getOrDefault(palette.foreground)
-                        Surface(color = tagColor, shape = RoundedCornerShape(50)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    tag.name,
-                                    color = tagTextColor,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(start = 12.dp),
-                                )
-                                IconButton(
-                                    onClick = { onRemoveTag(tag) },
-                                    modifier = Modifier.size(48.dp),
-                                ) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Remove ${tag.name} tag",
-                                        modifier = Modifier.size(14.dp),
-                                        tint = tagTextColor,
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    TextButton(onClick = onAddTag) {
-                        Icon(
-                            Icons.Default.Label,
+                            Icons.Default.AddPhotoAlternate,
                             contentDescription = null,
                             tint = palette.muted,
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(18.dp),
                         )
-                        Text("  Add tag…", color = palette.muted, fontSize = 12.sp)
+                        Text(
+                            "  Add cover image (optional)",
+                            color = palette.muted,
+                            fontSize = 12.sp,
+                        )
+                    }
+                } else {
+                    Box(Modifier.fillMaxWidth().height(132.dp)) {
+                        AsyncImage(
+                            model = remember(coverImage) { MediaFiles.displayModel(coverImage) },
+                            contentDescription = "Entry cover",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        )
+                        IconButton(
+                            onClick = onRemoveCover,
+                            modifier =
+                                Modifier.align(Alignment.TopEnd)
+                                    .padding(4.dp)
+                                    .background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Remove cover image",
+                                tint = Color.White,
+                            )
+                        }
                     }
                 }
-                BasicTextField(
-                    value = editorValue,
-                    onValueChange = ::updateBody,
-                    textStyle =
-                        TextStyle(color = palette.foreground, fontSize = 15.sp, lineHeight = 26.sp),
-                    cursorBrush = SolidColor(accent),
-                    modifier =
-                        Modifier.weight(1f)
-                            .fillMaxWidth()
-                            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 24.dp)
-                            .focusRequester(focusRequester)
-                            .semantics { contentDescription = "Entry content" },
-                    decorationBox = { inner ->
-                        Box(Modifier.fillMaxSize()) {
-                            if (editorValue.text.isEmpty()) {
-                                Text(
-                                    "Write in Markdown — # headings, **bold**, - lists, `code`, > quotes…",
-                                    color = palette.placeholder,
-                                    fontSize = 15.sp,
-                                    lineHeight = 26.sp,
-                                )
+
+                Column(Modifier.fillMaxWidth()) {
+                    BasicTextField(
+                        value = editorTitle,
+                        onValueChange = { next ->
+                            if (next != editorTitle) {
+                                editorTitle = next
+                                onTitleChange(next)
                             }
-                            inner()
+                        },
+                        singleLine = true,
+                        textStyle =
+                            TextStyle(
+                                color = palette.foreground,
+                                fontSize = 22.sp,
+                                lineHeight = 29.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        cursorBrush = SolidColor(accent),
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 10.dp)
+                                .semantics { contentDescription = "Entry title" },
+                        decorationBox = { inner ->
+                            Box {
+                                if (editorTitle.isEmpty())
+                                    Text(
+                                        "Entry title",
+                                        color = palette.placeholder,
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                inner()
+                            }
+                        },
+                    )
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        tags.forEach { tag ->
+                            val tagColor = runCatching {
+                                Color(android.graphics.Color.parseColor(tag.color))
+                            }
+                                .getOrDefault(palette.subtle)
+                            val tagTextColor = runCatching {
+                                Color(android.graphics.Color.parseColor(tag.textColor))
+                            }
+                                .getOrDefault(palette.foreground)
+                            Surface(color = tagColor, shape = RoundedCornerShape(50)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        tag.name,
+                                        color = tagTextColor,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(start = 12.dp),
+                                    )
+                                    IconButton(
+                                        onClick = { onRemoveTag(tag) },
+                                        modifier = Modifier.size(48.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove ${tag.name} tag",
+                                            modifier = Modifier.size(14.dp),
+                                            tint = tagTextColor,
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.width(6.dp))
                         }
-                    },
-                )
+                        TextButton(onClick = onAddTag) {
+                            Icon(
+                                Icons.Default.Label,
+                                contentDescription = null,
+                                tint = palette.muted,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Text("  Add tag…", color = palette.muted, fontSize = 12.sp)
+                        }
+                    }
+                    BasicTextField(
+                        value = editorValue,
+                        onValueChange = ::updateBody,
+                        textStyle =
+                            TextStyle(
+                                color = palette.foreground,
+                                fontSize = 15.sp,
+                                lineHeight = 26.sp,
+                            ),
+                        cursorBrush = SolidColor(accent),
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .height(bodyHeight)
+                                .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 24.dp)
+                                .focusRequester(focusRequester)
+                                .semantics { contentDescription = "Entry content" },
+                        decorationBox = { inner ->
+                            Box(Modifier.fillMaxSize()) {
+                                if (editorValue.text.isEmpty()) {
+                                    Text(
+                                        "Write in Markdown — # headings, **bold**, - lists, `code`, > quotes…",
+                                        color = palette.placeholder,
+                                        fontSize = 15.sp,
+                                        lineHeight = 26.sp,
+                                    )
+                                }
+                                inner()
+                            }
+                        },
+                    )
+                }
             }
         }
 
@@ -538,22 +568,27 @@ private fun EditorViewActions(
     onImport: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    EditorIcon(
-        Icons.Default.Code,
-        "Write",
-        palette,
-        active = !previewOpen,
-        toggle = true,
-        onClick = onWrite,
-    )
-    EditorIcon(
-        Icons.Default.Visibility,
-        "Preview",
-        palette,
-        active = previewOpen,
-        toggle = true,
-        onClick = onPreview,
-    )
+    Row(
+        Modifier.border(1.dp, palette.line, RoundedCornerShape(8.dp)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        EditorIcon(
+            Icons.Default.Code,
+            "Write",
+            palette,
+            active = !previewOpen,
+            toggle = true,
+            onClick = onWrite,
+        )
+        EditorIcon(
+            Icons.Default.Visibility,
+            "Preview",
+            palette,
+            active = previewOpen,
+            toggle = true,
+            onClick = onPreview,
+        )
+    }
     EditorIcon(
         Icons.Default.UploadFile,
         "Import text or Markdown file",
@@ -642,6 +677,7 @@ private fun SaveIndicator(state: EditorSaveState, palette: EditorPalette, compac
 
 @Composable
 private fun FindBar(
+    modifier: Modifier = Modifier,
     query: String,
     onQueryChange: (String) -> Unit,
     replacement: String,
@@ -666,8 +702,10 @@ private fun FindBar(
             unfocusedLabelColor = palette.muted,
         )
     Column(
-        Modifier.fillMaxWidth()
+        modifier
+            .fillMaxWidth()
             .background(palette.subtle)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -41,17 +41,25 @@ class VaultUiTest {
         }
         compose.onNodeWithContentDescription("New entry").performClick()
         compose.waitUntil(15_000) {
-            compose.onAllNodesWithContentDescription("Entry title").fetchSemanticsNodes().isNotEmpty()
+            compose
+                .onAllNodesWithContentDescription("Entry title")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
         }
         compose.onNodeWithContentDescription("Entry title").performTextInput("A saved note")
-        compose.onNodeWithContentDescription("Entry content").performTextInput("# Hello\nA little Markdown")
+        compose
+            .onNodeWithContentDescription("Entry content")
+            .performTextInput("# Hello\nA little Markdown")
         compose.onNodeWithContentDescription("Pin entry").performClick()
         compose.onNodeWithContentDescription("Preview").performClick()
         try {
-            compose.waitUntil(10_000) { compose.onNodeWithContentDescription("Close preview").isDisplayed() }
+            compose.waitUntil(10_000) {
+                compose.onNodeWithContentDescription("Close preview").isDisplayed()
+            }
             compose.onNodeWithText("Markdown").assertIsDisplayed()
         } catch (failure: Throwable) {
-            val header = compose.onAllNodesWithText("Markdown", useUnmergedTree = true).printToString()
+            val header =
+                compose.onAllNodesWithText("Markdown", useUnmergedTree = true).printToString()
             val close =
                 compose
                     .onAllNodesWithContentDescription("Close preview", useUnmergedTree = true)
@@ -60,7 +68,9 @@ class VaultUiTest {
         }
         compose.onNodeWithContentDescription("Close preview").assertIsDisplayed()
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        compose.waitUntil(10_000) { !compose.onNodeWithContentDescription("Close preview").isDisplayed() }
+        compose.waitUntil(10_000) {
+            !compose.onNodeWithContentDescription("Close preview").isDisplayed()
+        }
         compose.onNodeWithContentDescription("Entry title").assertIsDisplayed()
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Find").performTextInput("little")
@@ -74,7 +84,10 @@ class VaultUiTest {
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
         compose.onNodeWithText("Create & add tag").performScrollTo().performClick()
         compose.waitUntil(15_000) {
-            compose.onAllNodesWithContentDescription("Remove Journal tag").fetchSemanticsNodes().isNotEmpty()
+            compose
+                .onAllNodesWithContentDescription("Remove Journal tag")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
         }
         compose.onNodeWithContentDescription("Close editor").performClick()
         compose.waitUntil(15_000) {
@@ -82,7 +95,10 @@ class VaultUiTest {
         }
         compose.onNodeWithText("A saved note").performClick()
         compose.waitUntil(15_000) {
-            compose.onAllNodesWithContentDescription("Entry content").fetchSemanticsNodes().isNotEmpty()
+            compose
+                .onAllNodesWithContentDescription("Entry content")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
         }
         compose.onNodeWithContentDescription("Entry title").assertTextContains("A saved note")
         compose
@@ -98,11 +114,16 @@ class VaultUiTest {
         val original = runBlocking { app.settings.settingsFlow.first() }
         try {
             compose.waitUntil(15_000) {
-                compose.onAllNodesWithContentDescription("Settings").fetchSemanticsNodes().isNotEmpty()
+                compose
+                    .onAllNodesWithContentDescription("Settings")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
             }
             compose.onNodeWithContentDescription("Settings").performClick()
             compose.onNodeWithText("Dark").performClick()
-            compose.waitUntil(15_000) { runBlocking { app.settings.settingsFlow.first().mode == "dark" } }
+            compose.waitUntil(15_000) {
+                runBlocking { app.settings.settingsFlow.first().mode == "dark" }
+            }
             compose.onNodeWithContentDescription("Back").performClick()
             compose.onNodeWithContentDescription("Settings").performClick()
             compose.onNodeWithText("Dark").assertIsSelected()

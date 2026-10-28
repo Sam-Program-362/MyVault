@@ -109,13 +109,15 @@ fun SpacesScreen(
     BackHandler(enabled = creating) { creating = false }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val columns = when {
-            maxWidth >= 840.dp -> 4
-            maxWidth >= 600.dp -> 3
-            else -> 2
-        }
+        val columns =
+            when {
+                maxWidth >= 840.dp -> 4
+                maxWidth >= 600.dp -> 3
+                else -> 2
+            }
         val heroHeight = (maxHeight * 0.48f).coerceIn(230.dp, 420.dp)
         val sidePadding = if (maxWidth >= 600.dp) 36.dp else 24.dp
+        val compactHeading = maxWidth < 360.dp
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             state = gridState,
@@ -125,12 +127,15 @@ fun SpacesScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "welcome") {
-                Box(Modifier.fillMaxWidth().heightIn(min = heroHeight), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.fillMaxWidth().heightIn(min = heroHeight),
+                    contentAlignment = Alignment.Center,
+                ) {
                     AnimatedVisibility(
                         visible = introVisible,
                         enter = fadeIn(tween(360)) + slideInVertically(tween(360)) { it / 12 },
                     ) {
-                        WelcomeHeading(appName, compact = maxWidth < 360.dp)
+                        WelcomeHeading(appName, compact = compactHeading)
                     }
                 }
             }
@@ -157,14 +162,24 @@ fun SpacesScreen(
                 }
             }
         }
-        IconButton(onClick = onSettings, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White.copy(alpha = 0.72f))
+        IconButton(
+            onClick = onSettings,
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+        ) {
+            Icon(
+                Icons.Default.Settings,
+                contentDescription = "Settings",
+                tint = Color.White.copy(alpha = 0.72f),
+            )
         }
     }
 
     editing?.let { space ->
         SpaceDialog(title = "Edit space", space = space, onDismiss = { editing = null }) {
-            name, description, color, icon ->
+            name,
+            description,
+            color,
+            icon ->
             onUpdate(space, name, description, color, icon)
             editing = null
         }
@@ -180,7 +195,12 @@ fun SpacesScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = { deleting = null; onDelete(space) }) {
+                TextButton(
+                    onClick = {
+                        deleting = null
+                        onDelete(space)
+                    }
+                ) {
                     Text("Delete", color = MaterialTheme.colorScheme.error)
                 }
             },
@@ -286,18 +306,28 @@ private fun SpaceCard(
         }
         Box(Modifier.align(Alignment.TopEnd)) {
             IconButton(onClick = { menu = true }) {
-                Icon(Icons.Default.MoreVert, "Options for ${space.name}", tint = Color.White.copy(alpha = 0.65f))
+                Icon(
+                    Icons.Default.MoreVert,
+                    "Options for ${space.name}",
+                    tint = Color.White.copy(alpha = 0.65f),
+                )
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(
                     text = { Text("Edit space") },
                     leadingIcon = { Icon(Icons.Default.Edit, null) },
-                    onClick = { menu = false; onEdit() },
+                    onClick = {
+                        menu = false
+                        onEdit()
+                    },
                 )
                 DropdownMenuItem(
                     text = { Text("Delete space") },
                     leadingIcon = { Icon(Icons.Default.DeleteOutline, null) },
-                    onClick = { menu = false; onDelete() },
+                    onClick = {
+                        menu = false
+                        onDelete()
+                    },
                 )
             }
         }
@@ -309,19 +339,25 @@ private fun NewSpaceCard(onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 136.dp)
-            .semantics { contentDescription = "New space" }
-            .drawWithContent {
-                drawContent()
-                drawRoundRect(
-                    color = Color.White.copy(alpha = 0.28f),
-                    cornerRadius = CornerRadius(16.dp.toPx()),
-                    style = Stroke(
-                        width = 1.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())),
-                    ),
-                )
-            },
+        modifier =
+            Modifier.fillMaxWidth()
+                .heightIn(min = 136.dp)
+                .semantics { contentDescription = "New space" }
+                .drawWithContent {
+                    drawContent()
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.28f),
+                        cornerRadius = CornerRadius(16.dp.toPx()),
+                        style =
+                            Stroke(
+                                width = 1.dp.toPx(),
+                                pathEffect =
+                                    PathEffect.dashPathEffect(
+                                        floatArrayOf(6.dp.toPx(), 5.dp.toPx())
+                                    ),
+                            ),
+                    )
+                },
         shape = shape,
         color = Color.Transparent,
     ) {
@@ -330,7 +366,11 @@ private fun NewSpaceCard(onClick: () -> Unit) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = Color.White.copy(alpha = 0.65f))
+            Icon(
+                Icons.Default.Add,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.65f),
+            )
             Spacer(Modifier.height(8.dp))
             Text("New space", color = Color.White.copy(alpha = 0.65f), fontSize = 14.sp)
         }
@@ -346,15 +386,16 @@ private fun NewSpaceForm(
     var description by rememberSaveable { mutableStateOf("") }
     var color by rememberSaveable { mutableStateOf(paletteColors.first()) }
     var icon by rememberSaveable { mutableStateOf(spaceIcons.first()) }
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.White,
-        unfocusedTextColor = Color.White,
-        focusedLabelColor = Color.White.copy(alpha = 0.75f),
-        unfocusedLabelColor = Color.White.copy(alpha = 0.6f),
-        focusedBorderColor = Color.White.copy(alpha = 0.6f),
-        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-        cursorColor = Color.White,
-    )
+    val fieldColors =
+        OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            focusedLabelColor = Color.White.copy(alpha = 0.75f),
+            unfocusedLabelColor = Color.White.copy(alpha = 0.6f),
+            focusedBorderColor = Color.White.copy(alpha = 0.6f),
+            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+            cursorColor = Color.White,
+        )
     Surface(
         modifier = Modifier.fillMaxWidth().animateContentSize(),
         shape = RoundedCornerShape(16.dp),
@@ -383,9 +424,14 @@ private fun NewSpaceForm(
             Text("Color", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
             ColorChoices(color) { color = it }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onCancel) { Text("Cancel", color = Color.White.copy(alpha = 0.7f)) }
+                TextButton(onClick = onCancel) {
+                    Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+                }
                 Spacer(Modifier.width(4.dp))
-                Button(onClick = { onCreate(name, description, color, icon) }, enabled = name.isNotBlank()) {
+                Button(
+                    onClick = { onCreate(name, description, color, icon) },
+                    enabled = name.isNotBlank(),
+                ) {
                     Text("Create & enter")
                 }
             }
@@ -402,7 +448,8 @@ fun SpaceDialog(
 ) {
     var name by rememberSaveable(space?.id) { mutableStateOf(space?.name ?: "") }
     var description by rememberSaveable(space?.id) { mutableStateOf(space?.description ?: "") }
-    var color by rememberSaveable(space?.id) { mutableStateOf(space?.color ?: paletteColors.first()) }
+    var color by
+        rememberSaveable(space?.id) { mutableStateOf(space?.color ?: paletteColors.first()) }
     var icon by rememberSaveable(space?.id) { mutableStateOf(space?.icon ?: "📁") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -433,7 +480,10 @@ fun SpaceDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(name, description, color, icon) }, enabled = name.isNotBlank()) {
+            TextButton(
+                onClick = { onSave(name, description, color, icon) },
+                enabled = name.isNotBlank(),
+            ) {
                 Text(if (space == null) "Create" else "Save")
             }
         },
@@ -447,14 +497,17 @@ private fun SpaceIconChoices(selected: String, onChoose: (String) -> Unit) {
         spaceIcons.forEach { choice ->
             IconButton(
                 onClick = { onChoose(choice) },
-                modifier = Modifier.semantics {
-                    contentDescription = "Space icon $choice"
-                    stateDescription = if (selected == choice) "Selected" else "Not selected"
-                },
+                modifier =
+                    Modifier.semantics {
+                        contentDescription = "Space icon $choice"
+                        stateDescription = if (selected == choice) "Selected" else "Not selected"
+                    },
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = if (selected == choice) MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                    color =
+                        if (selected == choice)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
                         else Color.White.copy(alpha = 0.06f),
                 ) {
                     Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
@@ -468,22 +521,32 @@ private fun SpaceIconChoices(selected: String, onChoose: (String) -> Unit) {
 
 @Composable
 fun ColorChoices(selected: String, onChoose: (String) -> Unit) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         paletteColors.forEach { color ->
             IconButton(
                 onClick = { onChoose(color) },
-                modifier = Modifier.semantics {
-                    contentDescription = "Color $color"
-                    stateDescription = if (selected.equals(color, true)) "Selected" else "Not selected"
-                },
+                modifier =
+                    Modifier.semantics {
+                        contentDescription = "Color $color"
+                        stateDescription =
+                            if (selected.equals(color, true)) "Selected" else "Not selected"
+                    },
             ) {
-                Surface(shape = CircleShape, color = parseColor(color), modifier = Modifier.size(30.dp)) {
+                Surface(
+                    shape = CircleShape,
+                    color = parseColor(color),
+                    modifier = Modifier.size(30.dp),
+                ) {
                     if (selected.equals(color, true)) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 Icons.Default.Check,
                                 contentDescription = null,
-                                tint = if (parseColor(color).luminance() > 0.179f) Color(0xFF171717)
+                                tint =
+                                    if (parseColor(color).luminance() > 0.179f) Color(0xFF171717)
                                     else Color.White,
                                 modifier = Modifier.size(17.dp),
                             )

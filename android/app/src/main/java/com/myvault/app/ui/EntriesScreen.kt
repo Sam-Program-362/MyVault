@@ -98,16 +98,19 @@ fun EntriesScreen(
     var lastSpaceId by rememberSaveable { mutableStateOf(selectedSpaceId) }
     LaunchedEffect(selectedSpaceId) { if (selectedSpaceId != null) lastSpaceId = selectedSpaceId }
     val space = spaces.find { it.id == selectedSpaceId }
-    val filtered = remember(entries, tagRefs, selectedSpaceId, query, tagFilter) {
-        val matchingEntryIds = if (tagFilter == null) null
-            else tagRefs.filter { it.tagId == tagFilter }.map { it.entryId }.toSet()
-        entries.filter { entry ->
-            (selectedSpaceId == null || entry.spaceId == selectedSpaceId) &&
-                (query.isBlank() || entry.title.contains(query.trim(), true) ||
-                    entry.content.contains(query.trim(), true)) &&
-                (matchingEntryIds == null || entry.id in matchingEntryIds)
+    val filtered =
+        remember(entries, tagRefs, selectedSpaceId, query, tagFilter) {
+            val matchingEntryIds =
+                if (tagFilter == null) null
+                else tagRefs.filter { it.tagId == tagFilter }.map { it.entryId }.toSet()
+            entries.filter { entry ->
+                (selectedSpaceId == null || entry.spaceId == selectedSpaceId) &&
+                    (query.isBlank() ||
+                        entry.title.contains(query.trim(), true) ||
+                        entry.content.contains(query.trim(), true)) &&
+                    (matchingEntryIds == null || entry.id in matchingEntryIds)
+            }
         }
-    }
     val tagsById = remember(tags) { tags.associateBy { it.id } }
     val refsByEntry = remember(tagRefs) { tagRefs.groupBy { it.entryId } }
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
@@ -119,7 +122,9 @@ fun EntriesScreen(
             onQueryChange = { query = it },
             allSpaces = selectedSpaceId == null,
             onToggleAllSpaces = {
-                onSelectSpace(if (selectedSpaceId == null) lastSpaceId ?: spaces.firstOrNull()?.id else null)
+                onSelectSpace(
+                    if (selectedSpaceId == null) lastSpaceId ?: spaces.firstOrNull()?.id else null
+                )
             },
             onBack = onBack,
             onSettings = onSettings,
@@ -127,7 +132,10 @@ fun EntriesScreen(
         )
         Row(
             Modifier.fillMaxWidth()
-                .background(if (dark) Color(0xFF0A0A0A).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.5f))
+                .background(
+                    if (dark) Color(0xFF0A0A0A).copy(alpha = 0.4f)
+                    else Color.White.copy(alpha = 0.5f)
+                )
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -159,7 +167,9 @@ fun EntriesScreen(
         }
         if (tags.isNotEmpty()) {
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -167,11 +177,13 @@ fun EntriesScreen(
                     val selected = tagFilter == tag.id
                     val color = parseColor(tag.color)
                     Box(
-                        Modifier.heightIn(min = 48.dp).selectable(
-                            selected = selected,
-                            role = Role.Checkbox,
-                            onClick = { tagFilter = if (selected) null else tag.id },
-                        ).semantics { contentDescription = "Filter by ${tag.name}" },
+                        Modifier.heightIn(min = 48.dp)
+                            .selectable(
+                                selected = selected,
+                                role = Role.Checkbox,
+                                onClick = { tagFilter = if (selected) null else tag.id },
+                            )
+                            .semantics { contentDescription = "Filter by ${tag.name}" },
                         contentAlignment = Alignment.Center,
                     ) {
                         Surface(
@@ -180,7 +192,8 @@ fun EntriesScreen(
                         ) {
                             Text(
                                 tag.name,
-                                color = if (selected) parseColor(tag.textColor, Color.White) else color,
+                                color =
+                                    if (selected) parseColor(tag.textColor, Color.White) else color,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
@@ -210,9 +223,13 @@ fun EntriesScreen(
                     Spacer(Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            if (selectedSpaceId != null) onNewEntry(selectedSpaceId) else chooseSpace = true
+                            if (selectedSpaceId != null) onNewEntry(selectedSpaceId)
+                            else chooseSpace = true
                         },
-                        modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "New entry" },
+                        modifier =
+                            Modifier.heightIn(min = 48.dp).semantics {
+                                contentDescription = "New entry"
+                            },
                         shape = MaterialTheme.shapes.medium,
                         contentPadding = PaddingValues(horizontal = 12.dp),
                     ) {
@@ -240,7 +257,11 @@ fun EntriesScreen(
         }
     }
     if (creatingSpace) {
-        SpaceDialog(title = "New space", onDismiss = { creatingSpace = false }) { name, description, color, icon ->
+        SpaceDialog(title = "New space", onDismiss = { creatingSpace = false }) {
+            name,
+            description,
+            color,
+            icon ->
             creatingSpace = false
             onNewSpace(name, description, color, icon)
         }
@@ -251,14 +272,20 @@ fun EntriesScreen(
             title = { Text("Choose a space") },
             text = {
                 if (spaces.isEmpty()) Text("Create a space first.")
-                else Column(Modifier.verticalScroll(rememberScrollState())) {
-                    spaces.forEach { item ->
-                        TextButton(
-                            onClick = { chooseSpace = false; onNewEntry(item.id) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("${item.icon}  ${item.name}") }
+                else
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        spaces.forEach { item ->
+                            TextButton(
+                                onClick = {
+                                    chooseSpace = false
+                                    onNewEntry(item.id)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("${item.icon}  ${item.name}")
+                            }
+                        }
                     }
-                }
             },
             confirmButton = { TextButton(onClick = { chooseSpace = false }) { Text("Cancel") } },
         )
@@ -277,16 +304,24 @@ private fun DashboardHeader(
     dark: Boolean,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val showAppName = maxWidth >= 600.dp
         Row(
             Modifier.fillMaxWidth()
-                .background(if (dark) Color(0xFF0A0A0A).copy(alpha = 0.65f) else Color.White.copy(alpha = 0.7f))
+                .background(
+                    if (dark) Color(0xFF0A0A0A).copy(alpha = 0.65f)
+                    else Color.White.copy(alpha = 0.7f)
+                )
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Default.GridView, "Back to spaces", tint = MaterialTheme.colorScheme.primary)
+                Icon(
+                    Icons.Default.GridView,
+                    "Back to spaces",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
             }
-            if (maxWidth >= 600.dp) {
+            if (showAppName) {
                 Text(
                     appName.ifBlank { "MyVault" },
                     fontWeight = FontWeight.Bold,
@@ -301,12 +336,24 @@ private fun DashboardHeader(
                 onClick = onToggleAllSpaces,
                 shape = MaterialTheme.shapes.medium,
                 color = if (allSpaces) MaterialTheme.colorScheme.primary else Color.Transparent,
-                contentColor = if (allSpaces) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                border = if (allSpaces) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                contentColor =
+                    if (allSpaces) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurface,
+                border =
+                    if (allSpaces) null
+                    else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
                 modifier = Modifier.semantics { contentDescription = "All spaces" },
             ) {
-                Box(Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
-                    Text("All spaces", fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                Box(
+                    Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "All spaces",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                    )
                 }
             }
             IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") }
@@ -315,7 +362,12 @@ private fun DashboardHeader(
 }
 
 @Composable
-private fun DashboardSearch(query: String, onChange: (String) -> Unit, allSpaces: Boolean, modifier: Modifier) {
+private fun DashboardSearch(
+    query: String,
+    onChange: (String) -> Unit,
+    allSpaces: Boolean,
+    modifier: Modifier,
+) {
     val textColor = MaterialTheme.colorScheme.onSurface
     BasicTextField(
         value = query,
@@ -323,10 +375,19 @@ private fun DashboardSearch(query: String, onChange: (String) -> Unit, allSpaces
         singleLine = true,
         textStyle = TextStyle(color = textColor, fontSize = 14.sp),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        modifier = modifier.heightIn(min = 48.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), MaterialTheme.shapes.medium)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.65f), MaterialTheme.shapes.medium)
-            .semantics { contentDescription = "Search entries" },
+        modifier =
+            modifier
+                .heightIn(min = 48.dp)
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                    MaterialTheme.shapes.medium,
+                )
+                .background(
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
+                    MaterialTheme.shapes.medium,
+                )
+                .semantics { contentDescription = "Search entries" },
         decorationBox = { inner ->
             Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.width(10.dp))
@@ -360,7 +421,12 @@ private fun DashboardSearch(query: String, onChange: (String) -> Unit, allSpaces
 }
 
 @Composable
-private fun SpaceNavigationChip(space: SpaceEntity, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun SpaceNavigationChip(
+    space: SpaceEntity,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
     val color = parseColor(space.color)
     val foreground = if (color.luminance() > 0.179f) Color(0xFF171717) else Color.White
     Surface(
@@ -377,8 +443,13 @@ private fun SpaceNavigationChip(space: SpaceEntity, count: Int, selected: Boolea
             Spacer(Modifier.width(8.dp))
             Text(space.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
             Spacer(Modifier.width(8.dp))
-            Text("$count", fontSize = 11.sp, color = if (selected) foreground.copy(alpha = 0.7f)
-                else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "$count",
+                fontSize = 11.sp,
+                color =
+                    if (selected) foreground.copy(alpha = 0.7f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -426,19 +497,30 @@ private fun EntryCard(
         Column {
             if (entry.coverImagePath != null) {
                 AsyncImage(
-                    model = remember(entry.coverImagePath) { MediaFiles.displayModel(entry.coverImagePath) },
+                    model =
+                        remember(entry.coverImagePath) {
+                            MediaFiles.displayModel(entry.coverImagePath)
+                        },
                     contentDescription = null,
                     modifier = Modifier.fillMaxWidth().height(128.dp),
                     contentScale = ContentScale.Crop,
                 )
             } else {
                 Box(
-                    Modifier.fillMaxWidth().height(64.dp)
-                        .background(lerp(Color(0xFF1E293B), MaterialTheme.colorScheme.primary, 0.55f)),
+                    Modifier.fillMaxWidth()
+                        .height(64.dp)
+                        .background(
+                            lerp(Color(0xFF1E293B), MaterialTheme.colorScheme.primary, 0.55f)
+                        ),
                     contentAlignment = Alignment.Center,
-                ) { Text(space?.icon ?: "📄", fontSize = 19.sp) }
+                ) {
+                    Text(space?.icon ?: "📄", fontSize = 19.sp)
+                }
             }
-            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                Modifier.fillMaxWidth().padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Row(verticalAlignment = Alignment.Top) {
                     Text(
                         entry.title.ifBlank { "Untitled entry" },
@@ -475,11 +557,18 @@ private fun EntryCard(
                         horizontalArrangement = Arrangement.spacedBy(5.dp),
                     ) {
                         if (showSpace && space != null) {
-                            Text(space.name, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                            Text(
+                                space.name,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp,
+                            )
                         }
                         tags.take(3).forEach { tag ->
                             val color = parseColor(tag.color)
-                            Surface(color = color.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+                            Surface(
+                                color = color.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(50),
+                            ) {
                                 Text(
                                     tag.name,
                                     color = color,
@@ -493,9 +582,12 @@ private fun EntryCard(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         DateUtils.getRelativeTimeSpanString(
-                            entry.updatedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
-                            DateUtils.FORMAT_ABBREV_RELATIVE,
-                        ).toString(),
+                                entry.updatedAt,
+                                System.currentTimeMillis(),
+                                DateUtils.MINUTE_IN_MILLIS,
+                                DateUtils.FORMAT_ABBREV_RELATIVE,
+                            )
+                            .toString(),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         maxLines = 1,
@@ -506,9 +598,10 @@ private fun EntryCard(
     }
 }
 
-private fun plainTextPreview(markdown: String): String = markdown
-    .replace(Regex("!\\[.*?]\\(.*?\\)"), "")
-    .replace(Regex("\\[(.*?)]\\(.*?\\)"), "\$1")
-    .replace(Regex("[#>*_`~-]"), "")
-    .replace('\n', ' ')
-    .trim()
+private fun plainTextPreview(markdown: String): String =
+    markdown
+        .replace(Regex("!\\[.*?]\\(.*?\\)"), "")
+        .replace(Regex("\\[(.*?)]\\(.*?\\)"), "\$1")
+        .replace(Regex("[#>*_`~-]"), "")
+        .replace('\n', ' ')
+        .trim()
