@@ -34,8 +34,16 @@ if raw.startswith(bytes.fromhex('feedfeed')):
     print('JKS')
 elif raw.startswith(bytes.fromhex('cececece')):
     print('JCEKS')
-elif len(raw) > 1 and raw[0] == 0x30 and raw[1] >= 0x80:
-    print('DER/PKCS12 candidate')
+elif len(raw) > 1 and raw[0] == 0x30 and 0x81 <= raw[1] <= 0x84:
+    count = raw[1] & 0x7f
+    if len(raw) < 2 + count:
+        print('DER/PKCS12 candidate with a truncated length header')
+    else:
+        size = int.from_bytes(raw[2:2 + count], 'big')
+        if len(raw) < 2 + count + size:
+            print('DER/PKCS12 candidate with a truncated outer sequence')
+        else:
+            print('DER/PKCS12 candidate with a complete outer sequence')
 elif raw.startswith(b'-----BEGIN'):
     print('PEM text')
 elif raw.startswith(b'PK\x03\x04'):
