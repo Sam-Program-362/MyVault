@@ -18,6 +18,14 @@ After a successful run, download `myvault-debug-apk`, `myvault-preview-unsigned-
 
 GitHub-hosted runners independently generate debug signing keys. For this project, all 20 available earlier debug APKs inspected had `com.myvault.app.debug` but a different certificate from run `40683365336`, so Android would reject their update with that APK. The exact installed run on a particular phone must still be identified. Reusing a keystore for another package is not itself a conflict, and the release-keystore secrets are not used by debug builds. **Do not uninstall the existing app or clear its data.**
 
+If you still possess the **exact original debug signing key**, you may re-sign the newer debug APK locally with that key, then compare the installed APK and the re-signed candidate using `check-apk-update.sh` below. The package and certificate must match and the versionCode must be higher; a release key does not help unless its certificate actually matches that debug installation. GitHub-hosted debug keys are usually discarded with the runner, so do not assume they are recoverable. With an existing original debug key, `apksigner` can replace the candidate's signature without putting passwords on the command line:
+
+```sh
+"$ANDROID_HOME/build-tools/34.0.0/apksigner" sign --ks /secure/path/to/original-debug.keystore \
+  --ks-key-alias ORIGINAL_DEBUG_ALIAS --out myvault-debug-update.apk app-debug.apk
+bash android/ci/check-apk-update.sh installed-debug-base.apk myvault-debug-update.apk
+```
+
 If the old debug signing key is unavailable, export and verify a private JSON backup from the old app and keep the old installation intact. The unsigned **MyVault (Preview)** artifact has its own `com.myvault.app.preview` ID and can be signed locally with a stable key you control, installed alongside the old app, and used to import the backup. See `PREVIEW-README.md` in that artifact for the steps and limitations. The preview, debug and release packages are separate installations, not updates of one another. Verify any already-installed preview's certificate and version before trying to update it.
 
 A release run requires all four secrets below **and** the independent public reference inputs described under [Verify an existing installation](#verify-an-existing-installation). It validates the keystore, builds with required release signing, checks the package ID and version, verifies the signature against both the configured key and the independent fingerprint, deletes the temporary keystore, and only then uploads the signed APK. CI cannot inspect your phone or prove that the supplied reference actually came from it. The job does not publish a GitHub Release or upload to Google Play. The workflow uses GitHub's automatically supplied read-only token; no personal access token is required.

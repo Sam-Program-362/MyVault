@@ -120,7 +120,9 @@ case "$file" in
   high.apk) code=2147483648 ;;
   *) code=3 ;;
 esac
-printf "package: name='%s' versionCode='%s' versionName='1.0.2'\n" "$app_id" "$code"
+major=''
+if [[ "$file" == major.apk ]]; then major=" versionCodeMajor='1'"; fi
+printf "package: name='%s' versionCode='%s'%s versionName='1.0.2'\n" "$app_id" "$code" "$major"
 AAPT
 cat > "$tmp/identity-signer" <<'SIGNER'
 #!/usr/bin/env bash
@@ -134,7 +136,7 @@ if [[ "$file" == *multi.apk ]]; then printf 'Signer #2 certificate SHA-256 diges
 SIGNER
 chmod +x "$tmp/aapt" "$tmp/identity-signer"
 export AAPT="$tmp/aapt" APKSIGNER="$tmp/identity-signer"
-for name in release-old release-new release-same release-other debug-old debug-new debug-other preview-new unsigned multi malformed high; do
+for name in release-old release-new release-same release-other debug-old debug-new debug-other preview-new unsigned multi malformed high major; do
   printf 'synthetic %s APK\n' "$name" > "$tmp/$name.apk"
 done
 export ANDROID_EXPECTED_CERT_SHA256
@@ -156,6 +158,7 @@ expect_failure "$ci_dir/verify-release-update.sh" "$tmp/debug-new.apk"
 expect_failure "$ci_dir/verify-release-update.sh" "$tmp/release-other.apk"
 expect_failure "$ci_dir/verify-release-update.sh" "$tmp/release-same.apk"
 expect_failure "$ci_dir/verify-release-update.sh" "$tmp/high.apk"
+expect_failure "$ci_dir/verify-release-update.sh" "$tmp/major.apk"
 expect_failure "$ci_dir/verify-release-update.sh" "$tmp/unsigned.apk"
 expect_failure "$ci_dir/verify-release-update.sh" "$tmp/multi.apk"
 expect_failure "$ci_dir/verify-release-update.sh" "$tmp/malformed.apk"

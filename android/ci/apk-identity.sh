@@ -21,9 +21,14 @@ fi
 package_line=$(printf '%s\n' "$badging" | sed -n '/^package: /{p;q;}')
 app_id=$(printf '%s\n' "$package_line" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
 version_code=$(printf '%s\n' "$package_line" | sed -n "s/.* versionCode='\([0-9][0-9]*\)'.*/\1/p")
+version_major=$(printf '%s\n' "$package_line" | sed -n "s/.* versionCodeMajor='\([0-9][0-9]*\)'.*/\1/p")
 version_name=$(printf '%s\n' "$package_line" | sed -n "s/.* versionName='\([^']*\)'.*/\1/p")
 if [[ -z "$app_id" || -z "$version_code" ]]; then
   echo 'APK does not have a readable package ID and version code.' >&2
+  exit 1
+fi
+if [[ -n "$version_major" && "$version_major" != 0 ]]; then
+  echo 'APK has a major version code; compare its full longVersionCode separately.' >&2
   exit 1
 fi
 if ! signer_output=$("$apksigner" verify --print-certs "$apk" 2>/dev/null); then

@@ -16,6 +16,7 @@ if os.environ.get("MYVAULT_DISPOSABLE_EMULATOR") != "1" or not adb("get-serialno
     raise SystemExit("This migration test requires an explicitly authorized disposable emulator.")
 
 last_xml = ""
+trace = []
 
 
 def hierarchy():
@@ -50,6 +51,7 @@ def click(label, attribute="text", contains=False, timeout=25):
     node = find(label, attribute, contains, timeout)
     if node is None:
         raise AssertionError(f"Could not find {attribute}={label!r}")
+    trace.append(f"tap {attribute}={label!r}: package={node.get('package')} text={node.get('text')!r} desc={node.get('content-desc')!r} bounds={node.get('bounds')}")
     bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
     if not bounds:
         raise AssertionError(f"Invalid bounds for {label!r}")
@@ -68,11 +70,16 @@ def main():
         width, height = map(int, size[-1])
         adb("shell", "input", "swipe", str(width // 2), str(height * 3 // 4), str(width // 2), str(height // 3), "400")
     click("Choose JSON file")
-    name = "myvault-ci-migration.json"
-    if find(name, timeout=8) is None:
+    # Some DocumentsUI versions visually truncate the displayed filename. A stable prefix
+    # still identifies this unique, synthetic test document without relying on screen size.
+    name = "myvault-ci"
+    if find(name, contains=True, timeout=8) is None:
         click("Show roots", "content-desc")
         click("Downloads")
-    click(name)
+    # On some pickers the Downloads subtitle is part of the document row, so the prior tap
+    # may already have selected the document and opened the app's confirmation dialog.
+    if find("Import backup?", timeout=4) is None:
+        click(name, contains=True)
     if find("Import backup?", timeout=25) is None:
         raise AssertionError("The preview did not show the backup confirmation.")
     click("Also restore appearance settings", "content-desc")
@@ -100,7 +107,16 @@ def main():
 try:
     main()
 except Exception as exc:
-    details = f"{type(exc).__name__}: {exc}\n{last_xml[-10000:]}"
-    escaped = details.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    try:
+        root = ET.fromstring(last_xml)
+        visible = [
+            f"{node.get('package')}:{node.get('text') or node.get('content-desc')}"
+            for node in root.iter("node")
+            if node.get("text") or node.get("content-desc")
+        ]
+    except ET.ParseError:
+        visible = []
+    details = f"{type(exc).__name__}: {exc}\nActions: {'; '.join(trace)}\nVisible: {' | '.join(visible)}"
+    escaped = details[-4000:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
     print(f"::error title=Preview migration test failed::{escaped}", file=sys.stderr, flush=True)
     raise SystemExit(1) from exc
