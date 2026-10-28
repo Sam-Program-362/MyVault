@@ -37,7 +37,7 @@ def tap(value, description=False):
             if rect:
                 x1, y1, x2, y2 = map(int, rect.groups())
                 if x2 > x1 and y2 > y1:
-                    print(f"Tap {key}: {value}", flush=True)
+                    print(f"Tap {key}: {value} at [{x1},{y1}][{x2},{y2}]", flush=True)
                     adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
                     # Give the platform frame clock time to draw the actual transition.
                     time.sleep(0.7)
@@ -60,7 +60,10 @@ def main():
     tap("Close preview", description=True)
     tap("Close editor", description=True)
     tap("Settings", description=True)
-    tap("Back", description=True)
+    # Exercise the Android back gesture/key while the actual settings overlay is open.
+    print("Press Android Back to close settings", flush=True)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    time.sleep(0.7)
     tap("Back to spaces", description=True)
     tap("Options for Sample space", description=True)
     tap("Edit space")

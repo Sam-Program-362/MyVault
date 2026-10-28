@@ -20,9 +20,16 @@ if [[ "$app_id" != com.myvault.app || "$code" != "$expected_code" || "$name" != 
   echo '::error::The signed APK package or version does not match the expected release configuration.' >&2
   exit 1
 fi
+if [[ ${ANDROID_SIGNING_CONTEXT:-release} == disposable-test ]]; then
+  title='Disposable test APK public identity'
+  description='Disposable CI test key only; this is not the production release artifact.'
+else
+  title='Signed release APK public identity'
+  description='Verified against the configured release key; installed-device compatibility is not automatically verified.'
+fi
 {
-  echo 'MyVault signed release APK (verified against the configured signing key).'
+  printf 'MyVault signed APK. %s\n' "$description"
   printf 'Application ID: %s\nVersion name: %s\nVersion code: %s\nSigning certificate SHA-256: %s\n' "$app_id" "$name" "$code" "$certificate"
   echo 'In-place update compatibility is not established unless the installed package, version and certificate were independently compared.'
 } > "$report"
-printf '::notice title=Signed APK public identity::%s version %s (code %s), certificate SHA-256 %s. Installed-device compatibility is not automatically verified.\n' "$app_id" "$name" "$code" "$certificate"
+printf '::notice title=%s::%s version %s (code %s), certificate SHA-256 %s. %s\n' "$title" "$app_id" "$name" "$code" "$certificate" "$description"

@@ -1,10 +1,10 @@
 package com.myvault.app.ui
 
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -16,20 +16,52 @@ class DocumentPickerActionTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         if (InstrumentationRegistry.getArguments().getString("myvault.pickerPhase") != "select")
             return
-        val root = requireNotNull(instrumentation.uiAutomation.rootInActiveWindow)
-        val file = root.findAccessibilityNodeInfosByText("myvault-ci-migration.json").firstOrNull()
-        assertNotNull("The synthetic backup must be visible in the system picker", file)
-        var row = file?.parent
-        while (
-            row != null &&
-                row.parent?.className?.toString() != "androidx.recyclerview.widget.RecyclerView"
-        ) {
-            row = row.parent
+        val automation = instrumentation.uiAutomation
+        val deadline = SystemClock.uptimeMillis() + 8_000
+        var diagnostic = "No synthetic document row was found"
+        while (SystemClock.uptimeMillis() < deadline) {
+            val root = automation.rootInActiveWindow
+            // If a successful action already opened the app's confirmation, do not click again.
+            if (root?.findAccessibilityNodeInfosByText("Import backup?")?.isNotEmpty() == true)
+                return
+            val file =
+                root?.findAccessibilityNodeInfosByText("myvault-ci-migration.json")?.firstOrNull()
+            if (file != null) {
+                val chain = mutableListOf<AccessibilityNodeInfo>()
+                var node: AccessibilityNodeInfo? = file
+                while (
+                    node != null &&
+                        node.className?.toString() != "androidx.recyclerview.widget.RecyclerView"
+                ) {
+                    chain.add(node)
+                    node = node.parent
+                }
+                diagnostic =
+                    chain.joinToString(" -> ") { candidate ->
+                        "${candidate.className}(clickable=${candidate.isClickable}, actions=${candidate.actionList.map { it.id }})"
+                    }
+                // Try an advertised accessibility click on the file or its row. Some
+                // DocumentsUI builds add it to the row after the service connects.
+                val row = chain.lastOrNull()
+                val candidates =
+                    chain
+                        .filter { candidate ->
+                            candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
+                        }
+                        .toMutableList()
+                if (row != null && row !in candidates) candidates.add(row)
+                for (candidate in candidates) {
+                    if (
+                        candidate.isEnabled &&
+                            candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    )
+                        return
+                }
+            }
+            SystemClock.sleep(250)
         }
-        assertNotNull("The document picker must expose its file row", row)
-        assertTrue(
-            "The document picker must activate the synthetic backup through accessibility",
-            requireNotNull(row).performAction(AccessibilityNodeInfo.ACTION_CLICK),
+        fail(
+            "The system picker did not activate the synthetic document. Accessibility chain: $diagnostic"
         )
     }
 }

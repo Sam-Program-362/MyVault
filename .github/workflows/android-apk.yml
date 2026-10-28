@@ -116,6 +116,8 @@ jobs:
           export ANDROID_EXPECTED_CERT_SHA256 ANDROID_INSTALLED_PACKAGE_ID=com.myvault.app ANDROID_INSTALLED_VERSION_CODE=3
           bash android/ci/verify-release-update.sh android/app/build/outputs/apk/release/app-release.apk
       - name: Verify disposable release package and version
+        env:
+          ANDROID_SIGNING_CONTEXT: disposable-test
         run: >-
           bash android/ci/verify-release-artifact.sh
           android/app/build/outputs/apk/release/app-release.apk
@@ -284,8 +286,7 @@ jobs:
             bash ci/run-device-tests.sh
             MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_REQUIRE_CUTOUT=1 bash ci/run-motion-inset-tests.sh
             if [ '${{ matrix.api }}' = '30' ]; then MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/capture-synthetic-ui.sh; fi
-            MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_CONFLICT_APK="$RUNNER_TEMP/myvault-incompatible-debug.apk" MYVAULT_PREVIEW_APK="$RUNNER_TEMP/myvault-preview.apk" bash ci/run-offline-restart-test.sh
-            MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_BASELINE_APK="$RUNNER_TEMP/myvault-native-before/android/app/build/outputs/apk/debug/app-debug.apk" bash ci/run-native-window-evidence.sh
+            evidence_status=0; offline_status=0; MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_BASELINE_APK="$RUNNER_TEMP/myvault-native-before/android/app/build/outputs/apk/debug/app-debug.apk" bash ci/run-native-window-evidence.sh || evidence_status=$?; MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_CONFLICT_APK="$RUNNER_TEMP/myvault-incompatible-debug.apk" MYVAULT_PREVIEW_APK="$RUNNER_TEMP/myvault-preview.apk" bash ci/run-offline-restart-test.sh || offline_status=$?; [ "$evidence_status" -eq 0 ] && [ "$offline_status" -eq 0 ]
       - name: Upload real-window before-and-after evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

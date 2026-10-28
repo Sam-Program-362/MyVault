@@ -48,8 +48,12 @@ cleanup() {
       adb shell settings put global "$setting" "$value" >/dev/null 2>&1 || true
     fi
   done
-  if ((nav_changed)) && [[ -n "$old_nav" ]]; then
-    adb shell cmd overlay enable-exclusive --category "$old_nav" >/dev/null 2>&1 || true
+  if ((nav_changed)); then
+    if [[ -n "$old_nav" ]]; then
+      adb shell cmd overlay enable-exclusive --category "$old_nav" >/dev/null 2>&1 || true
+    else
+      adb shell cmd overlay disable com.android.internal.systemui.navbar.gestural >/dev/null 2>&1 || true
+    fi
   fi
 }
 trap cleanup EXIT
@@ -60,15 +64,20 @@ adb shell wm density 440 || exit 1
 adb shell settings put global window_animation_scale 1 || exit 1
 adb shell settings put global transition_animation_scale 1 || exit 1
 adb shell settings put global animator_duration_scale 1 || exit 1
-if grep -q 'com.android.internal.systemui.navbar.gestural' <<< "$overlays" && [[ -n "$old_nav" ]]; then
+if grep -q 'com.android.internal.systemui.navbar.gestural' <<< "$overlays"; then
   if adb shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural; then
     nav_changed=1
-    echo 'Gesture navigation enabled for the real-window comparison.'
+    echo '::notice title=Emulator navigation mode::Requested the gestural navigation overlay for the real-window comparison.'
+  else
+    echo '::warning::Could not enable the gestural overlay; the report will show measured insets.'
   fi
 else
   echo '::warning::Gesture-navigation overlay unavailable; the report will show the measured navigation insets.'
 fi
 sleep 3
+physical_size=$(adb shell wm size | tr '\r\n' ' ')
+physical_density=$(adb shell wm density | tr '\r\n' ' ')
+printf '::notice title=Emulator display configuration::%s; %s\n' "$physical_size" "$physical_density"
 
 capture_phase() {
   local phase=$1 apk=$2 log="$work/$1.log" name

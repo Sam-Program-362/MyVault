@@ -85,7 +85,10 @@ def main():
     # Some DocumentsUI versions visually truncate the displayed filename. A stable prefix
     # still identifies this unique, synthetic test document without relying on screen size.
     name = "myvault-ci"
-    if find(name, contains=True, timeout=8) is None:
+    # Android 11's Recent list can expose a non-activatable virtual row. The
+    # synthetic file is in Downloads, so select that real directory directly.
+    api = int(adb("shell", "getprop", "ro.build.version.sdk").stdout.strip())
+    if api <= 30 or find(name, contains=True, timeout=8) is None:
         click("Show roots", "content-desc")
         click("Downloads")
     # On some pickers the Downloads subtitle is part of the document row, so the prior tap
@@ -93,13 +96,10 @@ def main():
     if find("Import backup?", timeout=4) is None:
         click(name, contains=True)
         # Older document pickers may first select the row rather than opening it.
-        if find("Import backup?", timeout=8) is None:
-            if find("Open", timeout=3) is not None:
-                click("Open")
-            else:
-                click(name, contains=True)
+        if find("Import backup?", timeout=8) is None and find("Open", timeout=3) is not None:
+            click("Open")
         # Android 11's DocumentsUI exposes file activation through an accessibility action
-        # on its RecyclerView row even when raw taps do not activate it in the emulator.
+        # on its RecyclerView row even when a raw tap does not activate it in the emulator.
         if find("Import backup?", timeout=8) is None:
             result = adb(
                 "shell", "am", "instrument", "-w", "-r", "-e", "class",

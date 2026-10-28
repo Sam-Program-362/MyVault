@@ -192,6 +192,10 @@ expect_failure "$ci_dir/check-apk-update.sh" "$tmp/release-old.apk" "$tmp/multi.
 bash "$ci_dir/verify-release-artifact.sh" "$tmp/release-current.apk" "$tmp/release-identity.txt" >/dev/null
 grep -q '^Application ID: com.myvault.app$' "$tmp/release-identity.txt"
 grep -q '^Version code: 5$' "$tmp/release-identity.txt"
+env ANDROID_SIGNING_CONTEXT=disposable-test bash "$ci_dir/verify-release-artifact.sh" \
+  "$tmp/release-current.apk" "$tmp/disposable-identity.txt" > "$tmp/disposable-output"
+grep -q 'Disposable CI test key only' "$tmp/disposable-identity.txt"
+grep -q 'Disposable test APK public identity' "$tmp/disposable-output"
 expect_failure bash "$ci_dir/verify-release-artifact.sh" "$tmp/debug-current.apk" "$tmp/release-identity.txt"
 expect_failure bash "$ci_dir/verify-release-artifact.sh" "$tmp/release-old.apk" "$tmp/release-identity.txt"
 expect_failure bash "$ci_dir/verify-release-artifact.sh" "$tmp/unsigned.apk" "$tmp/release-identity.txt"
