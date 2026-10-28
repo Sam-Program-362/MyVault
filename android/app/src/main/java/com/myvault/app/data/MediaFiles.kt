@@ -120,7 +120,8 @@ class MediaFiles(private val context: Context) {
         }
 
     private fun newFile(mime: String?): File {
-        val extension = mime?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it.lowercase()) } ?: "img"
+        val extension =
+            mime?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it.lowercase()) } ?: "img"
         return File(imageDir, "${UUID.randomUUID()}.$extension")
     }
 

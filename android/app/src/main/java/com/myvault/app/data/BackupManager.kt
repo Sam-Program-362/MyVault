@@ -36,10 +36,12 @@ class BackupManager(
                     it.copy(wallpaperUrl = media.portableReference(it.wallpaperUrl))
                 }
             val payload = original.copy(entries = entries, settings = settingsValue)
+            val text = codec.encodeToString(payload)
+            require(text.length <= MAX_BACKUP_CHARS) { "The backup is larger than the 128 MB import limit." }
             val output =
                 context.contentResolver.openOutputStream(uri)
                     ?: error("Could not write the selected backup file.")
-            output.bufferedWriter(Charsets.UTF_8).use { it.write(codec.encodeToString(payload)) }
+            output.bufferedWriter(Charsets.UTF_8).use { it.write(text) }
             Result(
                 payload.spaces.size,
                 payload.entries.size,

@@ -89,4 +89,25 @@ class BackupManagerTest {
         assertTrue(File(requireNotNull(Uri.parse(imported.coverImagePath).path)).isFile)
         assertNotNull(MediaFiles.displayModel(imported.coverImagePath))
     }
+
+    @Test
+    fun failedDatabaseImportRollsBackSpacesAndTags() = runBlocking {
+        target.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER reject_entry BEFORE INSERT ON entries BEGIN SELECT RAISE(ABORT, 'test failure'); END"
+        )
+        val backup = File(tempDir, "invalid-transaction.json")
+        backup.writeText(
+            """{"spaces":[{"id":"s","name":"New space"}],"tags":[{"id":"t","name":"New tag"}],"entries":[{"id":"e","spaceId":"s","content":"note"}]}"""
+        )
+        var failed = false
+        try {
+            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(backup), false)
+        } catch (_: Exception) {
+            failed = true
+        }
+        assertTrue(failed)
+        assertTrue(target.spaceDao().getAll().isEmpty())
+        assertTrue(target.tagDao().getAll().isEmpty())
+        assertTrue(target.entryDao().getAll().isEmpty())
+    }
 }

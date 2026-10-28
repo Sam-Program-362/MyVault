@@ -36,7 +36,14 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Entry content").performTextInput("# Hello\nA little Markdown")
         compose.onNodeWithContentDescription("Pin entry").performClick()
         compose.onNodeWithContentDescription("Preview").performClick()
+        compose.onNodeWithText("Markdown").assertIsDisplayed()
         compose.onNodeWithContentDescription("Close preview").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Add tag…", substring = true).performClick()
+        compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
+        compose.onNodeWithText("Create & add tag").performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription("Remove Journal tag").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithContentDescription("Close editor").performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithText("A saved note").fetchSemanticsNodes().isNotEmpty()
@@ -48,5 +55,6 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Entry title").assertTextContains("A saved note")
         compose.onNodeWithContentDescription("Entry content").assertTextContains("A little Markdown")
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Remove Journal tag").assertIsDisplayed()
     }
 }
