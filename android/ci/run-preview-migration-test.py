@@ -98,6 +98,17 @@ def main():
                 click("Open")
             else:
                 click(name, contains=True)
+        # Android 11's DocumentsUI exposes file activation through an accessibility action
+        # on its RecyclerView row even when raw taps do not activate it in the emulator.
+        if find("Import backup?", timeout=8) is None:
+            result = adb(
+                "shell", "am", "instrument", "-w", "-r", "-e", "class",
+                "com.myvault.app.ui.DocumentPickerActionTest", "-e", "myvault.pickerPhase", "select",
+                "com.myvault.app.debug.test/androidx.test.runner.AndroidJUnitRunner", check=False,
+            )
+            trace.append(f"picker accessibility action: exit={result.returncode} output={result.stdout[-1200:]}")
+            if result.returncode or "OK (1 test)" not in result.stdout:
+                raise AssertionError("The system picker could not activate the synthetic document.")
     if find("Import backup?", timeout=25) is None:
         raise AssertionError("The preview did not show the backup confirmation.")
     click("Also restore appearance settings", "content-desc")
