@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.myvault.app.data.TagEntity
+import com.myvault.app.data.MediaFiles
 import dev.jeziellago.compose.markdowntext.MarkdownText
 
 /** The host owns persistence, file pickers, tag management and deletion confirmation. */
@@ -307,7 +308,7 @@ fun EntryEditorScreen(
             } else {
                 Box(Modifier.fillMaxWidth().height(132.dp)) {
                     AsyncImage(
-                        model = coverImage,
+                        model = remember(coverImage) { MediaFiles.displayModel(coverImage) },
                         contentDescription = "Entry cover",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,

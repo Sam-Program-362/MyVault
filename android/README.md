@@ -1,10 +1,12 @@
 # Android app and APK builds
 
-## Current project limitation
+## Native app
 
-This checkout contains the Android data layer and a reusable Compose editor, but **does not contain `MainActivity`, `MyVaultApplication`, app navigation, or the `ic_launcher` / `ic_launcher_round` resources** referenced by the manifest. The APK workflow checks for those entry points and resources and will fail with a clear message until the existing Android sources are restored. The new editor also still needs to be integrated and tested on a device. Do not replace the local Room database with a WebView.
+The Android app uses native Compose screens, the existing Room database and DataStore settings; it does not wrap the website. Create a space, add an entry, and use the editor's preview button for the sliding Markdown preview. Changes are autosaved and are flushed before the editor closes. Spaces, tags, pinning, cover images, text/Markdown import, search, theme settings and JSON import/export are available in the app. Android and the web app keep separate data; there is no automatic sync.
 
-`EntryEditorScreen` provides the neutral, full-page editor and right-hand Markdown preview. Its host must update and persist the existing Room entry, flush pending changes before closing, and connect the file, tag, cover and delete flows. The import callback receives the current selection. `Back` closes the preview first.
+Images selected with the Android document picker are copied to private app storage (up to 12 MB per image). Android JSON exports embed readable local covers and wallpaper as data URIs. Imports merge matching spaces and tags by name and add entries without deleting existing entries; appearance settings are restored only if selected. Importing the same backup twice adds the entries twice. Text imports are limited to 4 MB and JSON imports to 128 MB.
+
+Backups from older versions or from the web can contain external URLs, temporary document URIs, or server-relative paths such as `/uploads/...` instead of the image bytes. Those references may not work on Android or another device and will need to be re-selected; the app warns when exporting or importing external image references. Keep the original images and verify a backup before relying on it. The app itself has no internet permission, so remote image URLs are not fetched. Android system backup/device-transfer rules also include the database and private files; whether they run depends on the device's settings. Wallpaper blur requires Android 12 or later.
 
 ## APK workflow
 
@@ -50,11 +52,17 @@ On Windows, use `py` instead of `python3` and a Windows file path. Paste the res
 
 ## Local builds and checks
 
-After restoring the missing Android app sources, install JDK 17 and Android SDK 34, then:
+Install JDK 17 and Android SDK 34, then:
 
 ```sh
 cd android
 ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+```
+
+With an Android emulator or device connected, also run the Room, backup and Compose UI tests:
+
+```sh
+./gradlew --no-daemon :app:connectedDebugAndroidTest
 ```
 
 For a signed local release, set `ANDROID_KEYSTORE_PATH` to the **absolute path** of your keystore and set the three password/alias environment variables above privately, or use an ignored `android/keystore.properties` with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`. Then run:

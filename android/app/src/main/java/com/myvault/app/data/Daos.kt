@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -17,7 +18,7 @@ interface SpaceDao {
     @Query("SELECT * FROM spaces")
     suspend fun getAll(): List<SpaceEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(space: SpaceEntity)
 
     @Update
@@ -41,7 +42,7 @@ interface TagDao {
     @Query("SELECT * FROM tags WHERE lower(name) = lower(:name) LIMIT 1")
     suspend fun findByName(name: String): TagEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(tag: TagEntity)
 
     @Update
@@ -63,11 +64,11 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE id = :id")
     suspend fun getById(id: String): EntryEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(entry: EntryEntity)
 
     @Update
-    suspend fun update(entry: EntryEntity)
+    suspend fun update(entry: EntryEntity): Int
 
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun delete(id: String)
@@ -80,6 +81,12 @@ interface EntryDao {
 
     @Query("SELECT * FROM entry_tags")
     suspend fun allTagRefs(): List<EntryTagCrossRef>
+
+    @Query("SELECT * FROM entry_tags")
+    fun observeAllTagRefs(): Flow<List<EntryTagCrossRef>>
+
+    @Query("DELETE FROM entry_tags WHERE entryId = :entryId AND tagId = :tagId")
+    suspend fun removeTagRef(entryId: String, tagId: String)
 
     @Query(
         "SELECT tags.* FROM tags INNER JOIN entry_tags ON tags.id = entry_tags.tagId " +
