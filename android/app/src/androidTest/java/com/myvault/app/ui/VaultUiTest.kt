@@ -1,7 +1,10 @@
 package com.myvault.app.ui
 
+import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -10,8 +13,15 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.printToString
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.myvault.app.MainActivity
+import com.myvault.app.MyVaultApplication
+import java.io.File
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,8 +50,20 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Entry content").performTextInput("# Hello\nA little Markdown")
         compose.onNodeWithContentDescription("Pin entry").performClick()
         compose.onNodeWithContentDescription("Preview").performClick()
-        compose.onNodeWithText("Markdown").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Close preview").assertIsDisplayed().performClick()
+        try {
+            compose.waitUntil(10_000) { compose.onNodeWithContentDescription("Close preview").isDisplayed() }
+            compose.onNodeWithText("Markdown").assertIsDisplayed()
+            capturePreviewForDiagnostics()
+        } catch (failure: Throwable) {
+            capturePreviewForDiagnostics()
+            val header = compose.onAllNodesWithText("Markdown", useUnmergedTree = true).printToString()
+            val close =
+                compose
+                    .onAllNodesWithContentDescription("Close preview", useUnmergedTree = true)
+                    .printToString()
+            throw AssertionError("Preview was not visible.\n$header\n$close", failure)
+        }
+        compose.onNodeWithContentDescription("Close preview").performClick()
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Find").performTextInput("little")
         compose.onNodeWithText("Replace with").performTextInput("small")
@@ -66,5 +88,36 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Entry content").assertTextContains("A small Markdown")
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
         compose.onNodeWithContentDescription("Remove Journal tag").assertIsDisplayed()
+    }
+
+    @Test
+    fun appearanceSettingsPersistAcrossNavigation() {
+        val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
+        val original = runBlocking { app.settings.settingsFlow.first() }
+        try {
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("Settings").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("Settings").performClick()
+            compose.onNodeWithText("Dark").performClick()
+            compose.waitUntil(15_000) { runBlocking { app.settings.settingsFlow.first().mode == "dark" } }
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithContentDescription("Settings").performClick()
+            compose.onNodeWithText("Dark").assertIsSelected()
+        } finally {
+            runBlocking { app.settings.update { original } }
+        }
+    }
+
+    private fun capturePreviewForDiagnostics() {
+        runCatching {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            val screenshot = instrumentation.uiAutomation.takeScreenshot() ?: return
+            val thumbnail =
+                Bitmap.createScaledBitmap(screenshot, 360, screenshot.height * 360 / screenshot.width, true)
+            File(instrumentation.targetContext.cacheDir, "myvault-preview-test.jpg").outputStream().use {
+                thumbnail.compress(Bitmap.CompressFormat.JPEG, 45, it)
+            }
+        }
     }
 }

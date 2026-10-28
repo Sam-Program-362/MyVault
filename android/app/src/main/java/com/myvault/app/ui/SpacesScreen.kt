@@ -52,8 +52,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -83,7 +85,14 @@ fun SpacesScreen(
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text(appName.ifBlank { "MyVault" }, fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        appName.ifBlank { "MyVault" },
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 actions = { IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Settings") } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
@@ -304,7 +313,11 @@ fun SpaceDialog(
                     listOf("📁", "📚", "💡", "📝", "🏠", "🌱", "⭐", "🎨").forEach { choice ->
                         IconButton(
                             onClick = { icon = choice },
-                            modifier = Modifier.semantics { contentDescription = "Space icon $choice" },
+                            modifier =
+                                Modifier.semantics {
+                                    contentDescription = "Space icon $choice"
+                                    stateDescription = if (icon == choice) "Selected" else "Not selected"
+                                },
                         ) {
                             Surface(
                                 shape = CircleShape,
@@ -338,7 +351,11 @@ fun ColorChoices(selected: String, onChoose: (String) -> Unit) {
         paletteColors.forEach { color ->
             IconButton(
                 onClick = { onChoose(color) },
-                modifier = Modifier.semantics { contentDescription = "Color $color" },
+                modifier =
+                    Modifier.semantics {
+                        contentDescription = "Color $color"
+                        stateDescription = if (selected.equals(color, true)) "Selected" else "Not selected"
+                    },
             ) {
                 Surface(shape = CircleShape, color = parseColor(color), modifier = Modifier.size(30.dp)) {
                     if (selected.equals(color, true))
@@ -346,7 +363,9 @@ fun ColorChoices(selected: String, onChoose: (String) -> Unit) {
                             Icon(
                                 Icons.Default.Check,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint =
+                                    if (parseColor(color).luminance() > 0.179f) Color(0xFF171717)
+                                    else Color.White,
                                 modifier = Modifier.size(17.dp),
                             )
                         }

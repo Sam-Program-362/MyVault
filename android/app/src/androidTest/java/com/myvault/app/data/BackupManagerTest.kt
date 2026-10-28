@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.myvault.app.MyVaultApplication
 import java.io.File
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -109,5 +110,34 @@ class BackupManagerTest {
         assertTrue(target.spaceDao().getAll().isEmpty())
         assertTrue(target.tagDao().getAll().isEmpty())
         assertTrue(target.entryDao().getAll().isEmpty())
+    }
+
+    @Test
+    fun externalImagePathsArePreservedAndReported() = runBlocking {
+        source.spaceDao().upsert(SpaceEntity(id = "s", name = "Web"))
+        source.entryDao().upsert(EntryEntity(id = "e", spaceId = "s", coverImagePath = "/uploads/cover.png"))
+        val file = File(tempDir, "external.json")
+        val exported = BackupManager(app, source, app.settings, app.media).exportTo(Uri.fromFile(file))
+        assertEquals(1, exported.externalImages)
+        val imported =
+            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), false)
+        assertEquals(1, imported.externalImages)
+        assertEquals("/uploads/cover.png", target.entryDao().getAll().single().coverImagePath)
+    }
+
+    @Test
+    fun settingsAreOnlyRestoredWhenRequested() = runBlocking {
+        val original = app.settings.settingsFlow.first()
+        val file = File(tempDir, "settings.json")
+        file.writeText("""{"settings":{"appName":"Imported vault","mode":"dark"}}""")
+        try {
+            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), false)
+            assertEquals(original.appName, app.settings.settingsFlow.first().appName)
+            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), true)
+            assertEquals("Imported vault", app.settings.settingsFlow.first().appName)
+            assertEquals("dark", app.settings.settingsFlow.first().mode)
+        } finally {
+            app.settings.update { original }
+        }
     }
 }

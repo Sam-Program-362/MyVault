@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -96,7 +98,12 @@ fun TagPickerDialog(
                     Text("Create “${query.trim()}”", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     ColorChoices(color) { color = it }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = reusable, onCheckedChange = { reusable = it })
+                        Checkbox(
+                            checked = reusable,
+                            onCheckedChange = { reusable = it },
+                            modifier =
+                                Modifier.semantics { contentDescription = "Save tag for future entries" },
+                        )
                         Text("Save for future entries", fontSize = 13.sp)
                     }
                     TextButton(onClick = { onCreate(query, color, reusable) }) { Text("Create & add tag") }

@@ -22,7 +22,8 @@ import com.myvault.app.data.AppSettings
 
 fun parseColor(value: String, fallback: Color = Color(0xFF6366F1)): Color = runCatching {
     Color(android.graphics.Color.parseColor(value))
-}.getOrDefault(fallback)
+}
+    .getOrDefault(fallback)
 
 @Composable
 fun VaultTheme(settings: AppSettings, content: @Composable (dark: Boolean) -> Unit) {
@@ -33,7 +34,7 @@ fun VaultTheme(settings: AppSettings, content: @Composable (dark: Boolean) -> Un
             else -> isSystemInDarkTheme()
         }
     val accent = parseColor(settings.accent)
-    val onAccent = if (accent.luminance() > 0.55f) Color(0xFF171717) else Color.White
+    val onAccent = if (accent.luminance() > 0.179f) Color(0xFF171717) else Color.White
     val scheme =
         if (dark)
             darkColorScheme(

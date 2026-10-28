@@ -132,6 +132,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun createEntry(spaceId: String) =
         action("Couldn’t create entry.") {
+            if (currentWriter.value != null) return@action
             val entry = EntryEntity(id = UUID.randomUUID().toString(), spaceId = spaceId, title = "")
             entriesDao.upsert(entry)
             startEditing(entry)
@@ -139,6 +140,7 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openEntry(id: String) =
         action("Couldn’t open entry.") {
+            if (currentWriter.value != null) return@action
             val entry = entriesDao.getById(id) ?: error("This entry no longer exists.")
             startEditing(entry)
         }

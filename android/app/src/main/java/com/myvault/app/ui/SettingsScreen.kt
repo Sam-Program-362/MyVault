@@ -54,6 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -335,12 +337,14 @@ private fun AppearanceSettings(
             Text("Show wallpaper", modifier = Modifier.weight(1f))
             Switch(
                 checked = settings.wallpaperEnabled,
+                modifier = Modifier.semantics { contentDescription = "Show wallpaper" },
                 onCheckedChange = { enabled -> onUpdate { it.copy(wallpaperEnabled = enabled) } },
             )
         }
         Text("Opacity ${opacity.roundToInt()}%", fontSize = 13.sp)
         Slider(
             value = opacity,
+            modifier = Modifier.semantics { contentDescription = "Wallpaper opacity" },
             onValueChange = { opacity = it },
             valueRange = 0f..100f,
             onValueChangeFinished = {
@@ -351,6 +355,7 @@ private fun AppearanceSettings(
         Text("Blur ${blur.roundToInt()} px", fontSize = 13.sp)
         Slider(
             value = blur,
+            modifier = Modifier.semantics { contentDescription = "Wallpaper blur" },
             onValueChange = { blur = it },
             valueRange = 0f..20f,
             onValueChangeFinished = {
@@ -422,7 +427,11 @@ fun TagCreateDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -
                 Spacer(Modifier.height(8.dp))
                 ColorChoices(color) { color = it }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = reusable, onCheckedChange = { reusable = it })
+                    Checkbox(
+                        checked = reusable,
+                        onCheckedChange = { reusable = it },
+                        modifier = Modifier.semantics { contentDescription = "Save tag for future entries" },
+                    )
                     Text("Save for future entries", fontSize = 13.sp)
                 }
             }

@@ -4,6 +4,14 @@ set -uo pipefail
 log_file="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/myvault-device-tests.log"
 ./gradlew --no-daemon --console=plain :app:connectedDebugAndroidTest 2>&1 | tee "$log_file"
 status=${PIPESTATUS[0]}
+# Optional, synthetic screenshot for inspecting this PR's emulator rendering.
+if [[ "${MYVAULT_CAPTURE_UI:-false}" == true ]]; then
+  screenshot="${log_file}.jpg"
+  if adb exec-out run-as com.myvault.app.debug cat cache/myvault-preview-test.jpg > "$screenshot" 2>/dev/null && [[ -s "$screenshot" ]]; then
+    encoded=$(base64 -w 0 "$screenshot")
+    if ((${#encoded} < 45000)); then printf '::notice title=Preview screenshot::%s\n' "$encoded"; fi
+  fi
+fi
 if ((status != 0)); then
   adb logcat -d -s AndroidRuntime:E ActivityManager:E > "${log_file}.logcat" 2>/dev/null || true
 fi

@@ -61,6 +61,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
@@ -164,6 +165,7 @@ fun EntryEditorScreen(
     var editorValue by remember(entryId) { mutableStateOf(TextFieldValue(content)) }
     var editorTitle by remember(entryId) { mutableStateOf(title) }
     val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     val matches =
         remember(editorValue.text, findQuery, wholeWord) {
             editorMatches(editorValue.text, findQuery, wholeWord)
@@ -186,6 +188,11 @@ fun EntryEditorScreen(
         val changed = next.text != editorValue.text
         editorValue = next
         if (changed) onContentChange(next.text)
+    }
+
+    fun togglePreview() {
+        if (!previewOpen) focusManager.clearFocus()
+        previewOpen = !previewOpen
     }
 
     fun findNext() {
@@ -246,7 +253,7 @@ fun EntryEditorScreen(
                         palette,
                         previewOpen,
                         onWrite = { previewOpen = false },
-                        onPreview = { previewOpen = !previewOpen },
+                        onPreview = ::togglePreview,
                         onImport = { onImport(editorValue.selection) },
                         onDelete = onDelete,
                     )
@@ -280,7 +287,7 @@ fun EntryEditorScreen(
                         palette,
                         previewOpen,
                         onWrite = { previewOpen = false },
-                        onPreview = { previewOpen = !previewOpen },
+                        onPreview = ::togglePreview,
                         onImport = { onImport(editorValue.selection) },
                         onDelete = onDelete,
                     )
@@ -688,6 +695,7 @@ private fun FindBar(
             Checkbox(
                 checked = wholeWord,
                 onCheckedChange = onWholeWordChange,
+                modifier = Modifier.semantics { contentDescription = "Whole word" },
                 colors =
                     CheckboxDefaults.colors(checkedColor = accent, uncheckedColor = palette.muted),
             )

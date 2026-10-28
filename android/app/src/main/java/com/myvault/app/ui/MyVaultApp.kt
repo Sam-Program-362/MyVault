@@ -37,6 +37,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -353,7 +355,14 @@ fun MyVaultApp(vault: VaultViewModel) {
                             "Existing entries will not be deleted. Entries from the file will be added; matching spaces and tags will be reused."
                         )
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = applySettings, onCheckedChange = { applySettings = it })
+                            Checkbox(
+                                checked = applySettings,
+                                onCheckedChange = { applySettings = it },
+                                modifier =
+                                    Modifier.semantics {
+                                        contentDescription = "Also restore appearance settings"
+                                    },
+                            )
                             Text("Also restore appearance settings")
                         }
                     }
