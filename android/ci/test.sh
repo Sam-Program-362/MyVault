@@ -121,6 +121,17 @@ XML
 )
 printf 'Gradle unit-test diagnostics passed (Gradle mocked).\n'
 
+# android-emulator-runner invokes every script input line separately using sh -c.
+workflow="$ci_dir/../../.github/workflows/android-apk.yml"
+commands=$(awk '/^          script: \|/ {inside=1; next} inside && /^      - name:/ {exit} inside && /^            / {sub(/^            /, ""); print}' "$workflow")
+[[ -n "$commands" ]] || { echo 'Emulator workflow commands were not found.' >&2; exit 1; }
+while IFS= read -r line; do
+  # shellcheck disable=SC2016 # Match the literal GitHub expression before sh parses it.
+  line=${line//'${{ matrix.api }}'/30}
+  sh -n -c "$line" || { printf 'Incomplete emulator command: %s\n' "$line" >&2; exit 1; }
+done <<< "$commands"
+printf 'Emulator workflow commands are independently valid shell.\n'
+
 # The offline runner must never alter a phone or an emulator without explicit opt-in.
 # A fake adb exercises its guards, diagnostics, and two-phase control flow without a device.
 (

@@ -44,5 +44,6 @@ class EntryTextTest {
         assertEquals(prefix, preview)
         assertTrue(preview.length <= 16_384)
         assertEquals(2, entryLineCount(content))
+        assertEquals("content", listTextPreview(" ".repeat(20_000) + "content"))
     }
 }

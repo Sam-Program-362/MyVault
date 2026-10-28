@@ -30,10 +30,12 @@ private val markdownEmphasis = Regex("(?<!\\w)([*_])([^\\n*_]+)\\1(?!\\w)")
 internal fun listTextPreview(markdown: String): String {
     // Text is displayed in at most eight lines. Limiting its input avoids processing and
     // measuring an entire large entry for every visible row; line counts use the raw content.
-    var end = minOf(markdown.length, PREVIEW_CHARACTER_LIMIT)
-    if (end < markdown.length && end > 0 && Character.isHighSurrogate(markdown[end - 1])) end--
+    var start = 0
+    while (start < markdown.length && markdown[start].isWhitespace()) start++
+    var end = minOf(markdown.length, start + PREVIEW_CHARACTER_LIMIT)
+    if (end < markdown.length && end > start && Character.isHighSurrogate(markdown[end - 1])) end--
     return markdown
-        .substring(0, end)
+        .substring(start, end)
         .replace(markdownImage, "")
         .replace(markdownLink, "\$1")
         .replace(markdownHeading, "")
