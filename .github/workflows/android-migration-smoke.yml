@@ -6,6 +6,7 @@ on:
       - '.github/workflows/android-migration-smoke.yml'
 permissions:
   contents: read
+  actions: read
 jobs:
   migration:
     name: API 30 migration diagnostics
@@ -25,16 +26,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
         with:
           cache-provider: basic
-      - name: Build synthetic test packages
+      - name: Build synthetic debug and instrumentation packages
         working-directory: android
-        run: bash ci/run-gradle-check.sh :app:assembleDebug :app:assembleDebugAndroidTest :app:assemblePreview
+        run: bash ci/run-gradle-check.sh :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Download the previously verified unsigned preview fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 40694046871 --repo "$GITHUB_REPOSITORY" --name myvault-preview-unsigned-apk --dir "$RUNNER_TEMP/preview-fixture"
       - name: Sign preview with disposable test key
         env:
           FIXTURE_PASSWORD: temporary-test-password
         run: |
           keytool -genkeypair -keystore "$RUNNER_TEMP/fixture.p12" -storetype PKCS12 -alias fixture -keyalg RSA -keysize 2048 -validity 2 -dname 'CN=MyVault temporary smoke test' -storepass:env FIXTURE_PASSWORD -keypass:env FIXTURE_PASSWORD
           tools="$ANDROID_HOME/build-tools/34.0.0"
-          "$tools/zipalign" -f -p 4 android/app/build/outputs/apk/preview/app-preview-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$tools/zipalign" -f -p 4 "$RUNNER_TEMP/preview-fixture/app-preview-unsigned.apk" "$RUNNER_TEMP/aligned.apk"
           "$tools/apksigner" sign --ks "$RUNNER_TEMP/fixture.p12" --ks-key-alias fixture --ks-pass env:FIXTURE_PASSWORD --key-pass env:FIXTURE_PASSWORD --out "$RUNNER_TEMP/myvault-smoke-preview.apk" "$RUNNER_TEMP/aligned.apk"
           rm -f "$RUNNER_TEMP/fixture.p12"
       - name: Enable emulator acceleration

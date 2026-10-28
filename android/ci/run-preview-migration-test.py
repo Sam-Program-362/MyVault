@@ -16,11 +16,12 @@ if os.environ.get("MYVAULT_DISPOSABLE_EMULATOR") != "1" or not adb("get-serialno
     raise SystemExit("This migration test requires an explicitly authorized disposable emulator.")
 
 last_xml = ""
+last_root = None
 trace = []
 
 
 def hierarchy():
-    global last_xml
+    global last_xml, last_root
     result = adb("shell", "uiautomator", "dump", "--compressed", "/sdcard/myvault-ci-window.xml", check=False)
     if result.returncode:
         return None
@@ -29,8 +30,10 @@ def hierarchy():
         return None
     last_xml = result.stdout
     try:
-        return ET.fromstring(last_xml)
+        last_root = ET.fromstring(last_xml)
+        return last_root
     except ET.ParseError:
+        last_root = None
         return None
 
 
@@ -52,6 +55,15 @@ def click(label, attribute="text", contains=False, timeout=25):
     if node is None:
         raise AssertionError(f"Could not find {attribute}={label!r}")
     trace.append(f"tap {attribute}={label!r}: package={node.get('package')} text={node.get('text')!r} desc={node.get('content-desc')!r} enabled={node.get('enabled')} clickable={node.get('clickable')} bounds={node.get('bounds')}")
+    if node.get("package", "").endswith("documentsui") and label == "myvault-ci" and last_root is not None:
+        parents = {child: parent for parent in last_root.iter() for child in parent}
+        ancestor = parents.get(node)
+        while ancestor is not None and ancestor.tag == "node":
+            trace.append(f"ancestor class={ancestor.get('class')} clickable={ancestor.get('clickable')} enabled={ancestor.get('enabled')} bounds={ancestor.get('bounds')}")
+            if ancestor.get("clickable") == "true" and ancestor.get("enabled") == "true":
+                node = ancestor
+                break
+            ancestor = parents.get(ancestor)
     bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
     if not bounds:
         raise AssertionError(f"Invalid bounds for {label!r}")
