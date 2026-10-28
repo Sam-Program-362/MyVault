@@ -17,7 +17,8 @@ class DocumentPickerActionTest {
         if (InstrumentationRegistry.getArguments().getString("myvault.pickerPhase") != "select")
             return
         val automation = instrumentation.uiAutomation
-        val deadline = SystemClock.uptimeMillis() + 8_000
+        val deadline = SystemClock.uptimeMillis() + 12_000
+        var rowActionSent = false
         var diagnostic = "No synthetic document row was found"
         while (SystemClock.uptimeMillis() < deadline) {
             val root = automation.rootInActiveWindow
@@ -40,28 +41,18 @@ class DocumentPickerActionTest {
                     chain.joinToString(" -> ") { candidate ->
                         "${candidate.className}(clickable=${candidate.isClickable}, actions=${candidate.actionList.map { it.id }})"
                     }
-                // Try an advertised accessibility click on the file or its row. Some
-                // DocumentsUI builds add it to the row after the service connects.
+                // The RecyclerView's item delegate routes a row ACTION_CLICK to
+                // openItem when nothing is selected. Clicking a child instead can
+                // merely toggle selection and report success without opening it.
                 val row = chain.lastOrNull()
-                val candidates =
-                    chain
-                        .filter { candidate ->
-                            candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
-                        }
-                        .toMutableList()
-                if (row != null && row !in candidates) candidates.add(row)
-                for (candidate in candidates) {
-                    if (
-                        candidate.isEnabled &&
-                            candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    )
-                        return
+                if (!rowActionSent && row != null && row.isEnabled) {
+                    rowActionSent = row.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 }
             }
             SystemClock.sleep(250)
         }
         fail(
-            "The system picker did not activate the synthetic document. Accessibility chain: $diagnostic"
+            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent). Accessibility chain: $diagnostic"
         )
     }
 }

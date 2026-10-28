@@ -142,4 +142,14 @@ adb pull /sdcard/myvault-ci-motion.mp4 "$output/after-interactions.mp4" >/dev/nu
 if command -v ffprobe >/dev/null 2>&1; then
   ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1 "$output/after-interactions.mp4" | tee "$output/recording-duration.txt"
 fi
+if command -v ffmpeg >/dev/null 2>&1; then
+  hashes="$output/recording-frame-hashes.txt"
+  ffmpeg -v error -y -i "$output/after-interactions.mp4" -vf 'fps=2,scale=32:32' -f framemd5 "$hashes" || exit 1
+  changes=$(awk -F, '!/^#/ {gsub(/[[:space:]]/, "", $6); print $6}' "$hashes" | sort -u | wc -l)
+  if ((changes < 4)); then
+    echo '::error::The real-time interaction recording did not contain enough distinct frames.' >&2
+    exit 1
+  fi
+  printf '::notice title=Recorded Android interactions::The real emulator recording contains %s distinct sampled frames.\n' "$changes"
+fi
 echo 'Before/after actual-activity screenshots, window measurements and a real-time interaction recording are ready.'

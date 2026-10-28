@@ -79,6 +79,11 @@ run_instrumentation verify com.myvault.app.ui.OfflineRestartTest -e myvault.rest
 checked 'Force-stop after choosing list layout' adb shell am force-stop "$app_id"
 checked 'Restart with the saved list layout' adb shell am start -n "$app_id/com.myvault.app.MainActivity"
 run_instrumentation verify-layout com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase verifyLayout
+if [[ -n ${MYVAULT_PREVIOUS_APK:-} ]]; then
+  printf '::notice title=Offline upgrade and restart::The previous native APK wrote a vault in airplane mode; an in-place update and force-stop preserved its entries, tags, settings, images and the new list preference.\n'
+else
+  printf '::notice title=Offline reinstall and restart::The debug APK wrote a vault in airplane mode; an in-place reinstall and force-stop preserved its data.\n'
+fi
 if [[ -n ${MYVAULT_CONFLICT_APK:-} ]]; then
   # The candidate has the same package ID but a different disposable certificate.
   # The emulator must reject it without uninstalling or clearing the existing fixture.
@@ -107,9 +112,4 @@ if [[ -n ${MYVAULT_PREVIEW_APK:-} ]]; then
   checked 'Restart the retained debug app' adb shell am start -n "$app_id/com.myvault.app.MainActivity"
   run_instrumentation preview-side-by-side com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase verifyLayout
   printf '::notice title=Side-by-side preview::The distinct preview package installed and launched without replacing the existing debug vault.\n'
-fi
-if [[ -n ${MYVAULT_PREVIOUS_APK:-} ]]; then
-  printf '::notice title=Offline upgrade and restart::The previous native APK wrote a vault in airplane mode; an in-place update and force-stop preserved its entries, tags, settings, images and the new list preference.\n'
-else
-  printf '::notice title=Offline reinstall and restart::The debug APK wrote a vault in airplane mode; an in-place reinstall and force-stop preserved its data.\n'
 fi

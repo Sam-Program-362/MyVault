@@ -91,24 +91,30 @@ def main():
     if api <= 30 or find(name, contains=True, timeout=8) is None:
         click("Show roots", "content-desc")
         click("Downloads")
-    # On some pickers the Downloads subtitle is part of the document row, so the prior tap
-    # may already have selected the document and opened the app's confirmation dialog.
+    def activate_accessibly():
+        result = adb(
+            "shell", "am", "instrument", "-w", "-r", "-e", "class",
+            "com.myvault.app.ui.DocumentPickerActionTest", "-e", "myvault.pickerPhase", "select",
+            "com.myvault.app.debug.test/androidx.test.runner.AndroidJUnitRunner", check=False,
+        )
+        trace.append(f"picker accessibility action: exit={result.returncode} output={result.stdout[-1200:]}")
+        if result.returncode or "OK (1 test)" not in result.stdout:
+            raise AssertionError("The system picker could not activate the synthetic document.")
+
+    # On Android 11 a touch can enter selection mode. In that state DocumentsUI
+    # routes a subsequent accessibility click to selection instead of opening the
+    # document. Activate the unselected RecyclerView row directly, without a tap.
     if find("Import backup?", timeout=4) is None:
-        click(name, contains=True)
-        # Older document pickers may first select the row rather than opening it.
-        if find("Import backup?", timeout=8) is None and find("Open", timeout=3) is not None:
-            click("Open")
-        # Android 11's DocumentsUI exposes file activation through an accessibility action
-        # on its RecyclerView row even when a raw tap does not activate it in the emulator.
-        if find("Import backup?", timeout=8) is None:
-            result = adb(
-                "shell", "am", "instrument", "-w", "-r", "-e", "class",
-                "com.myvault.app.ui.DocumentPickerActionTest", "-e", "myvault.pickerPhase", "select",
-                "com.myvault.app.debug.test/androidx.test.runner.AndroidJUnitRunner", check=False,
-            )
-            trace.append(f"picker accessibility action: exit={result.returncode} output={result.stdout[-1200:]}")
-            if result.returncode or "OK (1 test)" not in result.stdout:
-                raise AssertionError("The system picker could not activate the synthetic document.")
+        if api <= 30:
+            if find(name, contains=True, timeout=20) is None:
+                raise AssertionError("The synthetic backup is not visible in Downloads.")
+            activate_accessibly()
+        else:
+            click(name, contains=True)
+            if find("Import backup?", timeout=8) is None and find("Open", timeout=3) is not None:
+                click("Open")
+            if find("Import backup?", timeout=8) is None:
+                activate_accessibly()
     if find("Import backup?", timeout=25) is None:
         raise AssertionError("The preview did not show the backup confirmation.")
     click("Also restore appearance settings", "content-desc")
