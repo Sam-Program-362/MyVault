@@ -41,6 +41,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.myvault.app.data.MediaFiles
+import com.myvault.app.ui.editor.EditorContentUpdate
 import com.myvault.app.ui.editor.EntryEditorScreen
 
 @Composable
@@ -63,7 +64,27 @@ fun MyVaultApp(vault: VaultViewModel) {
     var selectionStart by rememberSaveable { mutableIntStateOf(0) }
     var selectionEnd by rememberSaveable { mutableIntStateOf(0) }
     var importedText by remember { mutableStateOf<VaultViewModel.ImportedText?>(null) }
+    var externalUpdate by remember { mutableStateOf<EditorContentUpdate?>(null) }
+    var updateSequence by remember { mutableStateOf(0L) }
     val snackbar = remember { SnackbarHostState() }
+
+    fun applyImportedText(content: String, title: String?, cursor: Int) {
+        val current = vault.currentDraft() ?: return
+        if (current.id != importTarget) return
+        val newTitle = title ?: current.title
+        vault.updateDraft { it.copy(title = newTitle, content = content) }
+        updateSequence += 1
+        externalUpdate = EditorContentUpdate(current.id, updateSequence, newTitle, content, cursor)
+    }
+
+    fun closeEditor() {
+        externalUpdate = null
+        importTarget = null
+        importedText = null
+        showTags = false
+        confirmDelete = false
+        vault.closeEditor()
+    }
 
     LaunchedEffect(vault) {
         vault.messages.collect { snackbar.showSnackbar(it, duration = SnackbarDuration.Long) }
@@ -91,18 +112,14 @@ fun MyVaultApp(vault: VaultViewModel) {
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null)
                 vault.readText(uri) { text ->
-                    val current = vault.editor.value?.value
+                    val current = vault.currentDraft()
                     if (current != null && current.id == importTarget) {
                         if (current.content.isBlank()) {
-                            vault.updateDraft { entry ->
-                                entry.copy(
-                                    title =
-                                        if (entry.title.isBlank() || entry.title == "Untitled entry")
-                                            text.name.substringBeforeLast('.', text.name)
-                                        else entry.title,
-                                    content = text.content,
-                                )
-                            }
+                            val title =
+                                if (current.title.isBlank() || current.title == "Untitled entry")
+                                    text.name.substringBeforeLast('.', text.name)
+                                else current.title
+                            applyImportedText(text.content, title, text.content.length)
                         } else importedText = text
                     }
                 }
@@ -133,7 +150,7 @@ fun MyVaultApp(vault: VaultViewModel) {
                 val selectedTags = tags.filter { tag ->
                     refs.any { it.entryId == entry.id && it.tagId == tag.id }
                 }
-                BackHandler(enabled = !busy) { vault.closeEditor() }
+                BackHandler(enabled = !busy) { closeEditor() }
                 EntryEditorScreen(
                     entryId = entry.id,
                     title = entry.title,
@@ -143,9 +160,10 @@ fun MyVaultApp(vault: VaultViewModel) {
                     tags = selectedTags,
                     darkTheme = dark,
                     saveState = draftState.saveState,
+                    externalUpdate = externalUpdate,
                     onTitleChange = { value -> vault.updateDraft { it.copy(title = value) } },
                     onContentChange = { value -> vault.updateDraft { it.copy(content = value) } },
-                    onClose = vault::closeEditor,
+                    onClose = { closeEditor() },
                     onTogglePin = { vault.updateDraft { it.copy(pinned = !it.pinned) } },
                     onChooseCover = { coverPicker.launch(arrayOf("image/*")) },
                     onRemoveCover = { vault.updateDraft { it.copy(coverImagePath = null) } },
@@ -186,6 +204,9 @@ fun MyVaultApp(vault: VaultViewModel) {
                             TextButton(
                                 onClick = {
                                     confirmDelete = false
+                                    externalUpdate = null
+                                    importedText = null
+                                    importTarget = null
                                     vault.deleteEditor()
                                 }
                             ) {
@@ -209,7 +230,7 @@ fun MyVaultApp(vault: VaultViewModel) {
                             Row {
                                 TextButton(
                                     onClick = {
-                                        vault.updateDraft { it.copy(content = text.content) }
+                                        applyImportedText(text.content, null, text.content.length)
                                         importedText = null
                                     }
                                 ) {
@@ -217,13 +238,12 @@ fun MyVaultApp(vault: VaultViewModel) {
                                 }
                                 TextButton(
                                     onClick = {
-                                        vault.updateDraft { current ->
+                                        val current = vault.currentDraft()
+                                        if (current != null && current.id == importTarget) {
                                             val start = selectionStart.coerceIn(0, current.content.length)
                                             val end = selectionEnd.coerceIn(start, current.content.length)
-                                            current.copy(
-                                                content =
-                                                    current.content.replaceRange(start, end, text.content)
-                                            )
+                                            val next = current.content.replaceRange(start, end, text.content)
+                                            applyImportedText(next, null, start + text.content.length)
                                         }
                                         importedText = null
                                     }
@@ -311,6 +331,8 @@ fun MyVaultApp(vault: VaultViewModel) {
                 }
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
             if (busy) {
+                // Don't let system Back finish the activity while a save or import is in progress.
+                BackHandler {}
                 Box(
                     Modifier.fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.15f))

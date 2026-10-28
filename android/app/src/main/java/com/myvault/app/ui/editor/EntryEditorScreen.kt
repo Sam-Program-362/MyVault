@@ -83,6 +83,15 @@ enum class EditorSaveState {
     Error,
 }
 
+/** Explicit host-originated change (for example, a text file import). */
+data class EditorContentUpdate(
+    val entryId: String,
+    val sequence: Long,
+    val title: String,
+    val content: String,
+    val cursor: Int,
+)
+
 private data class EditorPalette(
     val background: Color,
     val foreground: Color,
@@ -119,7 +128,8 @@ private val darkEditorPalette =
  *
  * Supply the current entry and update it immediately in the change callbacks. The host must persist
  * changes (including flushing a pending save before [onClose]), and provide the existing
- * cover/import/tag pickers and delete confirmation through the remaining callbacks.
+ * cover/import/tag pickers and delete confirmation through the remaining callbacks. Host-originated
+ * text changes must be supplied through [externalUpdate] so stale persistence echoes cannot erase typing.
  */
 @Composable
 fun EntryEditorScreen(
@@ -143,6 +153,7 @@ fun EntryEditorScreen(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     accent: Color = MaterialTheme.colorScheme.primary,
+    externalUpdate: EditorContentUpdate? = null,
 ) {
     val palette = if (darkTheme) darkEditorPalette else lightEditorPalette
     var previewOpen by rememberSaveable(entryId) { mutableStateOf(false) }
@@ -151,25 +162,30 @@ fun EntryEditorScreen(
     var replaceQuery by rememberSaveable(entryId) { mutableStateOf("") }
     var wholeWord by rememberSaveable(entryId) { mutableStateOf(false) }
     var editorValue by remember(entryId) { mutableStateOf(TextFieldValue(content)) }
+    var editorTitle by remember(entryId) { mutableStateOf(title) }
     val focusRequester = remember { FocusRequester() }
     val matches =
-        remember(content, findQuery, wholeWord) {
-            editorMatches(content, findQuery, wholeWord)
+        remember(editorValue.text, findQuery, wholeWord) {
+            editorMatches(editorValue.text, findQuery, wholeWord)
         }
 
-    // File imports or changes from the host can update the body without discarding a selection
-    // while the user is typing normally.
-    LaunchedEffect(entryId, content) {
-        if (editorValue.text != content) {
-            val caret = editorValue.selection.end.coerceIn(0, content.length)
-            editorValue = TextFieldValue(content, TextRange(caret))
+    // Room/StateFlow updates can arrive after the user has typed another character. Treat those
+    // as acknowledgements, not as fresh input. Only an explicit host update replaces local text.
+    LaunchedEffect(entryId, externalUpdate?.sequence) {
+        if (externalUpdate != null && externalUpdate.entryId == entryId) {
+            editorTitle = externalUpdate.title
+            editorValue = TextFieldValue(
+                externalUpdate.content,
+                TextRange(externalUpdate.cursor.coerceIn(0, externalUpdate.content.length)),
+            )
         }
     }
     BackHandler(enabled = previewOpen) { previewOpen = false }
 
     fun updateBody(next: TextFieldValue) {
+        val changed = next.text != editorValue.text
         editorValue = next
-        if (next.text != content) onContentChange(next.text)
+        if (changed) onContentChange(next.text)
     }
 
     fun findNext() {
@@ -286,7 +302,7 @@ fun EntryEditorScreen(
                     onFindNext = ::findNext,
                     onReplace = ::replaceCurrent,
                     onReplaceAll = {
-                        val next = replaceEditorMatches(content, findQuery, replaceQuery, wholeWord)
+                        val next = replaceEditorMatches(editorValue.text, findQuery, replaceQuery, wholeWord)
                         updateBody(TextFieldValue(next, TextRange(next.length)))
                     },
                 )
@@ -328,8 +344,13 @@ fun EntryEditorScreen(
 
             Column(Modifier.weight(1f).fillMaxWidth()) {
                 BasicTextField(
-                    value = title,
-                    onValueChange = onTitleChange,
+                    value = editorTitle,
+                    onValueChange = { next ->
+                        if (next != editorTitle) {
+                            editorTitle = next
+                            onTitleChange(next)
+                        }
+                    },
                     singleLine = true,
                     textStyle =
                         TextStyle(
@@ -345,7 +366,7 @@ fun EntryEditorScreen(
                             .semantics { contentDescription = "Entry title" },
                     decorationBox = { inner ->
                         Box {
-                            if (title.isEmpty())
+                            if (editorTitle.isEmpty())
                                 Text(
                                     "Entry title",
                                     color = palette.placeholder,
@@ -477,14 +498,14 @@ fun EntryEditorScreen(
                         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)
                     ) {
                         Text(
-                            title.ifBlank { "Untitled entry" },
+                            editorTitle.ifBlank { "Untitled entry" },
                             color = palette.foreground,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(Modifier.height(20.dp))
                         MarkdownText(
-                            markdown = content.ifEmpty { "*Nothing here yet.*" },
+                            markdown = editorValue.text.ifEmpty { "*Nothing here yet.*" },
                             style =
                                 TextStyle(
                                     color = palette.foreground,

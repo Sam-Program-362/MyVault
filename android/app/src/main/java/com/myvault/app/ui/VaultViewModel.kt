@@ -151,6 +151,8 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
+    fun currentDraft(): EntryEntity? = currentWriter.value?.state?.value?.value
+
     fun updateDraft(transform: (EntryEntity) -> EntryEntity) {
         val writer = currentWriter.value ?: return
         writer.update { current ->

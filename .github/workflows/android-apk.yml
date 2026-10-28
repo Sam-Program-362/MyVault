@@ -132,7 +132,7 @@ jobs:
           disable-animations: true
           disable-spellchecker: true
           working-directory: android
-          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+          script: bash ci/run-device-tests.sh
       - name: Upload test report on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
