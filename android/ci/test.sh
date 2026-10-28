@@ -312,6 +312,11 @@ ADB
   env MYVAULT_DISPOSABLE_EMULATOR=1 bash "$ci_dir/capture-synthetic-ui.sh" > "$fixture/capture-success"
   grep -q 'Launcher home screen::The emulator home screen displayed the MyVault pinned shortcut' "$fixture/capture-success"
   [[ -s app/build/reports/synthetic-screenshots/welcome.png ]]
+  expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR bash "$ci_dir/run-emulator-suite.sh"
+  grep -q 'disposable emulator' "$tmp/output"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \
+    bash "$ci_dir/run-emulator-suite.sh"
+  grep -q 'disposable emulator' "$tmp/output"
   expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR bash "$ci_dir/run-native-window-evidence.sh"
   grep -q 'disposable emulator' "$tmp/output"
   expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \

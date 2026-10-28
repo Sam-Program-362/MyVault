@@ -59,15 +59,9 @@ def main():
     tap("Preview", description=True)
     tap("Close preview", description=True)
     tap("Close editor", description=True)
+    # Finish on the opening settings dialog; separate real-window screenshots
+    # capture its controls and the space edit dialog without altering the recording.
     tap("Settings", description=True)
-    # Exercise the Android back gesture/key while the actual settings overlay is open.
-    print("Press Android Back to close settings", flush=True)
-    adb("shell", "input", "keyevent", "KEYCODE_BACK")
-    time.sleep(0.7)
-    tap("Back to spaces", description=True)
-    tap("Options for Sample space", description=True)
-    tap("Edit space")
-    tap("Cancel")
     print("Real activity interaction recording completed.", flush=True)
 
 

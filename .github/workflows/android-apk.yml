@@ -278,15 +278,14 @@ jobs:
           api-level: ${{ matrix.api }}
           target: google_apis
           arch: x86_64
+          # A real phone profile exposes software navigation and permits a tall viewport.
+          profile: pixel_2
           disable-animations: true
           disable-spellchecker: true
           working-directory: android
-          # This action executes each input line separately with sh -c; keep each command complete.
+          # This action executes each input line separately with sh -c; keep it complete.
           script: |
-            bash ci/run-device-tests.sh
-            MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_REQUIRE_CUTOUT=1 bash ci/run-motion-inset-tests.sh
-            if [ '${{ matrix.api }}' = '30' ]; then MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/capture-synthetic-ui.sh; fi
-            evidence_status=0; offline_status=0; MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_BASELINE_APK="$RUNNER_TEMP/myvault-native-before/android/app/build/outputs/apk/debug/app-debug.apk" bash ci/run-native-window-evidence.sh || evidence_status=$?; MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_CONFLICT_APK="$RUNNER_TEMP/myvault-incompatible-debug.apk" MYVAULT_PREVIEW_APK="$RUNNER_TEMP/myvault-preview.apk" bash ci/run-offline-restart-test.sh || offline_status=$?; [ "$evidence_status" -eq 0 ] && [ "$offline_status" -eq 0 ]
+            MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_API_LEVEL='${{ matrix.api }}' MYVAULT_BASELINE_APK="$RUNNER_TEMP/myvault-native-before/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_CONFLICT_APK="$RUNNER_TEMP/myvault-incompatible-debug.apk" MYVAULT_PREVIEW_APK="$RUNNER_TEMP/myvault-preview.apk" bash ci/run-emulator-suite.sh
       - name: Upload real-window before-and-after evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

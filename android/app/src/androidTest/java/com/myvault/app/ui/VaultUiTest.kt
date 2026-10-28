@@ -83,11 +83,32 @@ class VaultUiTest {
         compose.onNodeWithText("Add tag…", substring = true).performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
         compose.onNodeWithText("Create & add tag").performScrollTo().performClick()
-        compose.waitUntil(15_000) {
-            compose
-                .onAllNodesWithContentDescription("Remove Journal tag")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
+        try {
+            compose.waitUntil(15_000) {
+                compose
+                    .onAllNodesWithContentDescription("Remove Journal tag")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            }
+        } catch (failure: Throwable) {
+            // Report only boolean fixture state, never contents of an existing vault.
+            val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
+            val state = runBlocking {
+                val tag = app.database.tagDao().findByName("Journal")
+                val entry =
+                    app.database.entryDao().getAll().firstOrNull { it.title == "A saved note" }
+                val attached =
+                    entry != null &&
+                        tag != null &&
+                        app.database.entryDao().tagRefsForEntry(entry.id).any { it.tagId == tag.id }
+                "fixtureTagExists=${tag != null}, fixtureEntryExists=${entry != null}, attached=$attached"
+            }
+            val errorVisible =
+                compose
+                    .onAllNodesWithText("Couldn’t create tag.", substring = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            throw AssertionError("Tag did not appear: $state, errorVisible=$errorVisible", failure)
         }
         compose.onNodeWithContentDescription("Close editor").performClick()
         compose.waitUntil(15_000) {
