@@ -156,6 +156,8 @@ if [[ $* == 'shell cmd overlay list' ]]; then
 fi
 if [[ $* == 'shell am broadcast '* ]]; then echo 'protected broadcast denied' >&2; exit 4; fi
 if [[ $* == 'shell am instrument '* ]]; then printf 'OK (1 test)\n'; exit 0; fi
+if [[ $* == 'exec-out run-as '* ]]; then printf 'synthetic screenshot bytes'; exit 0; fi
+if [[ $* == 'shell run-as '*launcher-home-method.txt ]]; then printf 'pinned shortcut'; exit 0; fi
 exit 0
 ADB
   chmod +x "$fixture/bin/adb"
@@ -193,5 +195,8 @@ ADB
   expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \
     bash "$ci_dir/capture-synthetic-ui.sh"
   grep -q 'disposable emulator' "$tmp/output"
+  env MYVAULT_DISPOSABLE_EMULATOR=1 bash "$ci_dir/capture-synthetic-ui.sh" > "$fixture/capture-success"
+  grep -q 'Launcher home screen::The emulator home screen displayed the MyVault pinned shortcut' "$fixture/capture-success"
+  [[ -s app/build/reports/synthetic-screenshots/welcome.png ]]
 )
-printf 'Offline, motion and cutout emulator guards and diagnostics passed (adb mocked).\n'
+printf 'Offline, motion, cutout and synthetic-capture guards passed (adb mocked).\n'

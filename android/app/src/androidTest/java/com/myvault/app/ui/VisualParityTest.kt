@@ -419,18 +419,6 @@ class VisualParityTest {
         File(directory, "$name.png").outputStream().use {
             original.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
-        val width = 200
-        val thumbnail =
-            Bitmap.createScaledBitmap(
-                original,
-                width,
-                original.height * width / original.width,
-                true,
-            )
-        File(directory, "$name.jpg").outputStream().use {
-            thumbnail.compress(Bitmap.CompressFormat.JPEG, 24, it)
-        }
-        thumbnail.recycle()
         original.recycle()
     }
 }

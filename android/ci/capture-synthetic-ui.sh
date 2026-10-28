@@ -34,26 +34,16 @@ PY
 run_fixture com.myvault.app.ui.VisualParityTest visual
 run_fixture com.myvault.app.ui.LauncherAppearanceTest launcher
 for name in welcome cards list launcher; do
-  for extension in png jpg; do
-    if ! adb exec-out run-as "$app_id" cat "files/synthetic-captures/$name.$extension" > "$output/$name.$extension" || [[ ! -s "$output/$name.$extension" ]]; then
-      echo "::error::Missing synthetic $name.$extension screenshot." >&2
-      exit 1
-    fi
-  done
+  if ! adb exec-out run-as "$app_id" cat "files/synthetic-captures/$name.png" > "$output/$name.png" || [[ ! -s "$output/$name.png" ]]; then
+    echo "::error::Missing synthetic $name screenshot." >&2
+    exit 1
+  fi
 done
 # A launcher may disallow creating a home shortcut. Preserve that screenshot only if verified.
 if adb shell run-as "$app_id" test -f files/synthetic-captures/launcher-home.png; then
   adb exec-out run-as "$app_id" cat files/synthetic-captures/launcher-home.png > "$output/launcher-home.png"
+  method=$(adb shell run-as "$app_id" cat files/synthetic-captures/launcher-home-method.txt | tr -d '\r\n')
+  printf '::notice title=Launcher home screen::The emulator home screen displayed the MyVault %s.\n' "$method"
+else
+  echo '::warning title=Launcher home screen::The app drawer was checked, but adding the icon to this emulator home screen was not confirmed.'
 fi
-# Small thumbnails are annotated solely so CI diagnostics can be reviewed without artifact access.
-# Full-resolution PNGs are uploaded as an artifact. The fixtures never contain a user's data.
-python3 - "$output" <<'PY'
-import base64, pathlib, sys
-folder = pathlib.Path(sys.argv[1])
-for name in ('welcome', 'cards', 'list', 'launcher'):
-    encoded = base64.b64encode((folder / f'{name}.jpg').read_bytes()).decode()
-    chunks = [encoded[i:i+3500] for i in range(0, len(encoded), 3500)]
-    label = 'launcher-home' if name == 'launcher' and (folder / 'launcher-home.png').is_file() else name
-    for index, chunk in enumerate(chunks, 1):
-        print(f'::notice title=Synthetic {label} {index}/{len(chunks)}::{chunk}', flush=True)
-PY

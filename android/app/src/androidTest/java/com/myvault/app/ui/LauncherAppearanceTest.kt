@@ -1,11 +1,18 @@
 package com.myvault.app.ui
 
+import android.content.Intent
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.graphics.drawable.Icon
+import android.os.Build
 import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.myvault.app.MainActivity
 import java.io.File
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -19,6 +26,7 @@ class LauncherAppearanceTest {
     fun launcherAppDrawerShowsTheMyVaultIcon() {
         if (InstrumentationRegistry.getArguments().getString("myvault.capture") != "true") return
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
         val automation = instrumentation.uiAutomation
         fun shell(command: String) {
             automation.executeShellCommand(command).close()
@@ -29,7 +37,7 @@ class LauncherAppearanceTest {
         val width = dimensions.width
         val height = dimensions.height
         dimensions.recycle()
-        // Swipe up into the system launcher's app drawer, not an app-provided icon preview.
+        // Inspect the system launcher's app drawer, not an app-provided icon preview.
         shell("input swipe ${width / 2} ${height * 9 / 10} ${width / 2} ${height / 4} 450")
         Thread.sleep(1200)
         var icons =
@@ -48,32 +56,30 @@ class LauncherAppearanceTest {
         val screenshot = automation.takeScreenshot()
         assertNotNull("Could not capture the system launcher", screenshot)
         val image = requireNotNull(screenshot)
-        val directory = File(instrumentation.targetContext.filesDir, "synthetic-captures")
+        val directory = File(context.filesDir, "synthetic-captures")
         directory.mkdirs()
         File(directory, "launcher.png").outputStream().use {
             image.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
-        fun savePreview(bitmap: Bitmap, bounds: Rect) {
-            val left = (bounds.left - 8).coerceIn(0, bitmap.width - 1)
-            val top = (bounds.top - 8).coerceIn(0, bitmap.height - 1)
-            val right = (bounds.right + 8).coerceIn(left + 1, bitmap.width)
-            val bottom = (bounds.bottom + 8).coerceIn(top + 1, bitmap.height)
-            val crop = Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
-            val preview = Bitmap.createScaledBitmap(crop, 140, crop.height * 140 / crop.width, true)
-            File(directory, "launcher.jpg").outputStream().use {
-                preview.compress(Bitmap.CompressFormat.JPEG, 35, it)
-            }
-            preview.recycle()
-            crop.recycle()
-        }
         val bounds = Rect().also { icons.first().getBoundsInScreen(it) }
-        savePreview(image, bounds)
         image.recycle()
 
-        // Try adding the real launcher icon to the disposable emulator's home screen.
-        // Some launchers disable drag-to-home; the app-drawer check above remains mandatory.
         val homeCapture = File(directory, "launcher-home.png")
+        val homeMethod = File(directory, "launcher-home-method.txt")
         homeCapture.delete()
+        homeMethod.delete()
+        fun captureHome(method: String): Boolean {
+            val root = automation.rootInActiveWindow ?: return false
+            if (root.packageName?.toString() == context.packageName) return false
+            if (root.findAccessibilityNodeInfosByText("MyVault").isEmpty()) return false
+            val home = requireNotNull(automation.takeScreenshot())
+            homeCapture.outputStream().use { home.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            home.recycle()
+            homeMethod.writeText(method)
+            return true
+        }
+
+        // First try dragging the actual app icon from the drawer to the emulator home screen.
         val startX = bounds.exactCenterX()
         val startY = bounds.exactCenterY()
         val down = SystemClock.uptimeMillis()
@@ -108,17 +114,55 @@ class LauncherAppearanceTest {
             Thread.sleep(800)
             shell("input keyevent KEYCODE_HOME")
             Thread.sleep(800)
-            val homeIcons =
-                automation.rootInActiveWindow?.findAccessibilityNodeInfosByText("MyVault").orEmpty()
-            if (homeIcons.isNotEmpty()) {
-                val home = requireNotNull(automation.takeScreenshot())
-                homeCapture.outputStream().use { home.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                savePreview(home, Rect().also { homeIcons.first().getBoundsInScreen(it) })
-                home.recycle()
-            }
+            captureHome("app icon")
         }
             .onFailure {
                 if (pressed) runCatching { pointer(MotionEvent.ACTION_CANCEL, startX, startY) }
+            }
+
+        // If that launcher does not support dragging, try its standard pinned-shortcut prompt,
+        // using the same launcher resource. This is only attempted on the disposable emulator.
+        if (!homeCapture.exists() && Build.VERSION.SDK_INT >= 26)
+            runCatching {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                Thread.sleep(800)
+                val manager = context.getSystemService(ShortcutManager::class.java)
+                if (manager != null && manager.isRequestPinShortcutSupported) {
+                    val shortcut =
+                        ShortcutInfo.Builder(context, "myvault-ci-home")
+                            .setShortLabel("MyVault")
+                            .setIcon(Icon.createWithResource(context, context.applicationInfo.icon))
+                            .setIntent(
+                                Intent(context, MainActivity::class.java)
+                                    .setAction(Intent.ACTION_VIEW)
+                            )
+                            .build()
+                    if (manager.requestPinShortcut(shortcut, null)) {
+                        Thread.sleep(1000)
+                        val root = automation.rootInActiveWindow
+                        val labels = listOf("Add automatically", "Add to Home screen", "Add")
+                        val button =
+                            labels
+                                .asSequence()
+                                .flatMap { label ->
+                                    root
+                                        ?.findAccessibilityNodeInfosByText(label)
+                                        .orEmpty()
+                                        .asSequence()
+                                }
+                                .firstOrNull { it.isClickable || it.parent?.isClickable == true }
+                        val clickable = if (button?.isClickable == true) button else button?.parent
+                        if (clickable?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
+                            Thread.sleep(1200)
+                            shell("input keyevent KEYCODE_HOME")
+                            Thread.sleep(800)
+                            captureHome("pinned shortcut using the launcher icon")
+                        }
+                    }
+                }
             }
     }
 }
