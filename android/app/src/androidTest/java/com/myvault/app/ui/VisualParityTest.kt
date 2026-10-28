@@ -246,7 +246,7 @@ class VisualParityTest {
                 original.height * width / original.width,
                 true,
             )
-        val dir = instrumentation.targetContext.getExternalFilesDir(null) ?: return
+        val dir = instrumentation.targetContext.filesDir
         File(dir, "myvault-$name.jpg").outputStream().use {
             scaled.compress(Bitmap.CompressFormat.JPEG, 65, it)
         }
