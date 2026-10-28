@@ -103,6 +103,10 @@ class NativeWindowEvidenceTest {
                     val firstCardOptions =
                         compose.onNodeWithContentDescription("Options for Sample space")
                             .getUnclippedBoundsInRoot()
+                    if (phase == "after") {
+                        val gap = (firstCardOptions.top - description.bottom).value
+                        assertTrue("Real welcome heading-to-card gap is $gap dp", gap in 0f..60f)
+                    }
                     "descriptionBottomDp=${description.bottom} firstCardTopDp=${firstCardOptions.top}"
                 } else {
                     val back =

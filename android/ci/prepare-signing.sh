@@ -21,15 +21,32 @@ if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore" 2>/d
   exit 1
 fi
 
-# Verify the store password and that the alias contains a private key. The key
-# password is checked by Gradle while signing. Do not print keytool output.
-if ! listing=$(keytool -J-Duser.language=en -J-Duser.country=US -list -v \
-  -keystore "$keystore" -storepass:env ANDROID_KEYSTORE_PASSWORD -alias "$ANDROID_KEY_ALIAS" 2>/dev/null) ||
-  [[ "$listing" != *'Entry type: PrivateKeyEntry'* ]]; then
+# Check the store independently from the alias. This distinguishes a file/store
+# password problem from a missing alias without displaying any keytool output.
+if ! store_result=$(keytool -J-Duser.language=en -J-Duser.country=US -list \
+  -keystore "$keystore" -storepass:env ANDROID_KEYSTORE_PASSWORD 2>&1); then
   rm -f "$keystore"
-  printf '::error::Could not open the keystore private key. Check the keystore, store password, and alias.\n' >&2
+  if [[ "$store_result" == *'password was incorrect'* || "$store_result" == *'Keystore was tampered with'* ]]; then
+    printf '::error::The decoded keystore was recognized, but could not be opened with the configured store password. Check that the Actions keystore and store password belong together.\n' >&2
+  elif [[ "$store_result" == *'Unrecognized keystore format'* || "$store_result" == *'Invalid keystore format'* ]]; then
+    printf '::error::Java did not recognize the decoded Actions keystore format. Check that the secret contains the complete encoded keystore file.\n' >&2
+  else
+    printf '::error::The decoded keystore could not be opened with the configured store password. Check the Actions keystore and store-password values.\n' >&2
+  fi
   exit 1
 fi
+if ! listing=$(keytool -J-Duser.language=en -J-Duser.country=US -list -v \
+  -keystore "$keystore" -storepass:env ANDROID_KEYSTORE_PASSWORD -alias "$ANDROID_KEY_ALIAS" 2>/dev/null); then
+  rm -f "$keystore"
+  printf '::error::The configured alias could not be found in the opened keystore. Check the Actions alias value.\n' >&2
+  exit 1
+fi
+if [[ "$listing" != *'Entry type: PrivateKeyEntry'* ]]; then
+  rm -f "$keystore"
+  printf '::error::The configured alias is not a private-key entry. Check the Actions alias value.\n' >&2
+  exit 1
+fi
+# The key password is checked separately by Gradle while signing.
 
 printf 'ANDROID_KEYSTORE_PATH=%s\n' "$keystore" >> "$GITHUB_ENV"
 printf 'Release signing keystore is ready.\n'

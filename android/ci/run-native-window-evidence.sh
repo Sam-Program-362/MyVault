@@ -36,9 +36,18 @@ cleanup() {
   fi
   adb shell wm size reset >/dev/null 2>&1 || true
   adb shell wm density reset >/dev/null 2>&1 || true
-  adb shell settings put global window_animation_scale "$old_window" >/dev/null 2>&1 || true
-  adb shell settings put global transition_animation_scale "$old_transition" >/dev/null 2>&1 || true
-  adb shell settings put global animator_duration_scale "$old_animator" >/dev/null 2>&1 || true
+  for setting in window_animation_scale transition_animation_scale animator_duration_scale; do
+    case "$setting" in
+      window_animation_scale) value=$old_window ;;
+      transition_animation_scale) value=$old_transition ;;
+      animator_duration_scale) value=$old_animator ;;
+    esac
+    if [[ -z "$value" || "$value" == null ]]; then
+      adb shell settings delete global "$setting" >/dev/null 2>&1 || true
+    else
+      adb shell settings put global "$setting" "$value" >/dev/null 2>&1 || true
+    fi
+  done
   if ((nav_changed)) && [[ -n "$old_nav" ]]; then
     adb shell cmd overlay enable-exclusive --category "$old_nav" >/dev/null 2>&1 || true
   fi
@@ -92,6 +101,11 @@ PY
   done
   adb exec-out run-as "$app_id" cat "files/native-window-evidence/$phase/window-metrics.txt" > "$output/$phase/window-metrics.txt" || return 1
   cat "$output/$phase/window-metrics.txt"
+  while IFS= read -r line; do
+    if [[ "$line" == welcome:* || "$line" == dashboard:* ]]; then
+      printf '::notice title=Actual %s window measurement::%s\n' "$phase" "$line"
+    fi
+  done < "$output/$phase/window-metrics.txt"
 }
 
 capture_phase before "$baseline" || exit 1

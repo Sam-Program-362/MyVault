@@ -55,7 +55,7 @@ class ResponsiveLayoutTest {
             val gap = (card.top - description.bottom).value
             assertTrue("Welcome-to-card gap should stay modest, was $gap dp", gap in 0f..60f)
             assertTrue("Settings should sit alongside the badge", settings.top <= badge.bottom)
-            assertTrue("Settings touch target must remain 48dp", settings.width.value >= 48f)
+            assertTrue("Settings touch target must remain 48dp", (settings.right - settings.left).value >= 48f)
         }
         checkGap()
         compose.runOnIdle { height.value = 760.dp }
@@ -92,7 +92,7 @@ class ResponsiveLayoutTest {
             compose.onNodeWithContentDescription("Search entries").getUnclippedBoundsInRoot()
         val back = compose.onNodeWithContentDescription("Back to spaces").getUnclippedBoundsInRoot()
         compose.onNodeWithContentDescription("Settings").assertIsDisplayed()
-        assertTrue("Toolbar should span the full available width", toolbar.width.value >= 299f)
+        assertTrue("Toolbar should span the full available width", (toolbar.right - toolbar.left).value >= 299f)
         assertTrue(
             "Navigation should align with the toolbar",
             navigation.left == toolbar.left && navigation.right == toolbar.right,
@@ -103,7 +103,7 @@ class ResponsiveLayoutTest {
         )
         assertTrue(
             "Search gets its own usable row on narrow phones",
-            search.width.value >= 250f && search.top >= back.bottom,
+            (search.right - search.left).value >= 250f && search.top >= back.bottom,
         )
     }
 }

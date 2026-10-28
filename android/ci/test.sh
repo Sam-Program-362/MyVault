@@ -54,8 +54,10 @@ grep -q 'ANDROID_KEY_PASSWORD' "$tmp/output"
 expect_failure env ANDROID_KEYSTORE_BASE64='not valid base64' "$ci_dir/prepare-signing.sh"
 [[ ! -e "$RUNNER_TEMP/myvault-release.keystore" ]]
 expect_failure env ANDROID_KEY_ALIAS='wrong-alias' "$ci_dir/prepare-signing.sh"
+grep -q 'alias could not be found' "$tmp/output"
 [[ ! -e "$RUNNER_TEMP/myvault-release.keystore" ]]
 expect_failure env ANDROID_KEYSTORE_PASSWORD='wrong-password' "$ci_dir/prepare-signing.sh"
+grep -q 'could not be opened with the configured store password' "$tmp/output"
 if grep -q 'wrong-password' "$tmp/output"; then
   printf 'A signing password appeared in the validation output.\n' >&2
   exit 1
@@ -69,6 +71,7 @@ keytool -importcert -noprompt -alias 'cert-only' -file "$tmp/test.crt" \
   -keystore "$tmp/cert-only.p12" -storetype PKCS12 -storepass:env ANDROID_KEYSTORE_PASSWORD >/dev/null 2>&1
 cert_only=$(base64 < "$tmp/cert-only.p12" | tr -d '\n')
 expect_failure env ANDROID_KEYSTORE_BASE64="$cert_only" ANDROID_KEY_ALIAS='cert-only' "$ci_dir/prepare-signing.sh"
+grep -q 'not a private-key entry' "$tmp/output"
 [[ ! -e "$RUNNER_TEMP/myvault-release.keystore" ]]
 
 "$ci_dir/prepare-signing.sh" >/dev/null
