@@ -1,6 +1,8 @@
 package com.myvault.app.ui
 
+import android.graphics.Rect
 import android.os.SystemClock
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -19,6 +21,9 @@ class DocumentPickerActionTest {
         val automation = instrumentation.uiAutomation
         val deadline = SystemClock.uptimeMillis() + 12_000
         var rowActionSent = false
+        var keyboardAttempted = false
+        var focusAccepted = false
+        var focusedWithinRow = false
         var diagnostic = "No synthetic document row was found"
         while (SystemClock.uptimeMillis() < deadline) {
             val root = automation.rootInActiveWindow
@@ -51,15 +56,41 @@ class DocumentPickerActionTest {
                     chain.asReversed().firstOrNull { candidate ->
                         candidate.isEnabled &&
                             candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
-                    } ?: chain.lastOrNull()
-                if (!rowActionSent && target != null && target.isEnabled) {
+                    }
+                val row = chain.lastOrNull()
+                if (!rowActionSent && target != null) {
                     rowActionSent = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                } else if (!rowActionSent && !keyboardAttempted && row != null && row.isEnabled) {
+                    // Google's API 30 DocumentsUI exposes a focusable row without
+                    // ACTION_CLICK. Its item key handler opens the focused file on
+                    // Enter. Activate it only once, and only if focus is really on
+                    // this row; then wait for the app's actual confirmation.
+                    keyboardAttempted = true
+                    focusAccepted = row.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    if (focusAccepted) {
+                        SystemClock.sleep(200)
+                        val rowBounds = Rect().also(row::getBoundsInScreen)
+                        val focused =
+                            automation.rootInActiveWindow?.findFocus(
+                                AccessibilityNodeInfo.FOCUS_INPUT
+                            )
+                        val focusedBounds = Rect()
+                        focused?.getBoundsInScreen(focusedBounds)
+                        focusedWithinRow = focused != null && rowBounds.contains(focusedBounds)
+                        if (focusedWithinRow) {
+                            val down = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)
+                            val up = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER)
+                            val downSent = automation.injectInputEvent(down, true)
+                            val upSent = automation.injectInputEvent(up, true)
+                            rowActionSent = downSent && upSent
+                        }
+                    }
                 }
             }
             SystemClock.sleep(250)
         }
         fail(
-            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent). Accessibility chain: $diagnostic"
+            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent, keyboardAttempted=$keyboardAttempted, focusAccepted=$focusAccepted, focusedWithinRow=$focusedWithinRow). Accessibility chain: $diagnostic"
         )
     }
 }
