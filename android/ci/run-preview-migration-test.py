@@ -101,24 +101,20 @@ def main():
         if result.returncode or "OK (1 test)" not in result.stdout:
             raise AssertionError("The system picker could not activate the synthetic document.")
 
-    # On Android 11 a touch can enter selection mode. In that state DocumentsUI
-    # routes a subsequent accessibility click to selection instead of opening the
-    # document. Activate the unselected RecyclerView row directly, without a tap.
     if find("Import backup?", timeout=4) is None:
         if api <= 30:
-            # Grid mode exposes the thumbnail's "preview file" action instead of
-            # a document-row open action on some Android 11 DocumentsUI builds.
+            # In grid mode, a file's preview thumbnail can overlap the target.
+            # Use list mode and one touch on the filename itself instead.
             if find("List view", attribute="content-desc", timeout=5) is not None:
                 click("List view", "content-desc")
             if find(name, contains=True, timeout=20) is None:
                 raise AssertionError("The synthetic backup is not visible in Downloads.")
+        click(name, contains=True)
+        if api > 30 and find("Import backup?", timeout=8) is None and find("Open", timeout=3) is not None:
+            click("Open")
+        if find("Import backup?", timeout=8) is None:
+            # Do not repeat the raw tap; require confirmation after any fallback.
             activate_accessibly()
-        else:
-            click(name, contains=True)
-            if find("Import backup?", timeout=8) is None and find("Open", timeout=3) is not None:
-                click("Open")
-            if find("Import backup?", timeout=8) is None:
-                activate_accessibly()
     if find("Import backup?", timeout=25) is None:
         raise AssertionError("The preview did not show the backup confirmation.")
     click("Also restore appearance settings", "content-desc")
