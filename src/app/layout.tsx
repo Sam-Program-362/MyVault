@@ -1,10 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { settings } from "@/db/schema";
 import { AppDataProvider } from "@/context/AppDataContext";
 import "./globals.css";
+
+// On Android, let the writing surface resize instead of sitting beneath the keyboard.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  interactiveWidget: "resizes-content",
+};
 
 async function getSettingsSafe() {
   try {

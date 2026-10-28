@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LayoutGrid,
   Pin,
@@ -45,7 +45,8 @@ export default function AppShell() {
     useAppData();
 
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [entriesLoading, setEntriesLoading] = useState(false);
+  const [entriesLoading, setEntriesLoading] = useState(true);
+  const entriesRequest = useRef(0);
   const [search, setSearch] = useState("");
   const [searchAllSpaces, setSearchAllSpaces] = useState(false);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
@@ -58,31 +59,33 @@ export default function AppShell() {
 
   const currentSpace = spaces.find((s) => s.id === currentSpaceId) ?? null;
 
-  const loadEntries = useMemo(
-    () => async () => {
-      setEntriesLoading(true);
-      try {
-        const data = await api.entries.list({
-          spaceId: searchAllSpaces ? undefined : currentSpaceId ?? undefined,
-          q: search.trim() || undefined,
-          tagId: tagFilter ?? undefined,
-        });
-        setEntries(data);
-      } finally {
-        setEntriesLoading(false);
-      }
-    },
-    [currentSpaceId, search, searchAllSpaces, tagFilter],
-  );
+  const loadEntries = useCallback(async () => {
+    const request = ++entriesRequest.current;
+    // Defer the loading state so effect-triggered and manual refreshes share one path.
+    await Promise.resolve();
+    if (request !== entriesRequest.current) return;
+    setEntriesLoading(true);
+    try {
+      const data = await api.entries.list({
+        spaceId: searchAllSpaces ? undefined : currentSpaceId ?? undefined,
+        q: search.trim() || undefined,
+        tagId: tagFilter ?? undefined,
+      });
+      if (request === entriesRequest.current) setEntries(data);
+    } finally {
+      if (request === entriesRequest.current) setEntriesLoading(false);
+    }
+  }, [currentSpaceId, search, searchAllSpaces, tagFilter]);
 
   useEffect(() => {
     if (!entered) return;
-    loadEntries();
+    void loadEntries();
+    return () => { entriesRequest.current += 1; };
   }, [entered, loadEntries]);
 
   if (loading || !settings) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white/60">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-white/60">
         <Sparkles className="glow-pulse mr-2" size={18} /> Loading your vault…
       </div>
     );
@@ -95,7 +98,10 @@ export default function AppShell() {
   const handleCreateEntry = async () => {
     if (!currentSpaceId) return;
     const created = await api.entries.create({ spaceId: currentSpaceId, title: "Untitled entry" });
-    setEntries((prev) => [created, ...prev]);
+    // A list request may have already included this entry while creation was in flight.
+    entriesRequest.current += 1;
+    setEntriesLoading(false);
+    setEntries((prev) => [created, ...prev.filter((entry) => entry.id !== created.id)]);
     setSelectedEntryId(created.id);
   };
 
@@ -119,31 +125,31 @@ export default function AppShell() {
       <Wallpaper />
       <div className="relative z-10 flex min-h-screen flex-col">
         {/* Header */}
-        <header className="flex flex-wrap items-center gap-3 border-b border-black/5 bg-white/70 px-4 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/60">
+        <header className="app-header flex flex-wrap items-center gap-2 border-b border-black/5 bg-white/70 px-3 py-2 backdrop-blur-xl dark:border-white/10 dark:bg-neutral-950/60">
           <button
             onClick={() => setEntered(false)}
-            className="flex items-center gap-2 rounded-xl px-2 py-1.5 font-bold text-slate-900 transition hover:bg-black/5 dark:text-white dark:hover:bg-white/10"
+            className="app-brand flex items-center gap-2 rounded-xl px-2 py-1.5 font-bold text-neutral-900 transition hover:bg-black/5 dark:text-white dark:hover:bg-white/10"
             title="Back to space selector"
           >
             <LayoutGrid size={18} style={{ color: "var(--accent)" }} />
             <span className="hidden sm:inline">{settings.appName}</span>
           </button>
 
-          <div className="relative ml-1 flex min-w-[180px] flex-1 items-center">
-            <Search size={16} className="pointer-events-none absolute left-3 text-slate-400" />
+          <div className="relative ml-1 flex min-w-[80px] flex-1 items-center">
+            <Search size={16} className="pointer-events-none absolute left-3 text-neutral-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={searchAllSpaces ? "Search every space…" : `Search in ${currentSpace?.name ?? "space"}…`}
-              className="ui-radius w-full border border-black/10 bg-white/80 py-2 pl-9 pr-3 text-sm outline-none accent-ring dark:border-white/10 dark:bg-white/5 dark:text-white"
+              className="app-search ui-radius w-full border border-black/10 bg-white/80 py-2 pl-9 pr-3 text-sm outline-none accent-ring dark:border-white/10 dark:bg-white/5 dark:text-white"
             />
           </div>
           <button
             onClick={() => setSearchAllSpaces((v) => !v)}
-            className={`ui-radius border px-3 py-2 text-xs font-medium transition ${
+            className={`app-all-spaces ui-radius border px-3 py-2 text-xs font-medium transition ${
               searchAllSpaces
                 ? "accent-bg border-transparent text-white"
-                : "border-black/10 text-slate-600 hover:bg-black/5 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                : "border-black/10 text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/10"
             }`}
           >
             All spaces
@@ -152,7 +158,7 @@ export default function AppShell() {
           {tagFilter && (
             <button
               onClick={() => setTagFilter(null)}
-              className="flex items-center gap-1 rounded-full bg-black/5 px-3 py-1.5 text-xs text-slate-700 dark:bg-white/10 dark:text-slate-200"
+              className="flex items-center gap-1 rounded-full bg-black/5 px-3 py-1.5 text-xs text-neutral-700 dark:bg-white/10 dark:text-neutral-200"
             >
               <TagIcon size={12} /> {tags.find((t) => t.id === tagFilter)?.name ?? "tag"}
               <X size={12} />
@@ -161,7 +167,7 @@ export default function AppShell() {
 
           <button
             onClick={() => setSettingsOpen(true)}
-            className="ui-radius border border-black/10 p-2.5 text-slate-600 transition hover:bg-black/5 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+            className="app-settings ui-radius border border-black/10 p-2.5 text-neutral-600 transition hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/10"
             title="Settings"
           >
             <SettingsIcon size={18} />
@@ -170,7 +176,7 @@ export default function AppShell() {
 
         <div className="flex flex-1 flex-col md:flex-row">
           {/* Sidebar */}
-          <aside className="flex shrink-0 gap-2 overflow-x-auto border-b border-black/5 bg-white/50 p-3 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/40 md:w-60 md:flex-col md:overflow-y-auto md:border-b-0 md:border-r">
+          <aside className="flex shrink-0 gap-2 overflow-x-auto border-b border-black/5 bg-white/50 p-3 backdrop-blur-xl dark:border-white/10 dark:bg-neutral-950/40 md:w-60 md:flex-col md:overflow-y-auto md:border-b-0 md:border-r">
             {spaces.map((space) => (
               <div key={space.id} className="group relative shrink-0">
                 {editingSpace?.id === space.id ? (
@@ -183,7 +189,7 @@ export default function AppShell() {
                       setEditingSpace(null);
                     }}
                     onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                    className="ui-radius w-full border border-black/10 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-800 dark:text-white"
+                    className="ui-radius w-full border border-black/10 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-neutral-800 dark:text-white"
                   />
                 ) : (
                   <button
@@ -192,7 +198,7 @@ export default function AppShell() {
                     className={`ui-radius flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium transition ${
                       currentSpaceId === space.id
                         ? "text-white"
-                        : "text-slate-700 hover:bg-black/5 dark:text-slate-200 dark:hover:bg-white/10"
+                        : "text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/10"
                     }`}
                     style={currentSpaceId === space.id ? { background: space.color } : undefined}
                   >
@@ -225,12 +231,12 @@ export default function AppShell() {
                 onBlur={handleCreateSpace}
                 onKeyDown={(e) => e.key === "Enter" && handleCreateSpace()}
                 placeholder="Space name"
-                className="ui-radius shrink-0 border border-black/10 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-800 dark:text-white"
+                className="ui-radius shrink-0 border border-black/10 bg-white px-3 py-2 text-sm dark:border-white/20 dark:bg-neutral-800 dark:text-white"
               />
             ) : (
               <button
                 onClick={() => setAddingSpace(true)}
-                className="ui-radius flex shrink-0 items-center gap-2 border border-dashed border-black/15 px-3 py-2.5 text-sm text-slate-500 transition hover:border-black/30 dark:border-white/20 dark:text-slate-400"
+                className="ui-radius flex shrink-0 items-center gap-2 border border-dashed border-black/15 px-3 py-2.5 text-sm text-neutral-500 transition hover:border-black/30 dark:border-white/20 dark:text-neutral-400"
               >
                 <Plus size={15} /> New space
               </button>
@@ -260,7 +266,7 @@ export default function AppShell() {
             )}
 
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+              <h2 className="text-lg font-bold text-neutral-900 dark:text-white">
                 {searchAllSpaces ? "All spaces" : currentSpace?.name ?? "Select a space"}
               </h2>
               <button
@@ -273,9 +279,9 @@ export default function AppShell() {
             </div>
 
             {entriesLoading ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">Loading entries…</p>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading entries…</p>
             ) : entries.length === 0 ? (
-              <div className="ui-radius flex flex-col items-center justify-center gap-2 border border-dashed border-black/10 p-14 text-center text-slate-400 dark:border-white/10">
+              <div className="ui-radius flex flex-col items-center justify-center gap-2 border border-dashed border-black/10 p-14 text-center text-neutral-400 dark:border-white/10">
                 <Sparkles size={22} />
                 <p>No entries yet. Create your first one.</p>
               </div>
@@ -302,12 +308,12 @@ export default function AppShell() {
                     )}
                     <div className="flex flex-1 flex-col gap-1.5 p-3.5">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="line-clamp-1 font-semibold text-slate-900 dark:text-white">
+                        <h3 className="line-clamp-1 font-semibold text-neutral-900 dark:text-white">
                           {entry.title}
                         </h3>
                         {entry.pinned && <Pin size={14} className="shrink-0 accent-text" />}
                       </div>
-                      <p className="line-clamp-3 text-xs text-slate-500 dark:text-slate-400">
+                      <p className="line-clamp-3 text-xs text-neutral-500 dark:text-neutral-400">
                         {plainTextPreview(entry.content) || "No content yet."}
                       </p>
                       <div className="mt-auto flex flex-wrap items-center gap-1 pt-2">
@@ -320,7 +326,7 @@ export default function AppShell() {
                             {tag.name}
                           </span>
                         ))}
-                        <span className="ml-auto text-[10px] text-slate-400">
+                        <span className="ml-auto text-[10px] text-neutral-400">
                           {timeAgo(entry.updatedAt)}
                         </span>
                       </div>
@@ -336,7 +342,11 @@ export default function AppShell() {
       {selectedEntryId && (
         <EntryEditor
           entryId={selectedEntryId}
-          onClose={() => setSelectedEntryId(null)}
+          onClose={() => {
+            setSelectedEntryId(null);
+            // A creation can invalidate a list request; always refresh the active filters.
+            void loadEntries();
+          }}
           onSaved={loadEntries}
           onDeleted={() => {
             setSelectedEntryId(null);

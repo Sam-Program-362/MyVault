@@ -7,6 +7,8 @@
   --radius-ui: 1rem;
   --font-scale: 1;
   color-scheme: light;
+  /* A slightly denser default, while keeping the user’s text-size setting effective. */
+  font-size: calc(93.75% * var(--font-scale));
 }
 
 html.dark {
@@ -19,15 +21,31 @@ body {
 }
 
 body {
-  font-size: calc(1rem * var(--font-scale));
-  background: var(--app-bg, #f3f4f8);
-  color: var(--app-fg, #0f172a);
+  font-size: 1rem;
+  background: var(--app-bg, #f7f6f3);
+  color: var(--app-fg, #292825);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 html.dark body {
-  --app-bg: #0b0d14;
-  --app-fg: #e7e9f2;
+  --app-bg: #191918;
+  --app-fg: #e9e8e3;
+}
+
+/* Keep the default wallpaper legible in both modes; the splash stays dark. */
+.default-wallpaper {
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 55%),
+    radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 50%),
+    #f6f5f2;
+}
+
+.dark .default-wallpaper,
+.default-wallpaper-splash {
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%),
+    radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 50%),
+    #191918;
 }
 
 ::selection {
@@ -206,4 +224,567 @@ mark {
 .md-body td {
   border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
   padding: 0.4em 0.6em;
+}
+
+/* The editor is a continuous writing surface, not a collection of cards. */
+.entry-editor {
+  --editor-bg: #fbfaf8;
+  --editor-fg: #292825;
+  --editor-muted: #74736d;
+  --editor-placeholder: #74736d;
+  --editor-danger: #b04444;
+  --editor-line: #e8e6e1;
+  --editor-subtle: #f2f1ee;
+  --editor-hover: #eae8e3;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--editor-bg);
+  color: var(--editor-fg);
+}
+
+.dark .entry-editor {
+  --editor-bg: #191918;
+  --editor-fg: #eae9e4;
+  --editor-muted: #aaa9a1;
+  --editor-placeholder: #888780;
+  --editor-danger: #e17b7b;
+  --editor-line: #373734;
+  --editor-subtle: #232322;
+  --editor-hover: #30302e;
+}
+
+.editor-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 3.75rem;
+  padding: env(safe-area-inset-top, 0px) max(0.75rem, env(safe-area-inset-right, 0px)) 0 max(0.75rem, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--editor-line);
+}
+
+.editor-toolbar-start,
+.editor-toolbar-actions,
+.editor-view-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.editor-toolbar-start {
+  min-width: 0;
+  gap: 0.35rem;
+}
+
+.editor-toolbar-actions {
+  flex: none;
+  gap: 0.15rem;
+}
+
+.editor-icon-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 0;
+  border-radius: min(var(--radius-ui), 0.5rem);
+  color: var(--editor-muted);
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.editor-icon-button:hover,
+.editor-icon-button:focus-visible {
+  background: var(--editor-hover);
+  color: var(--editor-fg);
+}
+
+.editor-icon-button:disabled,
+.editor-cover-add:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.editor-icon-button:focus-visible,
+.editor-cover-add:focus-visible,
+.editor-preview-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.editor-icon-button.is-active {
+  background: var(--editor-hover);
+  color: var(--editor-fg);
+}
+
+.editor-icon-button.is-pinned {
+  color: var(--accent);
+}
+
+.editor-icon-button.is-danger {
+  color: var(--editor-danger);
+}
+
+.editor-icon-button.is-danger:hover {
+  background: color-mix(in srgb, var(--editor-danger) 12%, transparent);
+  color: var(--editor-danger);
+}
+
+.editor-view-toggle {
+  gap: 0.1rem;
+  margin: 0 0.25rem;
+  padding: 0.15rem;
+  border: 1px solid var(--editor-line);
+  border-radius: min(var(--radius-ui), 0.65rem);
+}
+
+.editor-view-toggle .editor-icon-button {
+  width: 2.15rem;
+  height: 2.15rem;
+}
+
+.editor-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+  color: var(--editor-muted);
+  font-size: 0.8rem;
+}
+
+.editor-save-status.is-error {
+  color: var(--editor-danger);
+}
+
+.editor-find-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem clamp(1rem, 3vw, 2rem);
+  border-bottom: 1px solid var(--editor-line);
+  background: var(--editor-subtle);
+  color: var(--editor-muted);
+  font-size: 0.8rem;
+  max-height: min(45vh, 16rem);
+  overflow-y: auto;
+}
+
+.editor-find-input {
+  min-width: 9rem;
+  flex: 1 1 11rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--editor-line);
+  border-radius: min(var(--radius-ui), 0.45rem);
+  outline: none;
+  background: var(--editor-bg);
+  color: var(--editor-fg);
+  font-size: 0.875rem;
+}
+
+.editor-find-input:focus-visible {
+  border-color: var(--accent);
+}
+
+.editor-find-action {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--editor-line);
+  border-radius: min(var(--radius-ui), 0.45rem);
+  color: var(--editor-fg);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.editor-find-action:hover {
+  background: var(--editor-hover);
+}
+
+.editor-find-action-primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.editor-find-action-primary:hover {
+  background: var(--accent);
+  opacity: 0.9;
+}
+
+.editor-document {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.editor-cover-add {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  margin: 0.6rem clamp(1.25rem, 4vw, 3.5rem) 0;
+  padding: 0 0.6rem;
+  border-radius: min(var(--radius-ui), 0.5rem);
+  color: var(--editor-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.editor-cover-add:hover {
+  background: var(--editor-hover);
+  color: var(--editor-fg);
+}
+
+.editor-cover-image {
+  position: relative;
+  flex: none;
+  height: clamp(7rem, 18vh, 12rem);
+}
+
+.editor-cover-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.editor-cover-remove {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 60%);
+  color: white;
+  cursor: pointer;
+}
+
+.editor-paper {
+  display: flex;
+  flex: 1 0 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.editor-meta {
+  flex: none;
+  padding: 1rem clamp(1.25rem, 4vw, 3.5rem) 0;
+}
+
+.editor-title {
+  display: block;
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--editor-fg);
+  font-size: clamp(1.45rem, 2vw, 1.8rem);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+}
+
+.editor-title::placeholder,
+.editor-textarea::placeholder {
+  color: var(--editor-placeholder);
+  opacity: 1;
+}
+
+.editor-tags {
+  margin-top: 0.7rem;
+}
+
+.tag-picker-row {
+  display: flex;
+  min-height: 2rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tag-picker-input {
+  min-width: 6rem;
+  max-width: 12rem;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: min(var(--radius-ui), 0.4rem);
+  outline: none;
+  background: transparent;
+  color: var(--editor-fg);
+  font-size: 0.8rem;
+}
+
+.tag-picker-input::placeholder {
+  color: var(--editor-muted);
+}
+
+.tag-picker-input:hover,
+.tag-picker-input:focus {
+  background: var(--editor-hover);
+}
+
+.tag-picker-menu {
+  max-width: calc(100vw - 2.5rem);
+}
+
+.editor-writing {
+  position: relative;
+  display: flex;
+  flex: 1 0 16rem;
+  min-height: 16rem;
+  margin-top: 0.6rem;
+}
+
+.editor-textarea,
+.editor-highlight {
+  width: 100%;
+  padding: 0.9rem clamp(1.25rem, 4vw, 3.5rem) max(3rem, env(safe-area-inset-bottom, 0px));
+  border: 0;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.75;
+  letter-spacing: normal;
+  tab-size: 4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.editor-textarea {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 100%;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: var(--editor-fg);
+  caret-color: var(--editor-fg);
+}
+
+.editor-textarea.has-highlights {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.editor-textarea.has-highlights::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.editor-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: var(--editor-fg);
+  pointer-events: none;
+}
+
+.editor-highlight mark {
+  padding: 0;
+  color: inherit;
+}
+
+.editor-preview-backdrop {
+  display: none;
+}
+
+.editor-preview {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: min(32rem, 85vw);
+  flex-direction: column;
+  border-left: 1px solid var(--editor-line);
+  background: var(--editor-bg);
+  box-shadow: -1rem 0 3rem rgb(0 0 0 / 14%);
+  transform: translateX(105%);
+  visibility: hidden;
+  transition: transform 240ms ease, visibility 0s linear 240ms;
+}
+
+.editor-preview[data-open="true"] {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform 240ms ease, visibility 0s;
+}
+
+.editor-preview-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 3.75rem;
+  padding: env(safe-area-inset-top, 0px) 1rem 0 1.4rem;
+  border-bottom: 1px solid var(--editor-line);
+}
+
+.editor-preview-heading {
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.editor-preview-caption {
+  margin-top: 0.1rem;
+  color: var(--editor-muted);
+  font-size: 0.72rem;
+}
+
+.editor-preview-content {
+  flex: 1;
+  overflow: auto;
+  padding: 1.75rem 1.5rem max(3rem, env(safe-area-inset-bottom, 0px));
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.editor-preview-title {
+  margin: 0 0 1.5rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.editor-preview-content .md-body > :first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 640px) {
+  .editor-toolbar {
+    gap: 0;
+    padding-right: max(0.35rem, env(safe-area-inset-right, 0px));
+    padding-left: max(0.35rem, env(safe-area-inset-left, 0px));
+  }
+
+  .editor-toolbar-actions {
+    gap: 0;
+  }
+
+  .editor-view-toggle {
+    gap: 0;
+    margin: 0 0.1rem;
+    padding: 0;
+  }
+
+  .editor-preview-backdrop {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    display: block;
+    background: rgb(0 0 0 / 35%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 240ms ease;
+  }
+
+  .editor-preview-backdrop[data-open="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .editor-preview {
+    width: min(30rem, 90vw);
+  }
+}
+
+@media (pointer: coarse) {
+  .app-header .app-brand,
+  .app-header .app-settings {
+    display: flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app-header .app-search,
+  .app-header .app-all-spaces {
+    min-height: 44px;
+  }
+
+  .editor-icon-button,
+  .editor-view-toggle .editor-icon-button {
+    width: 48px;
+    height: 48px;
+  }
+
+  .editor-cover-add,
+  .editor-find-input,
+  .editor-find-action,
+  .editor-find-whole,
+  .tag-picker-input {
+    min-height: 44px;
+  }
+
+  .editor-cover-remove {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 400px) {
+  .editor-save-status span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 352px) {
+  .editor-toolbar {
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+
+  .editor-toolbar-start {
+    position: relative;
+    gap: 0;
+  }
+
+  /* Keep the save indicator available without overlapping adjacent touch targets. */
+  .editor-save-status {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    left: 32px;
+    pointer-events: none;
+  }
+
+  .editor-view-toggle {
+    margin: 0;
+  }
+}
+
+@media (pointer: coarse) and (max-width: 352px) {
+  .editor-icon-button,
+  .editor-view-toggle .editor-icon-button {
+    width: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-preview,
+  .editor-preview[data-open="true"],
+  .editor-preview-backdrop {
+    transition: none;
+  }
 }
