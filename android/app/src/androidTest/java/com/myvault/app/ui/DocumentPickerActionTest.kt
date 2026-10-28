@@ -25,8 +25,11 @@ class DocumentPickerActionTest {
             // If a successful action already opened the app's confirmation, do not click again.
             if (root?.findAccessibilityNodeInfosByText("Import backup?")?.isNotEmpty() == true)
                 return
+            // Ignore the grid's separate "Preview the file ..." thumbnail node.
             val file =
-                root?.findAccessibilityNodeInfosByText("myvault-ci-migration.json")?.firstOrNull()
+                root?.findAccessibilityNodeInfosByText("myvault-ci-migration.json")?.firstOrNull {
+                    it.text?.toString() == "myvault-ci-migration.json"
+                }
             if (file != null) {
                 val chain = mutableListOf<AccessibilityNodeInfo>()
                 var node: AccessibilityNodeInfo? = file
@@ -41,12 +44,16 @@ class DocumentPickerActionTest {
                     chain.joinToString(" -> ") { candidate ->
                         "${candidate.className}(clickable=${candidate.isClickable}, actions=${candidate.actionList.map { it.id }})"
                     }
-                // The RecyclerView's item delegate routes a row ACTION_CLICK to
-                // openItem when nothing is selected. Clicking a child instead can
-                // merely toggle selection and report success without opening it.
-                val row = chain.lastOrNull()
-                if (!rowActionSent && row != null && row.isEnabled) {
-                    rowActionSent = row.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                // Prefer the row's advertised open action. Some DocumentsUI
+                // versions attach it to a text ancestor instead; the matched text
+                // is the filename, never the separate preview-thumbnail node.
+                val target =
+                    chain.asReversed().firstOrNull { candidate ->
+                        candidate.isEnabled &&
+                            candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
+                    } ?: chain.lastOrNull()
+                if (!rowActionSent && target != null && target.isEnabled) {
+                    rowActionSent = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                 }
             }
             SystemClock.sleep(250)

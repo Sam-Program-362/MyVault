@@ -106,6 +106,10 @@ def main():
     # document. Activate the unselected RecyclerView row directly, without a tap.
     if find("Import backup?", timeout=4) is None:
         if api <= 30:
+            # Grid mode exposes the thumbnail's "preview file" action instead of
+            # a document-row open action on some Android 11 DocumentsUI builds.
+            if find("List view", attribute="content-desc", timeout=5) is not None:
+                click("List view", "content-desc")
             if find(name, contains=True, timeout=20) is None:
                 raise AssertionError("The synthetic backup is not visible in Downloads.")
             activate_accessibly()
