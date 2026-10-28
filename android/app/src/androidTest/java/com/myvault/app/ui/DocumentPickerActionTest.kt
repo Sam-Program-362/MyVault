@@ -2,6 +2,8 @@ package com.myvault.app.ui
 
 import android.graphics.Rect
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -78,10 +80,24 @@ class DocumentPickerActionTest {
                         focused?.getBoundsInScreen(focusedBounds)
                         focusedWithinRow = focused != null && rowBounds.contains(focusedBounds)
                         if (focusedWithinRow) {
-                            val down = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER)
-                            val up = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER)
-                            val downSent = automation.injectInputEvent(down, true)
-                            val upSent = automation.injectInputEvent(up, true)
+                            val downTime = SystemClock.uptimeMillis()
+                            fun enterKey(action: Int) =
+                                KeyEvent(
+                                    downTime,
+                                    SystemClock.uptimeMillis(),
+                                    action,
+                                    KeyEvent.KEYCODE_ENTER,
+                                    0,
+                                    0,
+                                    KeyCharacterMap.VIRTUAL_KEYBOARD,
+                                    0,
+                                    KeyEvent.FLAG_FROM_SYSTEM,
+                                    InputDevice.SOURCE_KEYBOARD,
+                                )
+                            val downSent =
+                                automation.injectInputEvent(enterKey(KeyEvent.ACTION_DOWN), true)
+                            val upSent =
+                                automation.injectInputEvent(enterKey(KeyEvent.ACTION_UP), true)
                             rowActionSent = downSent && upSent
                         }
                     }
