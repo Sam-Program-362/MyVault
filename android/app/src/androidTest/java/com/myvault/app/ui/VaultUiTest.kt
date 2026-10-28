@@ -1,6 +1,5 @@
 package com.myvault.app.ui
 
-import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
@@ -16,10 +15,8 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.printToString
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.myvault.app.MainActivity
 import com.myvault.app.MyVaultApplication
-import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -53,9 +50,7 @@ class VaultUiTest {
         try {
             compose.waitUntil(10_000) { compose.onNodeWithContentDescription("Close preview").isDisplayed() }
             compose.onNodeWithText("Markdown").assertIsDisplayed()
-            capturePreviewForDiagnostics()
         } catch (failure: Throwable) {
-            capturePreviewForDiagnostics()
             val header = compose.onAllNodesWithText("Markdown", useUnmergedTree = true).printToString()
             val close =
                 compose
@@ -63,7 +58,10 @@ class VaultUiTest {
                     .printToString()
             throw AssertionError("Preview was not visible.\n$header\n$close", failure)
         }
-        compose.onNodeWithContentDescription("Close preview").performClick()
+        compose.onNodeWithContentDescription("Close preview").assertIsDisplayed()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(10_000) { !compose.onNodeWithContentDescription("Close preview").isDisplayed() }
+        compose.onNodeWithContentDescription("Entry title").assertIsDisplayed()
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Find").performTextInput("little")
         compose.onNodeWithText("Replace with").performTextInput("small")
@@ -110,26 +108,6 @@ class VaultUiTest {
             compose.onNodeWithText("Dark").assertIsSelected()
         } finally {
             runBlocking { app.settings.update { original } }
-        }
-    }
-
-    private fun capturePreviewForDiagnostics() {
-        runCatching {
-            val instrumentation = InstrumentationRegistry.getInstrumentation()
-            val screenshot = instrumentation.uiAutomation.takeScreenshot() ?: return
-            val thumbnail =
-                Bitmap.createScaledBitmap(screenshot, 360, screenshot.height * 360 / screenshot.width, true)
-            File(instrumentation.targetContext.cacheDir, "myvault-preview-test.jpg").outputStream().use {
-                thumbnail.compress(Bitmap.CompressFormat.JPEG, 45, it)
-            }
-            // Shell redirection opens the destination before run-as drops privileges. The shared
-            // diagnostic copy survives Gradle uninstalling the test app at the end of the run.
-            val command =
-                "run-as ${instrumentation.targetContext.packageName} cat cache/myvault-preview-test.jpg > /data/local/tmp/myvault-preview-test.jpg"
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(
-                    instrumentation.uiAutomation.executeShellCommand(command)
-                )
-                .use { it.readBytes() }
         }
     }
 }
