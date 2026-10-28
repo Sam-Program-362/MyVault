@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.printToString
+import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.myvault.app.MainActivity
@@ -82,9 +83,23 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Add tag…", substring = true).performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
-        compose.onNodeWithText("Create & add tag").performScrollTo().performClick()
+        val createTagButton = compose.onNodeWithText("Create & add tag").performScrollTo()
+        var busyBeforeTagClick = false
+        compose.runOnIdle {
+            busyBeforeTagClick =
+                ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
+        }
+        createTagButton.performClick()
+        var createTagErrorSeen = false
         try {
             compose.waitUntil(15_000) {
+                if (
+                    compose
+                        .onAllNodesWithText("Couldn’t create tag.", substring = true)
+                        .fetchSemanticsNodes()
+                        .isNotEmpty()
+                )
+                    createTagErrorSeen = true
                 compose
                     .onAllNodesWithContentDescription("Remove Journal tag")
                     .fetchSemanticsNodes()
@@ -108,7 +123,22 @@ class VaultUiTest {
                     .onAllNodesWithText("Couldn’t create tag.", substring = true)
                     .fetchSemanticsNodes()
                     .isNotEmpty()
-            throw AssertionError("Tag did not appear: $state, errorVisible=$errorVisible", failure)
+            val dialogVisible =
+                compose
+                    .onAllNodesWithText("Find or create a tag")
+                    .fetchSemanticsNodes()
+                    .isNotEmpty()
+            var busyAtFailure = false
+            compose.runOnIdle {
+                busyAtFailure =
+                    ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
+            }
+            throw AssertionError(
+                "Tag did not appear: $state, errorVisible=$errorVisible, " +
+                    "errorSeen=$createTagErrorSeen, dialogVisible=$dialogVisible, " +
+                    "busyBeforeClick=$busyBeforeTagClick, busyAtFailure=$busyAtFailure",
+                failure,
+            )
         }
         compose.onNodeWithContentDescription("Close editor").performClick()
         compose.waitUntil(15_000) {

@@ -113,7 +113,7 @@ def main():
         if api > 30 and find("Import backup?", timeout=8) is None and find("Open", timeout=3) is not None:
             click("Open")
         if find("Import backup?", timeout=8) is None:
-            # Do not repeat the raw tap; require confirmation after any fallback.
+            # Do not repeat the raw tap; require confirmation after any accessible action.
             activate_accessibly()
     if find("Import backup?", timeout=25) is None:
         raise AssertionError("The preview did not show the backup confirmation.")

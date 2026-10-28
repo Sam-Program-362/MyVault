@@ -22,11 +22,9 @@ run_check() {
 }
 run_check 'Room, backup and Compose tests' bash ci/run-device-tests.sh
 run_check 'Motion and cutout' env MYVAULT_REQUIRE_CUTOUT=1 bash ci/run-motion-inset-tests.sh
-# Keep the backup/picker check ahead of the evidence phase, which temporarily
-# changes window size, density, navigation overlays and animation settings.
-run_check 'Offline upgrade, restart and migration' bash ci/run-offline-restart-test.sh
 if [[ $MYVAULT_API_LEVEL == 30 ]]; then
   run_check 'Synthetic screenshots and launcher' bash ci/capture-synthetic-ui.sh
 fi
 run_check 'Real-window comparison and recording' bash ci/run-native-window-evidence.sh
+run_check 'Offline upgrade, restart and migration' bash ci/run-offline-restart-test.sh
 exit "$status"
