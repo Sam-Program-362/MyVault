@@ -40,9 +40,15 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     val spaces = spacesDao.observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val tags = tagsDao.observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val entries =
-        entriesDao.observeFiltered(null, null).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val tagRefs = entriesDao.observeAllTagRefs().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val settings = app.settings.settingsFlow.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
+        entriesDao
+            .observeFiltered(null, null)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val tagRefs =
+        entriesDao.observeAllTagRefs().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val settings =
+        app.settings.settingsFlow.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
+    val entryLayout =
+        app.settings.entryLayoutFlow.stateIn(viewModelScope, SharingStarted.Eagerly, "cards")
 
     private val currentWriter = MutableStateFlow<EditorDraftWriter<EntryEntity>?>(null)
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -105,7 +111,13 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateSpace(space: SpaceEntity, name: String, description: String, color: String, icon: String) {
+    fun updateSpace(
+        space: SpaceEntity,
+        name: String,
+        description: String,
+        color: String,
+        icon: String,
+    ) {
         val cleanName = name.trim()
         if (cleanName.isEmpty()) {
             message("Enter a space name.")
@@ -133,7 +145,8 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
     fun createEntry(spaceId: String) =
         action("Couldn’t create entry.") {
             if (currentWriter.value != null) return@action
-            val entry = EntryEntity(id = UUID.randomUUID().toString(), spaceId = spaceId, title = "")
+            val entry =
+                EntryEntity(id = UUID.randomUUID().toString(), spaceId = spaceId, title = "")
             entriesDao.upsert(entry)
             startEditing(entry)
         }
@@ -167,7 +180,9 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             delay(350)
             viewModelScope.launch {
                 if (!writer.flush())
-                    message("Couldn’t save the entry. Your draft is still open; try closing it again.")
+                    message(
+                        "Couldn’t save the entry. Your draft is still open; try closing it again."
+                    )
             }
         }
     }
@@ -176,7 +191,8 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         val writer = currentWriter.value ?: return
         debounce?.cancel()
         viewModelScope.launch {
-            if (!writer.flush()) message("Couldn’t save the entry. Your draft is still open; try again.")
+            if (!writer.flush())
+                message("Couldn’t save the entry. Your draft is still open; try again.")
         }
     }
 
@@ -231,7 +247,9 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
                             )
                             .also { tagsDao.upsert(it) }
                 if (attachToEditor) {
-                    val id = currentWriter.value?.state?.value?.value?.id ?: error("Entry is no longer open.")
+                    val id =
+                        currentWriter.value?.state?.value?.value?.id
+                            ?: error("Entry is no longer open.")
                     entriesDao.addTagRef(EntryTagCrossRef(id, tag.id))
                 }
             }
@@ -253,6 +271,18 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         action("Couldn’t delete tag.") {
             tagsDao.delete(tag.id)
         }
+
+    fun updateEntryLayout(layout: String) {
+        viewModelScope.launch {
+            try {
+                app.settings.updateEntryLayout(layout)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                message("Couldn’t save the entry layout. Please try again.")
+            }
+        }
+    }
 
     fun updateSettings(transform: (AppSettings) -> AppSettings) {
         viewModelScope.launch {
@@ -298,10 +328,11 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.IO) {
                     val resolver = getApplication<Application>().contentResolver
                     val name =
-                        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-                            cursor ->
-                            if (cursor.moveToFirst()) cursor.getString(0) else null
-                        } ?: "Imported text"
+                        resolver
+                            .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                            ?.use { cursor ->
+                                if (cursor.moveToFirst()) cursor.getString(0) else null
+                            } ?: "Imported text"
                     val mime = resolver.getType(uri)
                     require(
                         mime?.startsWith("text/") == true ||

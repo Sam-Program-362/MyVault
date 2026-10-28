@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -35,14 +36,14 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Executed in two separate instrumentation processes with an actual force-stop between them. */
+/** Executed in separate instrumentation processes with actual force-stops between phases. */
 @RunWith(AndroidJUnit4::class)
 class OfflineRestartTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     @Test
     fun airplaneModeForceStopAndRestart() {
-        // The normal connected suite also discovers this test. Its two real phases are launched
+        // The normal connected suite also discovers this test. Its real phases are launched
         // by ci/run-offline-restart-test.sh, which controls the emulator and keeps app data
         // installed.
         val phase =
@@ -67,6 +68,7 @@ class OfflineRestartTest {
         when (phase) {
             "seed" -> seedOfflineVault(app)
             "verify" -> verifyAfterForceStop(app)
+            "verifyLayout" -> verifyLayoutAfterForceStop(app)
             else -> error("Unknown offline restart phase: $phase")
         }
     }
@@ -192,5 +194,38 @@ class OfflineRestartTest {
             restored.close()
             backup.delete()
         }
+
+        // The preference is Android-only and is set after updating the previous APK.
+        compose.onNodeWithContentDescription("Close editor").performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription("List view").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("List view").performClick()
+        compose.waitUntil(15_000) { runBlocking { app.settings.entryLayoutFlow.first() == "list" } }
+    }
+
+    private fun verifyLayoutAfterForceStop(app: MyVaultApplication) {
+        assertEquals("list", runBlocking { app.settings.entryLayoutFlow.first() })
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithText("Offline space").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Offline space").performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithText("Offline note").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("List view").assertIsSelected()
+        compose.onNodeWithText("2 lines").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Expand Offline note").performClick()
+        compose.onNodeWithContentDescription("Collapse Offline note").assertIsDisplayed()
+        compose.onNodeWithText("Offline note").performClick()
+        compose.waitUntil(15_000) {
+            compose
+                .onAllNodesWithContentDescription("Entry content")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        compose
+            .onNodeWithContentDescription("Entry content")
+            .assertTextContains("Saved without a network.", substring = true)
     }
 }

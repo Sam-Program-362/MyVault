@@ -1,9 +1,20 @@
 package com.myvault.app.ui
 
 import android.text.format.DateUtils
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +37,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -33,10 +45,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -54,15 +68,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -91,6 +108,8 @@ fun EntriesScreen(
     onNewSpace: (String, String, String, String) -> Unit,
     onNewEntry: (String) -> Unit,
     onOpenEntry: (String) -> Unit,
+    entryLayout: String = "cards",
+    onEntryLayoutChange: (String) -> Unit = {},
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var tagFilter by rememberSaveable { mutableStateOf<String?>(null) }
@@ -115,6 +134,7 @@ fun EntriesScreen(
     val tagsById = remember(tags) { tags.associateBy { it.id } }
     val refsByEntry = remember(tagRefs) { tagRefs.groupBy { it.entryId } }
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val listLayout = entryLayout == "list"
 
     Column(Modifier.fillMaxSize()) {
         DashboardHeader(
@@ -205,11 +225,13 @@ fun EntriesScreen(
             }
         }
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 300.dp),
+            // Cards retain the existing adaptive dimensions. List mode uses the same keyed
+            // collection and data, so switching layouts never reloads the vault.
+            columns = if (listLayout) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 300.dp),
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (listLayout) 6.dp else 16.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "heading") {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -221,22 +243,11 @@ fun EntriesScreen(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            if (selectedSpaceId != null) onNewEntry(selectedSpaceId)
-                            else chooseSpace = true
-                        },
-                        modifier =
-                            Modifier.heightIn(min = 48.dp).semantics {
-                                contentDescription = "New entry"
-                            },
-                        shape = MaterialTheme.shapes.medium,
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                    ) {
-                        Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("New entry", fontSize = 13.sp, maxLines = 1)
+                    EntryLayoutToggle(listLayout, onEntryLayoutChange)
+                    Spacer(Modifier.width(4.dp))
+                    CompactNewEntryButton {
+                        if (selectedSpaceId != null) onNewEntry(selectedSpaceId)
+                        else chooseSpace = true
                     }
                 }
             }
@@ -247,13 +258,24 @@ fun EntriesScreen(
             }
             items(filtered, key = { it.id }) { entry ->
                 val entryTags = refsByEntry[entry.id].orEmpty().mapNotNull { tagsById[it.tagId] }
-                EntryCard(
-                    entry = entry,
-                    tags = entryTags,
-                    space = spaces.find { it.id == entry.spaceId },
-                    showSpace = selectedSpaceId == null,
-                    onClick = { onOpenEntry(entry.id) },
-                )
+                AnimatedContent(
+                    targetState = listLayout,
+                    modifier = Modifier.animateItem(),
+                    transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
+                    label = "Entry layout",
+                ) { showList ->
+                    if (showList) {
+                        EntryListRow(entry = entry, onOpen = { onOpenEntry(entry.id) })
+                    } else {
+                        EntryCard(
+                            entry = entry,
+                            tags = entryTags,
+                            space = spaces.find { it.id == entry.spaceId },
+                            showSpace = selectedSpaceId == null,
+                            onClick = { onOpenEntry(entry.id) },
+                        )
+                    }
+                }
             }
         }
     }
@@ -290,6 +312,160 @@ fun EntriesScreen(
             },
             confirmButton = { TextButton(onClick = { chooseSpace = false }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun EntryLayoutToggle(listLayout: Boolean, onChange: (String) -> Unit) {
+    Row(Modifier.selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+        listOf(false, true).forEach { isList ->
+            val active = listLayout == isList
+            val background by
+                animateColorAsState(
+                    if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                    else Color.Transparent,
+                    animationSpec = tween(160),
+                    label = "Layout selection",
+                )
+            Box(
+                Modifier.size(48.dp)
+                    .selectable(
+                        selected = active,
+                        role = Role.RadioButton,
+                        onClick = { if (!active) onChange(if (isList) "list" else "cards") },
+                    )
+                    .semantics { contentDescription = if (isList) "List view" else "Cards view" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    modifier = Modifier.size(32.dp),
+                    shape = MaterialTheme.shapes.small,
+                    color = background,
+                    contentColor =
+                        if (active) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                ) {
+                    Icon(
+                        if (isList) Icons.Default.ViewList else Icons.Default.GridView,
+                        contentDescription = null,
+                        modifier = Modifier.padding(7.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactNewEntryButton(onClick: () -> Unit) {
+    Box(
+        Modifier.height(48.dp).clickable(role = Role.Button, onClick = onClick).semantics {
+            contentDescription = "New entry"
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ) {
+            Row(
+                Modifier.height(34.dp).padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(5.dp))
+                Text("New entry", fontSize = 13.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EntryListRow(entry: EntryEntity, onOpen: () -> Unit) {
+    var expanded by rememberSaveable(entry.id) { mutableStateOf(false) }
+    val title = entry.title.ifBlank { "Untitled entry" }
+    val preview = remember(entry.content) { listTextPreview(entry.content) }
+    val lineCount = remember(entry.content) { entryLineCount(entry.content) }
+    val chevronRotation by
+        animateFloatAsState(
+            if (expanded) 180f else 0f,
+            animationSpec = tween(180),
+            label = "Expand entry",
+        )
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("entry-list-${entry.id}"),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+    ) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onOpen),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    Modifier.weight(1f)
+                        .padding(start = 14.dp, top = 10.dp, bottom = 10.dp, end = 6.dp)
+                ) {
+                    Text(
+                        title,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        preview.replace('\n', ' ').ifBlank { "No content yet." },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    if (lineCount == 1) "1 line" else "$lineCount lines",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                )
+                IconButton(
+                    onClick = { expanded = !expanded },
+                    modifier =
+                        Modifier.size(48.dp).semantics {
+                            stateDescription = if (expanded) "Expanded" else "Collapsed"
+                        },
+                ) {
+                    Icon(
+                        Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "Collapse $title" else "Expand $title",
+                        modifier = Modifier.size(20.dp).rotate(chevronRotation),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(tween(150)) + expandVertically(tween(200)),
+                exit = fadeOut(tween(120)) + shrinkVertically(tween(180)),
+                label = "Entry preview",
+            ) {
+                Text(
+                    preview.ifBlank { "No content yet." },
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .testTag("entry-preview-${entry.id}")
+                            .clickable(role = Role.Button, onClick = onOpen)
+                            .padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 12.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    maxLines = 8,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 

@@ -26,9 +26,9 @@ data class AppSettings(
 )
 
 /**
- * Settings (theme, wallpaper, app name) are stored locally via Jetpack
- * DataStore, so they persist across launches without ever touching the
- * network — mirroring the web app's "settings save on your device" behavior.
+ * Settings (theme, wallpaper, app name) are stored locally via Jetpack DataStore, so they persist
+ * across launches without ever touching the network — mirroring the web app's "settings save on
+ * your device" behavior.
  */
 class SettingsRepository(private val context: Context) {
     private object Keys {
@@ -41,25 +41,12 @@ class SettingsRepository(private val context: Context) {
         val WALLPAPER_ENABLED = booleanPreferencesKey("wallpaper_enabled")
         val WALLPAPER_OPACITY = intPreferencesKey("wallpaper_opacity")
         val WALLPAPER_BLUR = intPreferencesKey("wallpaper_blur")
+        val ENTRY_LAYOUT = stringPreferencesKey("entry_layout")
     }
 
-    val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
-        AppSettings(
-            appName = prefs[Keys.APP_NAME] ?: "MyVault",
-            accent = prefs[Keys.ACCENT] ?: "#6366F1",
-            mode = prefs[Keys.MODE] ?: "system",
-            fontSize = prefs[Keys.FONT_SIZE] ?: "md",
-            radius = prefs[Keys.RADIUS] ?: "lg",
-            wallpaperUri = prefs[Keys.WALLPAPER_URI],
-            wallpaperEnabled = prefs[Keys.WALLPAPER_ENABLED] ?: false,
-            wallpaperOpacity = prefs[Keys.WALLPAPER_OPACITY] ?: 35,
-            wallpaperBlur = prefs[Keys.WALLPAPER_BLUR] ?: 0,
-        )
-    }
-
-    suspend fun update(transform: (AppSettings) -> AppSettings) {
-        context.dataStore.edit { prefs ->
-            val current = AppSettings(
+    val settingsFlow: Flow<AppSettings> =
+        context.dataStore.data.map { prefs ->
+            AppSettings(
                 appName = prefs[Keys.APP_NAME] ?: "MyVault",
                 accent = prefs[Keys.ACCENT] ?: "#6366F1",
                 mode = prefs[Keys.MODE] ?: "system",
@@ -70,13 +57,43 @@ class SettingsRepository(private val context: Context) {
                 wallpaperOpacity = prefs[Keys.WALLPAPER_OPACITY] ?: 35,
                 wallpaperBlur = prefs[Keys.WALLPAPER_BLUR] ?: 0,
             )
+        }
+
+    // This Android-only preference lives in the same DataStore, but is not part of
+    // AppSettings or the web-compatible JSON backup format.
+    val entryLayoutFlow: Flow<String> =
+        context.dataStore.data.map { prefs ->
+            if (prefs[Keys.ENTRY_LAYOUT] == "list") "list" else "cards"
+        }
+
+    suspend fun updateEntryLayout(layout: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.ENTRY_LAYOUT] = if (layout == "list") "list" else "cards"
+        }
+    }
+
+    suspend fun update(transform: (AppSettings) -> AppSettings) {
+        context.dataStore.edit { prefs ->
+            val current =
+                AppSettings(
+                    appName = prefs[Keys.APP_NAME] ?: "MyVault",
+                    accent = prefs[Keys.ACCENT] ?: "#6366F1",
+                    mode = prefs[Keys.MODE] ?: "system",
+                    fontSize = prefs[Keys.FONT_SIZE] ?: "md",
+                    radius = prefs[Keys.RADIUS] ?: "lg",
+                    wallpaperUri = prefs[Keys.WALLPAPER_URI],
+                    wallpaperEnabled = prefs[Keys.WALLPAPER_ENABLED] ?: false,
+                    wallpaperOpacity = prefs[Keys.WALLPAPER_OPACITY] ?: 35,
+                    wallpaperBlur = prefs[Keys.WALLPAPER_BLUR] ?: 0,
+                )
             val next = transform(current)
             prefs[Keys.APP_NAME] = next.appName
             prefs[Keys.ACCENT] = next.accent
             prefs[Keys.MODE] = next.mode
             prefs[Keys.FONT_SIZE] = next.fontSize
             prefs[Keys.RADIUS] = next.radius
-            next.wallpaperUri?.let { prefs[Keys.WALLPAPER_URI] = it } ?: prefs.remove(Keys.WALLPAPER_URI)
+            next.wallpaperUri?.let { prefs[Keys.WALLPAPER_URI] = it }
+                ?: prefs.remove(Keys.WALLPAPER_URI)
             prefs[Keys.WALLPAPER_ENABLED] = next.wallpaperEnabled
             prefs[Keys.WALLPAPER_OPACITY] = next.wallpaperOpacity
             prefs[Keys.WALLPAPER_BLUR] = next.wallpaperBlur

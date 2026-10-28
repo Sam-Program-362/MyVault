@@ -1,6 +1,5 @@
 package com.myvault.app.data
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.room.Room
@@ -12,6 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -28,8 +28,14 @@ class BackupManagerTest {
     @Before
     fun setup() {
         app = ApplicationProvider.getApplicationContext()
-        source = Room.inMemoryDatabaseBuilder(app, AppDatabase::class.java).allowMainThreadQueries().build()
-        target = Room.inMemoryDatabaseBuilder(app, AppDatabase::class.java).allowMainThreadQueries().build()
+        source =
+            Room.inMemoryDatabaseBuilder(app, AppDatabase::class.java)
+                .allowMainThreadQueries()
+                .build()
+        target =
+            Room.inMemoryDatabaseBuilder(app, AppDatabase::class.java)
+                .allowMainThreadQueries()
+                .build()
         tempDir = File(app.cacheDir, "backup-test-${System.nanoTime()}").also { it.mkdirs() }
     }
 
@@ -68,15 +74,22 @@ class BackupManagerTest {
         target.tagDao().upsert(TagEntity(id = "existing-tag", name = "ideas"))
         target
             .entryDao()
-            .upsert(EntryEntity(id = "existing-entry", spaceId = "existing-space", content = "existing"))
+            .upsert(
+                EntryEntity(id = "existing-entry", spaceId = "existing-space", content = "existing")
+            )
 
         val backup = File(tempDir, "backup.json")
-        val exported = BackupManager(app, source, app.settings, app.media).exportTo(Uri.fromFile(backup))
+        val exported =
+            BackupManager(app, source, app.settings, app.media).exportTo(Uri.fromFile(backup))
         assertEquals(0, exported.externalImages)
         assertTrue(backup.readText().contains("data:image/png;base64,"))
+        assertFalse(
+            backup.readText().contains("entryLayout")
+        ) // Android-only UI state is not a web setting.
         image.delete() // the exported image must not depend on the original file
         val result =
-            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(backup), false)
+            BackupManager(app, target, app.settings, app.media)
+                .importFrom(Uri.fromFile(backup), false)
         assertEquals(1, result.entries)
         assertEquals(0, result.spaces)
         assertEquals(0, result.tags)
@@ -85,7 +98,10 @@ class BackupManagerTest {
         assertEquals(3000L, imported.createdAt)
         assertEquals(4000L, imported.updatedAt)
         assertEquals("existing-space", imported.spaceId)
-        assertEquals(listOf("existing-tag"), target.entryDao().tagRefsForEntry(imported.id).map { it.tagId })
+        assertEquals(
+            listOf("existing-tag"),
+            target.entryDao().tagRefsForEntry(imported.id).map { it.tagId },
+        )
         assertEquals("existing", target.entryDao().getById("existing-entry")?.content)
         assertTrue(File(requireNotNull(Uri.parse(imported.coverImagePath).path)).isFile)
         assertNotNull(MediaFiles.displayModel(imported.coverImagePath))
@@ -102,7 +118,8 @@ class BackupManagerTest {
         )
         var failed = false
         try {
-            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(backup), false)
+            BackupManager(app, target, app.settings, app.media)
+                .importFrom(Uri.fromFile(backup), false)
         } catch (_: Exception) {
             failed = true
         }
@@ -115,12 +132,16 @@ class BackupManagerTest {
     @Test
     fun externalImagePathsArePreservedAndReported() = runBlocking {
         source.spaceDao().upsert(SpaceEntity(id = "s", name = "Web"))
-        source.entryDao().upsert(EntryEntity(id = "e", spaceId = "s", coverImagePath = "/uploads/cover.png"))
+        source
+            .entryDao()
+            .upsert(EntryEntity(id = "e", spaceId = "s", coverImagePath = "/uploads/cover.png"))
         val file = File(tempDir, "external.json")
-        val exported = BackupManager(app, source, app.settings, app.media).exportTo(Uri.fromFile(file))
+        val exported =
+            BackupManager(app, source, app.settings, app.media).exportTo(Uri.fromFile(file))
         assertEquals(1, exported.externalImages)
         val imported =
-            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), false)
+            BackupManager(app, target, app.settings, app.media)
+                .importFrom(Uri.fromFile(file), false)
         assertEquals(1, imported.externalImages)
         assertEquals("/uploads/cover.png", target.entryDao().getAll().single().coverImagePath)
     }
@@ -128,16 +149,21 @@ class BackupManagerTest {
     @Test
     fun settingsAreOnlyRestoredWhenRequested() = runBlocking {
         val original = app.settings.settingsFlow.first()
+        val originalLayout = app.settings.entryLayoutFlow.first()
         val file = File(tempDir, "settings.json")
         file.writeText("""{"settings":{"appName":"Imported vault","mode":"dark"}}""")
         try {
-            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), false)
+            app.settings.updateEntryLayout("list")
+            BackupManager(app, target, app.settings, app.media)
+                .importFrom(Uri.fromFile(file), false)
             assertEquals(original.appName, app.settings.settingsFlow.first().appName)
             BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), true)
             assertEquals("Imported vault", app.settings.settingsFlow.first().appName)
             assertEquals("dark", app.settings.settingsFlow.first().mode)
+            assertEquals("list", app.settings.entryLayoutFlow.first())
         } finally {
             app.settings.update { original }
+            app.settings.updateEntryLayout(originalLayout)
         }
     }
 
@@ -152,7 +178,9 @@ class BackupManagerTest {
         val privateFile = File(requireNotNull(Uri.parse(saved).path))
         try {
             assertTrue(privateFile.isFile)
-            assertTrue(privateFile.canonicalPath.startsWith(app.filesDir.canonicalPath + File.separator))
+            assertTrue(
+                privateFile.canonicalPath.startsWith(app.filesDir.canonicalPath + File.separator)
+            )
             image.delete()
             assertTrue(privateFile.isFile)
         } finally {

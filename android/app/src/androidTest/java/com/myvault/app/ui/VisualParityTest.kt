@@ -13,10 +13,12 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -195,6 +197,104 @@ class VisualParityTest {
         compose.onNodeWithContentDescription("Filter by Ideas").performClick()
         compose.onNodeWithText("A thoughtful note").assertIsDisplayed()
         compose.onNodeWithText("Home note").assertDoesNotExist()
+    }
+
+    @Test
+    fun listRowsExpandIndependentlyAndOnlyOpeningARowCallsTheEditor() {
+        val layout = mutableStateOf("cards")
+        val opened = mutableStateOf<String?>(null)
+        val second =
+            EntryEntity(
+                id = "second",
+                spaceId = work.id,
+                title = "Second note",
+                content = "One line",
+            )
+        val empty = EntryEntity(id = "empty", spaceId = work.id, title = "Empty note", content = "")
+        compose.setContent {
+            VaultTheme(settings) { dark ->
+                Box(Modifier.fillMaxSize()) {
+                    VaultBackdrop(settings, dark, splash = false)
+                    EntriesScreen(
+                        appName = "MyVault",
+                        spaces = listOf(work),
+                        selectedSpaceId = work.id,
+                        entries =
+                            listOf(
+                                note.copy(coverImagePath = "file:///private/cover.png"),
+                                second,
+                                empty,
+                            ),
+                        tags = emptyList(),
+                        tagRefs = emptyList(),
+                        onSelectSpace = {},
+                        onBack = {},
+                        onSettings = {},
+                        onNewSpace = { _, _, _, _ -> },
+                        onNewEntry = {},
+                        onOpenEntry = { opened.value = it },
+                        entryLayout = layout.value,
+                        onEntryLayoutChange = { layout.value = it },
+                    )
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("Cards view").assertIsSelected()
+        compose
+            .onNodeWithContentDescription("List view")
+            .assertWidthIsAtLeast(48.dp)
+            .assertHeightIsAtLeast(48.dp)
+            .performClick()
+        compose.onNodeWithContentDescription("List view").assertIsSelected()
+        compose.onNodeWithText("2 lines").assertIsDisplayed()
+        compose.onNodeWithText("1 line").assertIsDisplayed()
+        compose.onNodeWithText("0 lines").assertIsDisplayed()
+        compose
+            .onNodeWithContentDescription("Expand A thoughtful note")
+            .assertWidthIsAtLeast(48.dp)
+            .assertHeightIsAtLeast(48.dp)
+            .performClick()
+        compose.onNodeWithTag("entry-preview-note").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(null, opened.value) }
+        compose.onNodeWithContentDescription("Expand Second note").performClick()
+        compose.onNodeWithTag("entry-preview-second").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Collapse A thoughtful note").performClick()
+        compose.onNodeWithTag("entry-preview-note").assertDoesNotExist()
+        compose.onNodeWithTag("entry-preview-second").assertIsDisplayed()
+        compose.onNodeWithText("A thoughtful note").performClick()
+        compose.runOnIdle { assertEquals("note", opened.value) }
+        compose.onNodeWithContentDescription("Cards view").performClick()
+        compose.onNodeWithContentDescription("Cards view").assertIsSelected()
+        compose.onNodeWithText("A thoughtful note").assertIsDisplayed()
+    }
+
+    @Test
+    fun emptyEntryScreenCanSwitchLayouts() {
+        val layout = mutableStateOf("cards")
+        compose.setContent {
+            VaultTheme(settings) {
+                EntriesScreen(
+                    appName = "MyVault",
+                    spaces = listOf(work),
+                    selectedSpaceId = work.id,
+                    entries = emptyList(),
+                    tags = emptyList(),
+                    tagRefs = emptyList(),
+                    onSelectSpace = {},
+                    onBack = {},
+                    onSettings = {},
+                    onNewSpace = { _, _, _, _ -> },
+                    onNewEntry = {},
+                    onOpenEntry = {},
+                    entryLayout = layout.value,
+                    onEntryLayoutChange = { layout.value = it },
+                )
+            }
+        }
+        compose.onNodeWithText("No entries yet. Create your first one.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("List view").performClick()
+        compose.onNodeWithContentDescription("List view").assertIsSelected()
+        compose.onNodeWithText("No entries yet. Create your first one.").assertIsDisplayed()
     }
 
     @Test

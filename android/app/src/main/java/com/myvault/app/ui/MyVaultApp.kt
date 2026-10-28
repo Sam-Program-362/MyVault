@@ -44,6 +44,7 @@ import com.myvault.app.ui.editor.EntryEditorScreen
 @Composable
 fun MyVaultApp(vault: VaultViewModel) {
     val settings by vault.settings.collectAsState()
+    val entryLayout by vault.entryLayout.collectAsState()
     val spaces by vault.spaces.collectAsState()
     val entries by vault.entries.collectAsState()
     val tags by vault.tags.collectAsState()
@@ -278,6 +279,8 @@ fun MyVaultApp(vault: VaultViewModel) {
                             },
                             onNewEntry = vault::createEntry,
                             onOpenEntry = vault::openEntry,
+                            entryLayout = entryLayout,
+                            onEntryLayoutChange = vault::updateEntryLayout,
                         )
                     }
                     else ->
