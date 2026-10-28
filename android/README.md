@@ -33,6 +33,8 @@ In the repository, open **Settings → Secrets and variables → Actions → New
 
 `ANDROID_KEYSTORE_PATH` is created automatically on the runner and is **not** a GitHub secret. Do not put the keystore, Base64 value, passwords or alias in chat, issues, commits or workflow files. The SHA-256 certificate fingerprint included with the signed artifact is public metadata, not the private signing key.
 
+The workflow opens the decoded keystore before checking the alias. If the store cannot be opened, privately verify the complete Base64 value and store password as well as the alias.
+
 ### Use the existing signing key
 
 For an already distributed app, use the original signing key and its actual alias and passwords. Never replace a lost original release key with a new one and claim it will update the existing installation. Reusing the same key for another package is not itself a conflict. With Google Play App Signing, the Play upload key and app-signing key can differ; an APK signed only with the upload key cannot necessarily update a Play-installed app. Keep a secure backup of the correct key and passwords.
