@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Local data (Room DB + DataStore) is included in Android's own
+     auto-backup so a user's entries/settings can move with them to a new
+     device, while still never leaving their control. -->
+<full-backup-content>
+    <include domain="database" path="." />
+    <include domain="sharedpref" path="." />
+    <include domain="file" path="." />
+</full-backup-content>
