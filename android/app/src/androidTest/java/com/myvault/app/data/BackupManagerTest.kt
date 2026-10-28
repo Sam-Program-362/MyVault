@@ -140,4 +140,23 @@ class BackupManagerTest {
             app.settings.update { original }
         }
     }
+
+    @Test
+    fun selectedImageIsCopiedBeforeTheOriginalDisappears() = runBlocking {
+        val image = File(tempDir, "selected.png")
+        image.outputStream().use { output ->
+            Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+                .compress(Bitmap.CompressFormat.PNG, 100, output)
+        }
+        val saved = app.media.copySelected(Uri.fromFile(image))
+        val privateFile = File(requireNotNull(Uri.parse(saved).path))
+        try {
+            assertTrue(privateFile.isFile)
+            assertTrue(privateFile.canonicalPath.startsWith(app.filesDir.canonicalPath + File.separator))
+            image.delete()
+            assertTrue(privateFile.isFile)
+        } finally {
+            privateFile.delete()
+        }
+    }
 }

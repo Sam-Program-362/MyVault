@@ -68,7 +68,9 @@ class VaultUiTest {
         compose.onNodeWithText("Find").performTextInput("little")
         compose.onNodeWithText("Replace with").performTextInput("small")
         compose.onNodeWithText("Replace all").performScrollTo().performClick()
-        compose.onNodeWithContentDescription("Entry content").assertTextContains("A small Markdown")
+        compose
+            .onNodeWithContentDescription("Entry content")
+            .assertTextContains("A small Markdown", substring = true)
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Add tag…", substring = true).performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
@@ -85,7 +87,9 @@ class VaultUiTest {
             compose.onAllNodesWithContentDescription("Entry content").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithContentDescription("Entry title").assertTextContains("A saved note")
-        compose.onNodeWithContentDescription("Entry content").assertTextContains("A small Markdown")
+        compose
+            .onNodeWithContentDescription("Entry content")
+            .assertTextContains("A small Markdown", substring = true)
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
         compose.onNodeWithContentDescription("Remove Journal tag").assertIsDisplayed()
     }
@@ -118,6 +122,14 @@ class VaultUiTest {
             File(instrumentation.targetContext.cacheDir, "myvault-preview-test.jpg").outputStream().use {
                 thumbnail.compress(Bitmap.CompressFormat.JPEG, 45, it)
             }
+            // Shell redirection opens the destination before run-as drops privileges. The shared
+            // diagnostic copy survives Gradle uninstalling the test app at the end of the run.
+            val command =
+                "run-as ${instrumentation.targetContext.packageName} cat cache/myvault-preview-test.jpg > /data/local/tmp/myvault-preview-test.jpg"
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                    instrumentation.uiAutomation.executeShellCommand(command)
+                )
+                .use { it.readBytes() }
         }
     }
 }

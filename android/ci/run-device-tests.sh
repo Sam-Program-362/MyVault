@@ -7,7 +7,8 @@ status=${PIPESTATUS[0]}
 # Optional, synthetic screenshot for inspecting this PR's emulator rendering.
 if [[ "${MYVAULT_CAPTURE_UI:-false}" == true ]]; then
   screenshot="${log_file}.jpg"
-  if adb exec-out run-as com.myvault.app.debug cat cache/myvault-preview-test.jpg > "$screenshot" 2>/dev/null && [[ -s "$screenshot" ]]; then
+  if adb exec-out cat /data/local/tmp/myvault-preview-test.jpg > "$screenshot" 2>/dev/null &&
+     [[ "$(od -An -tx1 -N2 "$screenshot" | tr -d ' \n')" == ffd8 ]]; then
     encoded=$(base64 -w 0 "$screenshot")
     if ((${#encoded} < 45000)); then printf '::notice title=Preview screenshot::%s\n' "$encoded"; fi
   fi

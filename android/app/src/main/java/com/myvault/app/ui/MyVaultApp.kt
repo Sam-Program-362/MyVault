@@ -300,7 +300,14 @@ fun MyVaultApp(vault: VaultViewModel) {
                                 exportPicker.launch("$fileName-export.json")
                             },
                             onImport = {
-                                importPicker.launch(arrayOf("application/json", "text/json", "text/plain"))
+                                importPicker.launch(
+                                    arrayOf(
+                                        "application/json",
+                                        "text/json",
+                                        "text/plain",
+                                        "application/octet-stream",
+                                    )
+                                )
                             },
                         )
                     }

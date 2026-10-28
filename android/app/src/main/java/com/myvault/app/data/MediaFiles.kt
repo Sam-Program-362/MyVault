@@ -48,7 +48,9 @@ class MediaFiles(private val context: Context) {
     suspend fun copySelected(uri: Uri): String =
         withContext(Dispatchers.IO) {
             val mime = context.contentResolver.getType(uri)
-            require(mime == null || mime.startsWith("image/")) { "Choose an image file." }
+            require(mime == null || mime.startsWith("image/") || mime == "application/octet-stream") {
+                "Choose an image file."
+            }
             val file = newFile(mime)
             try {
                 val input =
