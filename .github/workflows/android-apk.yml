@@ -320,7 +320,7 @@ jobs:
       ${{ (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release') ||
           (github.event_name == 'push' && github.ref == 'refs/heads/arena/e04112a5-myvault' &&
            github.actor == github.repository_owner &&
-           github.event.head_commit.message == 'build: package signed Android APK') }}
+           startsWith(github.event.head_commit.message, 'build: package signed Android APK')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -333,11 +333,13 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           PUSH_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
+          # Arena may append a co-author trailer; compare the exact subject, not the body.
+          PUSH_SUBJECT=${PUSH_MESSAGE%%$'\n'*}
           if [[ "$EVENT_NAME" == workflow_dispatch && "$CURRENT_REF" == "refs/heads/$DEFAULT_BRANCH" ]]; then
             echo 'Trusted manual default-branch release.'
           elif [[ "$CURRENT_REF" == refs/heads/arena/e04112a5-myvault && "$ACTOR" == "$OWNER" ]] && \
                { [[ "$EVENT_NAME" == workflow_dispatch ]] || \
-                 [[ "$EVENT_NAME" == push && "$PUSH_MESSAGE" == 'build: package signed Android APK' ]]; }; then
+                 [[ "$EVENT_NAME" == push && "$PUSH_SUBJECT" == 'build: package signed Android APK' ]]; }; then
             echo 'Owner-authorized signing on the assigned PR branch.'
           else
             echo '::error::Signing requires a manual default-branch release or an explicit owner request on the assigned branch.'
