@@ -6,14 +6,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -227,18 +231,17 @@ class VisualParityTest {
         compose
             .onNodeWithContentDescription("Entry content")
             .assertTextContains("Offline ideas", substring = true)
-        capture("editor-short")
         compose.onNodeWithContentDescription("Preview").performClick()
         compose.onNodeWithContentDescription("Close preview").assertIsDisplayed()
-        capture("preview")
     }
 
     private fun capture(name: String) {
         if (InstrumentationRegistry.getArguments().getString("myvault.capture") != "true") return
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val original = instrumentation.uiAutomation.takeScreenshot() ?: return
-        val width = 360
+        val node = if (name == "settings") compose.onNode(isDialog()) else compose.onRoot()
+        val original = node.captureToImage().asAndroidBitmap()
+        val width = 300
         val scaled =
             Bitmap.createScaledBitmap(
                 original,
@@ -248,7 +251,7 @@ class VisualParityTest {
             )
         val dir = instrumentation.targetContext.filesDir
         File(dir, "myvault-$name.jpg").outputStream().use {
-            scaled.compress(Bitmap.CompressFormat.JPEG, 65, it)
+            scaled.compress(Bitmap.CompressFormat.JPEG, 35, it)
         }
         scaled.recycle()
         original.recycle()

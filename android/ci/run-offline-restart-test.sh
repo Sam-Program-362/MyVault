@@ -54,7 +54,7 @@ if [[ ${MYVAULT_CAPTURE_FIXTURES:-0} == 1 ]]; then
   checked 'Install current APK for synthetic screenshots' adb install -r "$app_apk"
   checked 'Install instrumentation APK for screenshots' adb install -r "$test_apk"
   run_instrumentation visual com.myvault.app.ui.VisualParityTest -e myvault.capture true
-  for name in welcome dashboard settings editor-short preview; do
+  for name in welcome dashboard settings; do
     if ! adb exec-out run-as "$app_id" cat "files/myvault-$name.jpg" > "$work/$name.jpg" 2> "$work/capture-error.log"; then
       echo "::warning::Could not retrieve synthetic $name screenshot; offline tests will continue."
       continue
@@ -67,7 +67,7 @@ raw = pathlib.Path(sys.argv[1]).read_bytes()
 if not raw.startswith(b"\xff\xd8"):
     raise SystemExit("Synthetic UI capture is not a JPEG")
 encoded = base64.b64encode(raw).decode()
-chunks = [encoded[i:i+7000] for i in range(0, len(encoded), 7000)]
+chunks = [encoded[i:i+3500] for i in range(0, len(encoded), 3500)]
 for index, chunk in enumerate(chunks, 1):
     print(f"::notice title=UI fixture {sys.argv[2]} {index:02d} of {len(chunks):02d}::{chunk}", flush=True)
 PY
