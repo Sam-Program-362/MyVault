@@ -53,6 +53,14 @@ expect_failure env -u ANDROID_KEY_PASSWORD "$ci_dir/prepare-signing.sh"
 grep -q 'ANDROID_KEY_PASSWORD' "$tmp/output"
 expect_failure env ANDROID_KEYSTORE_BASE64='not valid base64' "$ci_dir/prepare-signing.sh"
 [[ ! -e "$RUNNER_TEMP/myvault-release.keystore" ]]
+encoded_text=$(printf 'YmFzZTY0IHRleHQ=' | base64 -w0)
+expect_failure env ANDROID_KEYSTORE_BASE64="$encoded_text" "$ci_dir/prepare-signing.sh"
+grep -q 'Decoded input classification: Base64 text' "$tmp/output"
+if grep -q 'YmFzZTY0IHRleHQ=' "$tmp/output"; then
+  echo 'The decoded secret appeared in a diagnostic.' >&2
+  exit 1
+fi
+[[ ! -e "$RUNNER_TEMP/myvault-release.keystore" ]]
 expect_failure env ANDROID_KEY_ALIAS='wrong-alias' "$ci_dir/prepare-signing.sh"
 grep -q 'alias could not be found' "$tmp/output"
 [[ ! -e "$RUNNER_TEMP/myvault-release.keystore" ]]

@@ -25,7 +25,36 @@ fi
 # password problem from a missing alias without displaying any keytool output.
 if ! store_result=$(keytool -J-Duser.language=en -J-Duser.country=US -list \
   -keystore "$keystore" -storepass:env ANDROID_KEYSTORE_PASSWORD 2>&1); then
+  # A coarse, allowlisted file classification and error category do not reveal
+  # the keystore bytes, passwords, aliases, certificate or keytool output.
+  kind=$(python3 - "$keystore" <<'PY'
+import pathlib, sys
+raw = pathlib.Path(sys.argv[1]).read_bytes()
+if raw.startswith(bytes.fromhex('feedfeed')):
+    print('JKS')
+elif raw.startswith(bytes.fromhex('cececece')):
+    print('JCEKS')
+elif len(raw) > 1 and raw[0] == 0x30 and raw[1] >= 0x80:
+    print('DER/PKCS12 candidate')
+elif raw.startswith(b'-----BEGIN'):
+    print('PEM text')
+elif raw.startswith(b'PK\x03\x04'):
+    print('ZIP archive')
+elif raw and all(c in b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\r\n\t ' for c in raw):
+    print('Base64 text')
+else:
+    print('other or unrecognized format')
+PY
+  )
+  case "$store_result" in
+    *'java.io.EOFException'*) reason='unexpected end of file' ;;
+    *'toDerInputStream'*|*'DerInputStream'*|*'DerValue'*) reason='DER parsing failed' ;;
+    *'NoSuchAlgorithmException'*) reason='algorithm/provider unavailable' ;;
+    *'java.io.IOException'*) reason='I/O or keystore parsing error' ;;
+    *) reason='keystore open failed' ;;
+  esac
   rm -f "$keystore"
+  printf '::notice title=Keystore format diagnostic::Decoded input classification: %s; Java category: %s.\n' "$kind" "$reason"
   if [[ "$store_result" == *'password was incorrect'* || "$store_result" == *'Keystore was tampered with'* ]]; then
     printf '::error::The decoded keystore was recognized, but could not be opened with the configured store password. Check that the Actions keystore and store password belong together.\n' >&2
   elif [[ "$store_result" == *'Unrecognized keystore format'* || "$store_result" == *'Invalid keystore format'* ]]; then

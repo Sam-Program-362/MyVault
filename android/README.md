@@ -16,17 +16,7 @@ Backups from older versions or from the web can contain external URLs, temporary
 
 After a successful run, download `myvault-debug-apk`, `myvault-preview-unsigned-apk`, `myvault-unsigned-release-apk`, or (from a trusted release run) `myvault-signed-apk` from the run's **Artifacts** section. Artifacts expire after 14 days. The signed artifact contains the installable `app-release.apk` and its public `SIGNED-APK-IDENTITY.txt`; the two separately labeled unsigned candidates are not installable as-is. Debug APKs are labeled **MyVault (Debug)** and use the separate `com.myvault.app.debug` ID; they are for testing, not publishing, and do not update a release app. Each debug artifact includes its public package, version and signing-certificate fingerprint in `DEBUG-APK-IDENTITY.txt`. No production signing secrets are required for debug or unsigned builds.
 
-GitHub-hosted runners independently generate debug signing keys. For this project, all 20 available earlier debug APKs inspected had `com.myvault.app.debug` but a different certificate from run `40683365336`, so Android would reject their update with that APK. The exact installed run on a particular phone must still be identified. Reusing a keystore for another package is not itself a conflict, and the release-keystore secrets are not used by debug builds. **Do not uninstall the existing app or clear its data.**
-
-If you still possess the **exact original debug signing key**, you may re-sign the newer debug APK locally with that key, then compare the installed APK and the re-signed candidate using `check-apk-update.sh` below. The package and certificate must match and the versionCode must be higher; a release key does not help unless its certificate actually matches that debug installation. GitHub-hosted debug keys are usually discarded with the runner, so do not assume they are recoverable. With an existing original debug key, `apksigner` can replace the candidate's signature without putting passwords on the command line:
-
-```sh
-"$ANDROID_HOME/build-tools/34.0.0/apksigner" sign --ks /secure/path/to/original-debug.keystore \
-  --ks-key-alias ORIGINAL_DEBUG_ALIAS --out myvault-debug-update.apk app-debug.apk
-bash android/ci/check-apk-update.sh installed-debug-base.apk myvault-debug-update.apk
-```
-
-If the old debug signing key is unavailable, export and verify a private JSON backup from the old app and keep the old installation intact. The unsigned **MyVault (Preview)** artifact has its own `com.myvault.app.preview` ID and can be signed locally with a stable key you control, installed alongside the old app, and used to import the backup. See `PREVIEW-README.md` in that artifact for the steps and limitations. The preview, debug and release packages are separate installations, not updates of one another. Verify any already-installed preview's certificate and version before trying to update it.
+GitHub-hosted runners independently generate debug signing keys, so a new debug artifact may not update an older debug installation. The debug, preview and release packages have different IDs and are separate installations, not upgrades of one another. **Do not uninstall the existing app or clear its data** to work around a signing mismatch; keep and verify a backup instead. See `PREVIEW-README.md` for the optional separate-package migration path.
 
 A release run requires the four existing secrets below. It validates the keystore and alias, builds with required release signing, verifies the APK signature against the configured key, checks the package and version, removes the temporary keystore even on failure, and uploads the signed APK. An independent installed-app reference is optional, but when supplied all three fields are required and a mismatch blocks upload. Without it the artifact is signed but update compatibility is **unverified**. CI cannot inspect your phone or prove that a supplied reference actually came from it. The job does not publish a GitHub Release or upload to Google Play. The workflow uses GitHub's automatically supplied read-only token; no personal access token is required.
 
@@ -101,15 +91,7 @@ For a signed local release, set `ANDROID_KEYSTORE_PATH` to the **absolute path**
 
 The `requireReleaseSigning` flag makes missing or incomplete credentials fail the build. Without signing credentials, a local release build is unsigned; it never falls back to the debug key.
 
-Alternatively, sign the downloaded **unsigned** candidate on your own computer using the Android SDK build tools and your existing keystore. `apksigner` prompts for passwords when they are not supplied on the command line:
-
-```sh
-"$ANDROID_HOME/build-tools/34.0.0/zipalign" -f -p 4 app-release-unsigned.apk app-aligned.apk
-"$ANDROID_HOME/build-tools/34.0.0/apksigner" sign --ks /secure/path/to/keystore --ks-key-alias YOUR_ALIAS --out myvault-release.apk app-aligned.apk
-"$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs myvault-release.apk
-```
-
-Replace the path and alias locally; never share the keystore or passwords. Compare the signed candidate with the exact APK installed on the phone using `check-apk-update.sh` above before attempting an update. The secret-backed release workflow already produces a signed artifact; an independent reference is checked when supplied.
+The secret-backed workflow signs the release automatically. When verifying an update, compare that signed candidate with the exact APK installed on the phone using `check-apk-update.sh` above.
 
 The workflow's source and signing helper checks can be run separately with a JDK on `PATH`:
 
