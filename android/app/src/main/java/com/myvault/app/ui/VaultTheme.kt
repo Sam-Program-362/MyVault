@@ -99,7 +99,7 @@ fun VaultTheme(
             // keeps its white icons readable over a light writing surface.
             window.navigationBarColor =
                 if (Build.VERSION.SDK_INT < 26 && !darkBars)
-                    Color.Black.copy(alpha = 0.32f).toArgb()
+                    Color.Black.copy(alpha = 0.55f).toArgb()
                 else Color.Transparent.toArgb()
             WindowCompat.getInsetsController(window, window.decorView).apply {
                 isAppearanceLightStatusBars = !darkBars

@@ -66,6 +66,21 @@ fun VaultBackdrop(settings: AppSettings, dark: Boolean, splash: Boolean) {
                         else Color.White.copy(alpha = 0.3f)
                     )
             )
+            // Protect system-bar icon contrast even over an extreme wallpaper without
+            // introducing an opaque status/navigation strip or device-specific heights.
+            val edge =
+                if (isDark) Color.Black.copy(alpha = 0.48f) else Color.White.copy(alpha = 0.65f)
+            Box(
+                Modifier.fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to edge,
+                            0.25f to Color.Transparent,
+                            0.75f to Color.Transparent,
+                            1f to edge,
+                        )
+                    )
+            )
         }
     }
 }

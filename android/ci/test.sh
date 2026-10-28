@@ -105,6 +105,22 @@ expect_failure env FAKE_EXTRA_SIGNER=1 "$ci_dir/verify-signing.sh" "$tmp/app-rel
 expect_failure "$ci_dir/verify-signing.sh" "$tmp/nonexistent.apk"
 printf 'APK signature verification checks passed (apksigner output mocked).\n'
 
+# Unit-test failures should be visible in CI annotations, not only in runner logs.
+(
+  fixture="$tmp/gradle-fixture"
+  mkdir -p "$fixture/app/build/test-results/testDebugUnitTest"
+  printf '#!/usr/bin/env bash\necho "* What went wrong:"\nexit 1\n' > "$fixture/gradlew"
+  chmod +x "$fixture/gradlew"
+  cat > "$fixture/app/build/test-results/testDebugUnitTest/TEST-fixture.xml" <<'XML'
+<testsuite><testcase classname="Fixture" name="broken"><failure message="expected value">details</failure></testcase></testsuite>
+XML
+  cd "$fixture"
+  expect_failure env RUNNER_TEMP="$fixture" bash "$ci_dir/run-gradle-check.sh" :app:testDebugUnitTest
+  grep -q 'Fixture.broken: expected value' "$tmp/output"
+  grep -q '::error title=Android build failed::' "$tmp/output"
+)
+printf 'Gradle unit-test diagnostics passed (Gradle mocked).\n'
+
 # The offline runner must never alter a phone or an emulator without explicit opt-in.
 # A fake adb exercises its guards, diagnostics, and two-phase control flow without a device.
 (
@@ -152,6 +168,9 @@ ADB
   expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \
     bash "$ci_dir/run-motion-inset-tests.sh"
   grep -q 'disposable emulator' "$tmp/output"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_INSTALL_FAILURE=1 \
+    bash "$ci_dir/run-motion-inset-tests.sh"
+  grep -q 'simulated install error' "$tmp/output"
   env MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_REQUIRE_CUTOUT=1 \
     bash "$ci_dir/run-motion-inset-tests.sh" > "$fixture/motion-success"
   grep -q 'Android motion and cutout' "$fixture/motion-success"

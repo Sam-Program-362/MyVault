@@ -7,8 +7,18 @@ if [[ ${MYVAULT_DISPOSABLE_EMULATOR:-0} != 1 ]] || [[ $(adb get-serialno) != emu
 fi
 app_id=com.myvault.app.debug
 runner=com.myvault.app.debug.test/androidx.test.runner.AndroidJUnitRunner
+app_apk=app/build/outputs/apk/debug/app-debug.apk
+test_apk=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 work="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/myvault-chrome-test"
 mkdir -p "$work"
+# Gradle may uninstall the instrumentation package after connectedDebugAndroidTest.
+# Reinstall both debug APKs without clearing the disposable emulator's synthetic data.
+if [[ ! -f "$app_apk" || ! -f "$test_apk" ]]; then
+  echo '::error::The debug app or instrumentation APK is missing.' >&2
+  exit 1
+fi
+adb install -r "$app_apk" || exit 1
+adb install -r "$test_apk" || exit 1
 original_animator=$(adb shell settings get global animator_duration_scale | tr -d '\r')
 original_window=$(adb shell settings get global window_animation_scale | tr -d '\r')
 original_transition=$(adb shell settings get global transition_animation_scale | tr -d '\r')
