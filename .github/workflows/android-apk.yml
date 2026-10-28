@@ -121,10 +121,14 @@ jobs:
           retention-days: 14
 
   emulator-tests:
-    name: Android emulator tests
+    name: Android emulator tests (API ${{ matrix.api }})
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_type == 'debug' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 34]
     steps:
       - name: Check out sources
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -164,7 +168,7 @@ jobs:
       - name: Run Room, backup and Compose UI tests
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: 30
+          api-level: ${{ matrix.api }}
           target: google_apis
           arch: x86_64
           disable-animations: true
@@ -172,6 +176,7 @@ jobs:
           working-directory: android
           script: >-
             bash ci/run-device-tests.sh &&
+            MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/run-motion-inset-tests.sh &&
             MYVAULT_DISPOSABLE_EMULATOR=1
             MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk"
             bash ci/run-offline-restart-test.sh
@@ -179,7 +184,7 @@ jobs:
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: myvault-android-test-report
+          name: myvault-android-test-report-api-${{ matrix.api }}
           path: android/app/build/reports/androidTests/connected/
           if-no-files-found: ignore
           retention-days: 14

@@ -1,5 +1,6 @@
 <resources>
     <color name="accent">#6366F1</color>
+    <color name="launcher_background">#1B1831</color>
     <color name="background_light">#FBFAF8</color>
     <color name="background_dark">#191918</color>
 </resources>

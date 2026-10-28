@@ -41,8 +41,8 @@ android {
         minSdk = 24
         targetSdk = 34
         // Bump the APK version for in-place updates of the previous native build.
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

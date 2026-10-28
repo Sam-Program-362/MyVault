@@ -1,5 +1,12 @@
 package com.myvault.app.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -48,6 +55,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -85,231 +93,274 @@ fun SettingsScreen(
     onDeleteTag: (TagEntity) -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
+    visible: Boolean = true,
 ) {
     var tab by rememberSaveable { mutableStateOf(0) }
     var deleting by remember { mutableStateOf<TagEntity?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
-    Dialog(
-        onDismissRequest = onBack,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        BoxWithConstraints(
-            Modifier.fillMaxSize().imePadding().padding(16.dp),
-            contentAlignment = Alignment.Center,
+    val visibility = remember { MutableTransitionState(false) }
+    visibility.targetState = visible
+    LaunchedEffect(visible) {
+        if (visible) tab = 0
+        else {
+            creating = false
+            deleting = null
+        }
+    }
+    if (visibility.currentState || visibility.targetState) {
+        Dialog(
+            onDismissRequest = onBack,
+            properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            Surface(
-                modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().fillMaxHeight(0.88f),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 24.dp,
+            AnimatedVisibility(
+                visibleState = visibility,
+                enter = fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.97f),
+                exit = fadeOut(tween(140)) + scaleOut(tween(140), targetScale = 0.98f),
+                label = "Settings dialog",
             ) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .padding(start = 20.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                BoxWithConstraints(
+                    Modifier.fillMaxSize().imePadding().padding(16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Surface(
+                        modifier =
+                            Modifier.widthIn(max = 560.dp).fillMaxWidth().fillMaxHeight(0.88f),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        color = MaterialTheme.colorScheme.surface,
+                        shadowElevation = 24.dp,
                     ) {
-                        Text(
-                            "Settings",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Default.Close, "Back")
-                        }
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val tabs =
-                            listOf(
-                                "Appearance" to Icons.Default.Palette,
-                                "Tags" to Icons.Default.Sell,
-                                "Import / Export" to Icons.Default.Download,
-                            )
-                        tabs.forEachIndexed { index, (title, icon) ->
-                            Column(
-                                Modifier.selectable(
-                                        selected = tab == index,
-                                        role = Role.Tab,
-                                        onClick = { tab = index },
-                                    )
-                                    .padding(horizontal = 12.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
+                        Column(Modifier.fillMaxSize()) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Row(
-                                    Modifier.heightIn(min = 48.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
+                                Text(
+                                    "Settings",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                                     Icon(
-                                        icon,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint =
-                                            if (tab == index) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        title,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color =
-                                            if (tab == index) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
+                                        Icons.Default.Close,
+                                        "Back",
+                                        modifier = Modifier.size(18.dp),
                                     )
                                 }
-                                Box(
-                                    Modifier.fillMaxWidth()
-                                        .height(2.dp)
-                                        .background(
-                                            if (tab == index) MaterialTheme.colorScheme.primary
-                                            else Color.Transparent
-                                        )
-                                )
                             }
-                        }
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-                    Column(
-                        Modifier.weight(1f)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
-                    ) {
-                        when (tab) {
-                            0 -> AppearanceSettings(settings, onUpdate, onChooseWallpaper)
-                            1 -> {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            "Your tags",
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 18.sp,
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                            )
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                val tabs =
+                                    listOf(
+                                        "Appearance" to Icons.Default.Palette,
+                                        "Tags" to Icons.Default.Sell,
+                                        "Import / Export" to Icons.Default.Download,
+                                    )
+                                tabs.forEachIndexed { index, (title, icon) ->
+                                    Column(
+                                        Modifier.selectable(
+                                                selected = tab == index,
+                                                role = Role.Tab,
+                                                onClick = { tab = index },
+                                            )
+                                            .padding(horizontal = 10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Row(
+                                            Modifier.heightIn(min = 48.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                icon,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint =
+                                                    if (tab == index)
+                                                        MaterialTheme.colorScheme.primary
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                title,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color =
+                                                    if (tab == index)
+                                                        MaterialTheme.colorScheme.primary
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                            )
+                                        }
+                                        Box(
+                                            Modifier.fillMaxWidth()
+                                                .height(2.dp)
+                                                .background(
+                                                    if (tab == index)
+                                                        MaterialTheme.colorScheme.primary
+                                                    else Color.Transparent
+                                                )
                                         )
+                                    }
+                                }
+                            }
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                            )
+                            Column(
+                                Modifier.weight(1f)
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                            ) {
+                                when (tab) {
+                                    0 -> AppearanceSettings(settings, onUpdate, onChooseWallpaper)
+                                    1 -> {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(
+                                                    "Your tags",
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 18.sp,
+                                                )
+                                                Text(
+                                                    "Reusable tags appear as suggestions in the editor.",
+                                                    color =
+                                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontSize = 13.sp,
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { creating = true },
+                                                modifier = Modifier.size(48.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Add,
+                                                    "Create tag",
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                        }
+                                        if (tags.isEmpty())
+                                            Text(
+                                                "No tags yet.",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        tags.forEach { tag ->
+                                            Surface(
+                                                shape = MaterialTheme.shapes.medium,
+                                                color = MaterialTheme.colorScheme.surface,
+                                                border =
+                                                    BorderStroke(
+                                                        1.dp,
+                                                        MaterialTheme.colorScheme.outline.copy(
+                                                            alpha = 0.2f
+                                                        ),
+                                                    ),
+                                            ) {
+                                                Row(
+                                                    Modifier.fillMaxWidth()
+                                                        .padding(
+                                                            start = 12.dp,
+                                                            top = 4.dp,
+                                                            bottom = 4.dp,
+                                                            end = 4.dp,
+                                                        ),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Surface(
+                                                        color = parseColor(tag.color),
+                                                        shape = MaterialTheme.shapes.small,
+                                                    ) {
+                                                        Text(
+                                                            tag.name,
+                                                            color =
+                                                                parseColor(
+                                                                    tag.textColor,
+                                                                    Color.White,
+                                                                ),
+                                                            fontSize = 13.sp,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            modifier =
+                                                                Modifier.padding(
+                                                                    horizontal = 10.dp,
+                                                                    vertical = 6.dp,
+                                                                ),
+                                                        )
+                                                    }
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text(
+                                                        if (tag.reusable) "Reusable" else "One-off",
+                                                        modifier = Modifier.weight(1f),
+                                                        color =
+                                                            MaterialTheme.colorScheme
+                                                                .onSurfaceVariant,
+                                                        fontSize = 12.sp,
+                                                    )
+                                                    if (!tag.reusable)
+                                                        TextButton(
+                                                            onClick = { onSetReusable(tag, true) }
+                                                        ) {
+                                                            Text("Save")
+                                                        }
+                                                    IconButton(
+                                                        onClick = { deleting = tag },
+                                                        modifier = Modifier.size(48.dp),
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.DeleteOutline,
+                                                            "Delete ${tag.name} tag",
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else -> {
+                                        SettingsCard(
+                                            "Export everything",
+                                            "Save a JSON backup of spaces, entries, tags and settings. Local covers and wallpaper are embedded in the file.",
+                                        ) {
+                                            Button(onClick = onExport) {
+                                                Icon(Icons.Default.Download, null)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("Export JSON")
+                                            }
+                                        }
+                                        SettingsCard(
+                                            "Import from JSON",
+                                            "Import merges spaces and tags by name and adds entries. Existing entries are not deleted. You can choose whether to restore appearance settings.",
+                                        ) {
+                                            OutlinedButton(onClick = onImport) {
+                                                Icon(Icons.Default.Upload, null)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("Choose JSON file")
+                                            }
+                                        }
                                         Text(
-                                            "Reusable tags appear as suggestions in the editor.",
+                                            "Backups can contain personal notes and images. Store them somewhere you trust. External image links from older or web backups may need to be re-selected.",
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 13.sp,
                                         )
                                     }
-                                    IconButton(
-                                        onClick = { creating = true },
-                                        modifier = Modifier.size(48.dp),
-                                    ) {
-                                        Icon(Icons.Default.Add, "Create tag")
-                                    }
                                 }
-                                if (tags.isEmpty())
-                                    Text(
-                                        "No tags yet.",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                tags.forEach { tag ->
-                                    Surface(
-                                        shape = MaterialTheme.shapes.medium,
-                                        color = MaterialTheme.colorScheme.surface,
-                                        border =
-                                            BorderStroke(
-                                                1.dp,
-                                                MaterialTheme.colorScheme.outline.copy(
-                                                    alpha = 0.2f
-                                                ),
-                                            ),
-                                    ) {
-                                        Row(
-                                            Modifier.fillMaxWidth()
-                                                .padding(
-                                                    start = 12.dp,
-                                                    top = 4.dp,
-                                                    bottom = 4.dp,
-                                                    end = 4.dp,
-                                                ),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Surface(
-                                                color = parseColor(tag.color),
-                                                shape = MaterialTheme.shapes.small,
-                                            ) {
-                                                Text(
-                                                    tag.name,
-                                                    color = parseColor(tag.textColor, Color.White),
-                                                    fontSize = 13.sp,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier =
-                                                        Modifier.padding(
-                                                            horizontal = 10.dp,
-                                                            vertical = 6.dp,
-                                                        ),
-                                                )
-                                            }
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(
-                                                if (tag.reusable) "Reusable" else "One-off",
-                                                modifier = Modifier.weight(1f),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontSize = 12.sp,
-                                            )
-                                            if (!tag.reusable)
-                                                TextButton(onClick = { onSetReusable(tag, true) }) {
-                                                    Text("Save")
-                                                }
-                                            IconButton(
-                                                onClick = { deleting = tag },
-                                                modifier = Modifier.size(48.dp),
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.DeleteOutline,
-                                                    "Delete ${tag.name} tag",
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            else -> {
-                                SettingsCard(
-                                    "Export everything",
-                                    "Save a JSON backup of spaces, entries, tags and settings. Local covers and wallpaper are embedded in the file.",
-                                ) {
-                                    Button(onClick = onExport) {
-                                        Icon(Icons.Default.Download, null)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("Export JSON")
-                                    }
-                                }
-                                SettingsCard(
-                                    "Import from JSON",
-                                    "Import merges spaces and tags by name and adds entries. Existing entries are not deleted. You can choose whether to restore appearance settings.",
-                                ) {
-                                    OutlinedButton(onClick = onImport) {
-                                        Icon(Icons.Default.Upload, null)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("Choose JSON file")
-                                    }
-                                }
-                                Text(
-                                    "Backups can contain personal notes and images. Store them somewhere you trust. External image links from older or web backups may need to be re-selected.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 13.sp,
-                                )
+                                Spacer(Modifier.height(12.dp))
                             }
                         }
-                        Spacer(Modifier.height(12.dp))
                     }
                 }
             }
         }
     }
-    if (creating) {
+    if (creating && visible) {
         TagCreateDialog(onDismiss = { creating = false }) { name, color, reusable ->
             creating = false
             onCreateTag(name, color, reusable)

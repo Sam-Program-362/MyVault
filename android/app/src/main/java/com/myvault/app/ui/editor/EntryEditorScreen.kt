@@ -2,6 +2,8 @@ package com.myvault.app.ui.editor
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
@@ -229,7 +231,7 @@ fun EntryEditorScreen(
         Column(Modifier.fillMaxSize()) {
             if (narrow) {
                 Row(
-                    Modifier.fillMaxWidth().height(52.dp),
+                    Modifier.fillMaxWidth().height(48.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     EditorIcon(Icons.Default.Close, "Close editor", palette, onClick = onClose)
@@ -268,7 +270,7 @@ fun EntryEditorScreen(
                 }
             } else {
                 Row(
-                    Modifier.fillMaxWidth().height(56.dp),
+                    Modifier.fillMaxWidth().height(48.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     EditorIcon(Icons.Default.Close, "Close editor", palette, onClick = onClose)
@@ -568,26 +570,31 @@ private fun EditorViewActions(
     onImport: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Row(
-        Modifier.border(1.dp, palette.line, RoundedCornerShape(8.dp)),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        EditorIcon(
-            Icons.Default.Code,
-            "Write",
-            palette,
-            active = !previewOpen,
-            toggle = true,
-            onClick = onWrite,
+    Box(contentAlignment = Alignment.Center) {
+        // The visible outline is compact; both buttons keep their full 48dp targets.
+        Box(
+            Modifier.matchParentSize()
+                .padding(vertical = 7.dp)
+                .border(1.dp, palette.line, RoundedCornerShape(8.dp))
         )
-        EditorIcon(
-            Icons.Default.Visibility,
-            "Preview",
-            palette,
-            active = previewOpen,
-            toggle = true,
-            onClick = onPreview,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            EditorIcon(
+                Icons.Default.Code,
+                "Write",
+                palette,
+                active = !previewOpen,
+                toggle = true,
+                onClick = onWrite,
+            )
+            EditorIcon(
+                Icons.Default.Visibility,
+                "Preview",
+                palette,
+                active = previewOpen,
+                toggle = true,
+                onClick = onPreview,
+            )
+        }
     }
     EditorIcon(
         Icons.Default.UploadFile,
@@ -615,6 +622,18 @@ private fun EditorIcon(
     toggle: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val background by
+        animateColorAsState(
+            if (active && activeColor == palette.foreground) palette.subtle else Color.Transparent,
+            animationSpec = tween(140),
+            label = "Editor action selection",
+        )
+    val iconColor by
+        animateColorAsState(
+            if (active) activeColor else palette.muted,
+            animationSpec = tween(140),
+            label = "Editor action color",
+        )
     IconButton(
         onClick = onClick,
         modifier =
@@ -623,19 +642,14 @@ private fun EditorIcon(
             },
     ) {
         Box(
-            Modifier.size(36.dp)
-                .background(
-                    if (active && activeColor == palette.foreground) palette.subtle
-                    else Color.Transparent,
-                    RoundedCornerShape(8.dp),
-                ),
+            Modifier.size(32.dp).background(background, RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 icon,
                 contentDescription = label,
-                tint = if (active) activeColor else palette.muted,
-                modifier = Modifier.size(19.dp),
+                tint = iconColor,
+                modifier = Modifier.size(18.dp),
             )
         }
     }

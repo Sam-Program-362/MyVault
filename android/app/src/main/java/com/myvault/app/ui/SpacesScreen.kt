@@ -5,9 +5,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -138,20 +138,32 @@ fun SpacesScreen(
                 ) {
                     AnimatedVisibility(
                         visible = introVisible,
-                        enter = fadeIn(tween(360)) + slideInVertically(tween(360)) { it / 12 },
+                        enter =
+                            fadeIn(tween(320)) +
+                                scaleIn(tween(320), initialScale = 0.97f) +
+                                slideInVertically(tween(320)) { it / 12 },
                     ) {
                         WelcomeHeading(appName, compact = compactHeading)
                     }
                 }
             }
             items(spaces, key = { "space-${it.id}" }) { space ->
-                SpaceCard(
-                    space = space,
-                    count = entries.count { it.spaceId == space.id },
-                    onOpen = { onOpen(space.id) },
-                    onEdit = { editing = space },
-                    onDelete = { deleting = space },
-                )
+                var cardVisible by remember(space.id) { mutableStateOf(false) }
+                LaunchedEffect(space.id) { cardVisible = true }
+                AnimatedVisibility(
+                    visible = cardVisible,
+                    modifier = Modifier.animateItem(),
+                    enter = fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f),
+                    label = "Space card",
+                ) {
+                    SpaceCard(
+                        space = space,
+                        count = entries.count { it.spaceId == space.id },
+                        onOpen = { onOpen(space.id) },
+                        onEdit = { editing = space },
+                        onDelete = { deleting = space },
+                    )
+                }
             }
             if (!creating) {
                 item(key = "create-space") { NewSpaceCard { creating = true } }
@@ -169,12 +181,13 @@ fun SpacesScreen(
         }
         IconButton(
             onClick = onSettings,
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(48.dp),
+            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(48.dp),
         ) {
             Icon(
                 Icons.Default.Settings,
                 contentDescription = "Settings",
                 tint = Color.White.copy(alpha = 0.72f),
+                modifier = Modifier.size(18.dp),
             )
         }
     }

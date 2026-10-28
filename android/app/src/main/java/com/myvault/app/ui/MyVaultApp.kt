@@ -4,15 +4,24 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -128,190 +137,225 @@ fun MyVaultApp(vault: VaultViewModel) {
     val contentScreen = if (screen == "settings") settingsReturn else screen
     VaultTheme(settings, forceDarkSystemBars = editor == null && contentScreen == "spaces") { dark
         ->
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val rootColor =
+            if (editor == null) MaterialTheme.colorScheme.background
+            else if (dark) Color(0xFF191918) else Color(0xFFFBFAF8)
+        Box(Modifier.fillMaxSize().background(rootColor)) {
             if (editor == null)
                 VaultBackdrop(settings, dark = dark, splash = contentScreen == "spaces")
-            val draftState = editor
-            if (draftState != null) {
-                val entry = draftState.value
-                val selectedTags = tags.filter { tag ->
-                    refs.any { it.entryId == entry.id && it.tagId == tag.id }
-                }
-                BackHandler(enabled = !busy) { closeEditor() }
-                EntryEditorScreen(
-                    entryId = entry.id,
-                    title = entry.title,
-                    content = entry.content,
-                    coverImage = entry.coverImagePath,
-                    pinned = entry.pinned,
-                    tags = selectedTags,
-                    darkTheme = dark,
-                    saveState = draftState.saveState,
-                    externalUpdate = externalUpdate,
-                    onTitleChange = { value -> vault.updateDraft { it.copy(title = value) } },
-                    onContentChange = { value -> vault.updateDraft { it.copy(content = value) } },
-                    onClose = { closeEditor() },
-                    onTogglePin = { vault.updateDraft { it.copy(pinned = !it.pinned) } },
-                    onChooseCover = { coverPicker.launch(arrayOf("image/*")) },
-                    onRemoveCover = { vault.updateDraft { it.copy(coverImagePath = null) } },
-                    onAddTag = { showTags = true },
-                    onRemoveTag = vault::removeTag,
-                    onImport = { selection: TextRange ->
-                        importTarget = entry.id
-                        selectionStart = selection.min
-                        selectionEnd = selection.max
-                        textPicker.launch(arrayOf("text/*", "application/octet-stream"))
-                    },
-                    onDelete = { confirmDelete = true },
-                )
-                if (showTags)
-                    TagPickerDialog(
-                        tags,
-                        selectedTags,
-                        onDismiss = { showTags = false },
-                        onSelect = { tag ->
-                            showTags = false
-                            vault.addTag(tag)
+            // Backgrounds draw edge-to-edge. Only interactive content is inset, so the
+            // status/navigation bars and cutouts never create an opaque strip.
+            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeContent)) {
+                val draftState = editor
+                if (draftState != null) {
+                    val entry = draftState.value
+                    val selectedTags = tags.filter { tag ->
+                        refs.any { it.entryId == entry.id && it.tagId == tag.id }
+                    }
+                    BackHandler(enabled = !busy) { closeEditor() }
+                    EntryEditorScreen(
+                        entryId = entry.id,
+                        title = entry.title,
+                        content = entry.content,
+                        coverImage = entry.coverImagePath,
+                        pinned = entry.pinned,
+                        tags = selectedTags,
+                        darkTheme = dark,
+                        saveState = draftState.saveState,
+                        externalUpdate = externalUpdate,
+                        onTitleChange = { value -> vault.updateDraft { it.copy(title = value) } },
+                        onContentChange = { value ->
+                            vault.updateDraft { it.copy(content = value) }
                         },
-                        onCreate = { name, color, reusable ->
-                            showTags = false
-                            vault.createTag(name, color, reusable, true)
+                        onClose = { closeEditor() },
+                        onTogglePin = { vault.updateDraft { it.copy(pinned = !it.pinned) } },
+                        onChooseCover = { coverPicker.launch(arrayOf("image/*")) },
+                        onRemoveCover = { vault.updateDraft { it.copy(coverImagePath = null) } },
+                        onAddTag = { showTags = true },
+                        onRemoveTag = vault::removeTag,
+                        onImport = { selection: TextRange ->
+                            importTarget = entry.id
+                            selectionStart = selection.min
+                            selectionEnd = selection.max
+                            textPicker.launch(arrayOf("text/*", "application/octet-stream"))
                         },
+                        onDelete = { confirmDelete = true },
                     )
-                if (confirmDelete)
-                    AlertDialog(
-                        onDismissRequest = { confirmDelete = false },
-                        title = { Text("Delete entry?") },
-                        text = {
-                            Text(
-                                "This permanently deletes “${entry.title.ifBlank { "Untitled entry" }}”. This cannot be undone."
-                            )
-                        },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    confirmDelete = false
-                                    externalUpdate = null
-                                    importedText = null
-                                    importTarget = null
-                                    vault.deleteEditor()
-                                }
-                            ) {
-                                Text("Delete", color = MaterialTheme.colorScheme.error)
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
-                        },
-                    )
-                importedText?.let { text ->
-                    AlertDialog(
-                        onDismissRequest = { importedText = null },
-                        title = { Text("Import ${text.name}?") },
-                        text = {
-                            Text(
-                                "Choose whether to replace the current text or insert the file at the selected position."
-                            )
-                        },
-                        confirmButton = {
-                            Row {
+                    if (showTags)
+                        TagPickerDialog(
+                            tags,
+                            selectedTags,
+                            onDismiss = { showTags = false },
+                            onSelect = { tag ->
+                                showTags = false
+                                vault.addTag(tag)
+                            },
+                            onCreate = { name, color, reusable ->
+                                showTags = false
+                                vault.createTag(name, color, reusable, true)
+                            },
+                        )
+                    if (confirmDelete)
+                        AlertDialog(
+                            onDismissRequest = { confirmDelete = false },
+                            title = { Text("Delete entry?") },
+                            text = {
+                                Text(
+                                    "This permanently deletes “${entry.title.ifBlank { "Untitled entry" }}”. This cannot be undone."
+                                )
+                            },
+                            confirmButton = {
                                 TextButton(
                                     onClick = {
-                                        applyImportedText(text.content, null, text.content.length)
+                                        confirmDelete = false
+                                        externalUpdate = null
                                         importedText = null
+                                        importTarget = null
+                                        vault.deleteEditor()
                                     }
                                 ) {
-                                    Text("Replace")
+                                    Text("Delete", color = MaterialTheme.colorScheme.error)
                                 }
-                                TextButton(
-                                    onClick = {
-                                        val current = vault.currentDraft()
-                                        if (current != null && current.id == importTarget) {
-                                            val start =
-                                                selectionStart.coerceIn(0, current.content.length)
-                                            val end =
-                                                selectionEnd.coerceIn(start, current.content.length)
-                                            val next =
-                                                current.content.replaceRange(
-                                                    start,
-                                                    end,
-                                                    text.content,
-                                                )
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+                            },
+                        )
+                    importedText?.let { text ->
+                        AlertDialog(
+                            onDismissRequest = { importedText = null },
+                            title = { Text("Import ${text.name}?") },
+                            text = {
+                                Text(
+                                    "Choose whether to replace the current text or insert the file at the selected position."
+                                )
+                            },
+                            confirmButton = {
+                                Row {
+                                    TextButton(
+                                        onClick = {
                                             applyImportedText(
-                                                next,
+                                                text.content,
                                                 null,
-                                                start + text.content.length,
+                                                text.content.length,
                                             )
+                                            importedText = null
                                         }
-                                        importedText = null
+                                    ) {
+                                        Text("Replace")
                                     }
-                                ) {
-                                    Text("Insert")
+                                    TextButton(
+                                        onClick = {
+                                            val current = vault.currentDraft()
+                                            if (current != null && current.id == importTarget) {
+                                                val start =
+                                                    selectionStart.coerceIn(
+                                                        0,
+                                                        current.content.length,
+                                                    )
+                                                val end =
+                                                    selectionEnd.coerceIn(
+                                                        start,
+                                                        current.content.length,
+                                                    )
+                                                val next =
+                                                    current.content.replaceRange(
+                                                        start,
+                                                        end,
+                                                        text.content,
+                                                    )
+                                                applyImportedText(
+                                                    next,
+                                                    null,
+                                                    start + text.content.length,
+                                                )
+                                            }
+                                            importedText = null
+                                        }
+                                    ) {
+                                        Text("Insert")
+                                    }
                                 }
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { importedText = null }) { Text("Cancel") }
-                        },
-                    )
-                }
-            } else {
-                when (contentScreen) {
-                    "entries" -> {
-                        BackHandler(enabled = !busy && screen != "settings") { screen = "spaces" }
-                        EntriesScreen(
-                            appName = settings.appName,
-                            spaces = spaces,
-                            selectedSpaceId = selectedSpaceId,
-                            entries = entries,
-                            tags = tags,
-                            tagRefs = refs,
-                            onSelectSpace = { selectedSpaceId = it },
-                            onBack = { screen = "spaces" },
-                            onSettings = {
-                                settingsReturn = "entries"
-                                screen = "settings"
                             },
-                            onNewSpace = { name, description, color, icon ->
-                                vault.createSpace(name, description, color, icon) { id ->
-                                    selectedSpaceId = id
-                                }
+                            dismissButton = {
+                                TextButton(onClick = { importedText = null }) { Text("Cancel") }
                             },
-                            onNewEntry = vault::createEntry,
-                            onOpenEntry = vault::openEntry,
-                            entryLayout = entryLayout,
-                            onEntryLayoutChange = vault::updateEntryLayout,
                         )
                     }
-                    else ->
-                        SpacesScreen(
-                            settings.appName,
-                            spaces,
-                            entries,
-                            onOpen = {
-                                selectedSpaceId = it
-                                screen = "entries"
-                            },
-                            onSettings = {
-                                settingsReturn = "spaces"
-                                screen = "settings"
-                            },
-                            onCreate = { name, description, color, icon ->
-                                vault.createSpace(name, description, color, icon) { id ->
-                                    selectedSpaceId = id
-                                    screen = "entries"
+                } else {
+                    AnimatedContent(
+                        targetState = contentScreen,
+                        transitionSpec = {
+                            (fadeIn(tween(200)) +
+                                slideInHorizontally(tween(200)) {
+                                    if (targetState == "entries") it / 30 else -it / 30
+                                }) togetherWith fadeOut(tween(120))
+                        },
+                        label = "Space navigation",
+                    ) { visibleScreen ->
+                        when (visibleScreen) {
+                            "entries" -> {
+                                BackHandler(enabled = !busy && screen == "entries") {
+                                    screen = "spaces"
                                 }
-                            },
-                            onUpdate = vault::updateSpace,
-                            onDelete = { space ->
-                                vault.deleteSpace(space) {
-                                    if (selectedSpaceId == space.id) selectedSpaceId = null
+                                entryLayout?.let { loadedLayout ->
+                                    EntriesScreen(
+                                        appName = settings.appName,
+                                        spaces = spaces,
+                                        selectedSpaceId = selectedSpaceId,
+                                        entries = entries,
+                                        tags = tags,
+                                        tagRefs = refs,
+                                        onSelectSpace = { selectedSpaceId = it },
+                                        onBack = { screen = "spaces" },
+                                        onSettings = {
+                                            settingsReturn = "entries"
+                                            screen = "settings"
+                                        },
+                                        onNewSpace = { name, description, color, icon ->
+                                            vault.createSpace(name, description, color, icon) { id
+                                                ->
+                                                selectedSpaceId = id
+                                            }
+                                        },
+                                        onNewEntry = vault::createEntry,
+                                        onOpenEntry = vault::openEntry,
+                                        entryLayout = loadedLayout,
+                                        onEntryLayoutChange = vault::updateEntryLayout,
+                                    )
                                 }
-                            },
-                        )
-                }
-                if (screen == "settings") {
-                    BackHandler(enabled = !busy) { screen = settingsReturn }
+                            }
+                            else ->
+                                SpacesScreen(
+                                    settings.appName,
+                                    spaces,
+                                    entries,
+                                    onOpen = {
+                                        selectedSpaceId = it
+                                        screen = "entries"
+                                    },
+                                    onSettings = {
+                                        settingsReturn = "spaces"
+                                        screen = "settings"
+                                    },
+                                    onCreate = { name, description, color, icon ->
+                                        vault.createSpace(name, description, color, icon) { id ->
+                                            selectedSpaceId = id
+                                            screen = "entries"
+                                        }
+                                    },
+                                    onUpdate = vault::updateSpace,
+                                    onDelete = { space ->
+                                        vault.deleteSpace(space) {
+                                            if (selectedSpaceId == space.id) selectedSpaceId = null
+                                        }
+                                    },
+                                )
+                        }
+                    }
+                    if (screen == "settings") {
+                        BackHandler(enabled = !busy) { screen = settingsReturn }
+                    }
                     SettingsScreen(
                         settings,
                         tags,
@@ -342,20 +386,22 @@ fun MyVaultApp(vault: VaultViewModel) {
                                 )
                             )
                         },
+                        visible = screen == "settings",
                     )
                 }
-            }
-            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
-            if (busy) {
-                // Don't let system Back finish the activity while a save or import is in progress.
-                BackHandler {}
-                Box(
-                    Modifier.fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.15f))
-                        .clickable(enabled = true, onClick = {}),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(36.dp))
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))
+                if (busy) {
+                    // Don't let system Back finish the activity while a save or import is in
+                    // progress.
+                    BackHandler {}
+                    Box(
+                        Modifier.fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.15f))
+                            .clickable(enabled = true, onClick = {}),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(36.dp))
+                    }
                 }
             }
         }

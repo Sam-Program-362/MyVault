@@ -122,6 +122,8 @@ if [[ ${1:-} == install && ${MOCK_INSTALL_FAILURE:-0} == 1 ]]; then
   exit 4
 fi
 if [[ $* == 'shell settings get global airplane_mode_on' ]]; then printf '1\n'; exit 0; fi
+if [[ $* == 'shell settings get global '* ]]; then printf '0\n'; exit 0; fi
+if [[ $* == 'shell cmd overlay list' ]]; then printf '[ ] com.android.internal.display.cutout.emulation.corner\n'; exit 0; fi
 if [[ $* == 'shell am broadcast '* ]]; then echo 'protected broadcast denied' >&2; exit 4; fi
 if [[ $* == 'shell am instrument '* ]]; then printf 'OK (1 test)\n'; exit 0; fi
 exit 0
@@ -142,5 +144,13 @@ ADB
   env MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$fixture/old.apk" \
     bash "$ci_dir/run-offline-restart-test.sh" > "$fixture/success"
   grep -q 'Offline upgrade and restart' "$fixture/success"
+  expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR bash "$ci_dir/run-motion-inset-tests.sh"
+  grep -q 'disposable emulator' "$tmp/output"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \
+    bash "$ci_dir/run-motion-inset-tests.sh"
+  grep -q 'disposable emulator' "$tmp/output"
+  env MYVAULT_DISPOSABLE_EMULATOR=1 bash "$ci_dir/run-motion-inset-tests.sh" > "$fixture/motion-success"
+  grep -q 'Android motion' "$fixture/motion-success"
+  grep -q 'Android cutout' "$fixture/motion-success"
 )
-printf 'Offline emulator runner guards and diagnostics passed (adb mocked).\n'
+printf 'Offline, motion and cutout emulator guards and diagnostics passed (adb mocked).\n'

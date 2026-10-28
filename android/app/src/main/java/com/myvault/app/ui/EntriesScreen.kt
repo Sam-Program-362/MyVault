@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
@@ -158,8 +159,8 @@ fun EntriesScreen(
                     else Color.White.copy(alpha = 0.5f)
                 )
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             spaces.forEach { item ->
@@ -170,19 +171,26 @@ fun EntriesScreen(
                     onClick = { onSelectSpace(item.id) },
                 )
             }
-            Surface(
-                onClick = { creatingSpace = true },
-                shape = MaterialTheme.shapes.medium,
-                color = Color.Transparent,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+            Box(
+                Modifier.heightIn(min = 48.dp).clickable(role = Role.Button) {
+                    creatingSpace = true
+                },
+                contentAlignment = Alignment.Center,
             ) {
-                Row(
-                    Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = Color.Transparent,
+                    border =
+                        BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
                 ) {
-                    Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("New space", fontSize = 13.sp)
+                    Row(
+                        Modifier.heightIn(min = 34.dp).padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("New space", fontSize = 13.sp)
+                    }
                 }
             }
         }
@@ -258,22 +266,30 @@ fun EntriesScreen(
             }
             items(filtered, key = { it.id }) { entry ->
                 val entryTags = refsByEntry[entry.id].orEmpty().mapNotNull { tagsById[it.tagId] }
-                AnimatedContent(
-                    targetState = listLayout,
+                var entryVisible by remember(entry.id) { mutableStateOf(false) }
+                LaunchedEffect(entry.id) { entryVisible = true }
+                AnimatedVisibility(
+                    visible = entryVisible,
                     modifier = Modifier.animateItem(),
-                    transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
-                    label = "Entry layout",
-                ) { showList ->
-                    if (showList) {
-                        EntryListRow(entry = entry, onOpen = { onOpenEntry(entry.id) })
-                    } else {
-                        EntryCard(
-                            entry = entry,
-                            tags = entryTags,
-                            space = spaces.find { it.id == entry.spaceId },
-                            showSpace = selectedSpaceId == null,
-                            onClick = { onOpenEntry(entry.id) },
-                        )
+                    enter = fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.98f),
+                    label = "Entry entrance",
+                ) {
+                    AnimatedContent(
+                        targetState = listLayout,
+                        transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
+                        label = "Entry layout",
+                    ) { showList ->
+                        if (showList) {
+                            EntryListRow(entry = entry, onOpen = { onOpenEntry(entry.id) })
+                        } else {
+                            EntryCard(
+                                entry = entry,
+                                tags = entryTags,
+                                space = spaces.find { it.id == entry.spaceId },
+                                showSpace = selectedSpaceId == null,
+                                onClick = { onOpenEntry(entry.id) },
+                            )
+                        }
                     }
                 }
             }
@@ -359,7 +375,7 @@ private fun EntryLayoutToggle(listLayout: Boolean, onChange: (String) -> Unit) {
 @Composable
 private fun CompactNewEntryButton(onClick: () -> Unit) {
     Box(
-        Modifier.height(48.dp).clickable(role = Role.Button, onClick = onClick).semantics {
+        Modifier.heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onClick).semantics {
             contentDescription = "New entry"
         },
         contentAlignment = Alignment.Center,
@@ -370,7 +386,7 @@ private fun CompactNewEntryButton(onClick: () -> Unit) {
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
             Row(
-                Modifier.height(34.dp).padding(horizontal = 10.dp),
+                Modifier.heightIn(min = 34.dp).padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
@@ -488,7 +504,7 @@ private fun DashboardHeader(
                     if (dark) Color(0xFF0A0A0A).copy(alpha = 0.65f)
                     else Color.White.copy(alpha = 0.7f)
                 )
-                .padding(horizontal = 6.dp, vertical = 6.dp),
+                .padding(horizontal = 2.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
@@ -496,6 +512,7 @@ private fun DashboardHeader(
                     Icons.Default.GridView,
                     "Back to spaces",
                     tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
                 )
             }
             if (showAppName) {
@@ -508,37 +525,52 @@ private fun DashboardHeader(
                 )
             }
             DashboardSearch(query, onQueryChange, allSpaces, Modifier.weight(1f))
-            Spacer(Modifier.width(6.dp))
-            Surface(
-                onClick = onToggleAllSpaces,
-                shape = MaterialTheme.shapes.medium,
-                color = if (allSpaces) MaterialTheme.colorScheme.primary else Color.Transparent,
-                contentColor =
-                    if (allSpaces) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurface,
-                border =
-                    if (allSpaces) null
-                    else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
-                modifier =
-                    Modifier.semantics {
-                        contentDescription = "All spaces"
-                        selected = allSpaces
-                    },
-            ) {
-                Box(
-                    Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "All spaces",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
+            Spacer(Modifier.width(4.dp))
+            val toggleColor by
+                animateColorAsState(
+                    if (allSpaces) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    animationSpec = tween(160),
+                    label = "All spaces selection",
+                )
+            Box(
+                Modifier.heightIn(min = 48.dp)
+                    .selectable(
+                        selected = allSpaces,
+                        role = Role.Checkbox,
+                        onClick = onToggleAllSpaces,
                     )
+                    .semantics { contentDescription = "All spaces" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = toggleColor,
+                    contentColor =
+                        if (allSpaces) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurface,
+                    border =
+                        if (allSpaces) null
+                        else
+                            BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                            ),
+                ) {
+                    Box(
+                        Modifier.heightIn(min = 34.dp).padding(horizontal = 9.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "All spaces",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
             IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Default.Settings, "Settings")
+                Icon(Icons.Default.Settings, "Settings", modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -559,45 +591,53 @@ private fun DashboardSearch(
         textStyle = TextStyle(color = textColor, fontSize = 14.sp),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         modifier =
-            modifier
-                .heightIn(min = 48.dp)
-                .border(
-                    1.dp,
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
-                    MaterialTheme.shapes.medium,
-                )
-                .background(
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
-                    MaterialTheme.shapes.medium,
-                )
-                .semantics { contentDescription = "Search entries" },
+            modifier.heightIn(min = 48.dp).semantics { contentDescription = "Search entries" },
         decorationBox = { inner ->
-            Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.width(10.dp))
-                Icon(
-                    Icons.Default.Search,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(17.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Box(Modifier.weight(1f)) {
-                    if (query.isEmpty()) {
-                        Text(
-                            if (allSpaces) "Search all spaces…" else "Search entries…",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+            Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                Row(
+                    Modifier.fillMaxWidth()
+                        .heightIn(min = 36.dp)
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                            MaterialTheme.shapes.medium,
                         )
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
+                            MaterialTheme.shapes.medium,
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Spacer(Modifier.width(10.dp))
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(17.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Box(Modifier.weight(1f)) {
+                        if (query.isEmpty()) {
+                            Text(
+                                if (allSpaces) "Search all spaces…" else "Search entries…",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        inner()
                     }
-                    inner()
+                    Spacer(Modifier.width(if (query.isNotEmpty()) 44.dp else 8.dp))
                 }
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { onChange("") }, modifier = Modifier.size(48.dp)) {
+                    IconButton(
+                        onClick = { onChange("") },
+                        modifier = Modifier.align(Alignment.CenterEnd).size(48.dp),
+                    ) {
                         Icon(Icons.Default.Clear, "Clear search", modifier = Modifier.size(18.dp))
                     }
-                } else Spacer(Modifier.width(8.dp))
+                }
             }
         },
     )
@@ -612,29 +652,38 @@ private fun SpaceNavigationChip(
 ) {
     val color = parseColor(space.color)
     val foreground = if (color.luminance() > 0.179f) Color(0xFF171717) else Color.White
-    val isSelected = selected
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.semantics { this.selected = isSelected },
-        shape = MaterialTheme.shapes.medium,
-        color = if (selected) color else Color.Transparent,
-        contentColor = if (selected) foreground else MaterialTheme.colorScheme.onSurface,
+    val background by
+        animateColorAsState(
+            if (selected) color else Color.Transparent,
+            animationSpec = tween(160),
+            label = "Space selection",
+        )
+    Box(
+        Modifier.heightIn(min = 48.dp)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Row(
-            Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = background,
+            contentColor = if (selected) foreground else MaterialTheme.colorScheme.onSurface,
         ) {
-            Text(space.icon, fontSize = 16.sp)
-            Spacer(Modifier.width(8.dp))
-            Text(space.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "$count",
-                fontSize = 11.sp,
-                color =
-                    if (selected) foreground.copy(alpha = 0.7f)
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                Modifier.heightIn(min = 34.dp).padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(space.icon, fontSize = 16.sp)
+                Spacer(Modifier.width(6.dp))
+                Text(space.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "$count",
+                    fontSize = 11.sp,
+                    color =
+                        if (selected) foreground.copy(alpha = 0.7f)
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -674,7 +723,7 @@ private fun EntryCard(
 ) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("entry-card-${entry.id}"),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),

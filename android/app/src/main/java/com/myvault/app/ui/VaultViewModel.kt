@@ -22,8 +22,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -47,8 +49,11 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         entriesDao.observeAllTagRefs().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val settings =
         app.settings.settingsFlow.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
-    val entryLayout =
-        app.settings.entryLayoutFlow.stateIn(viewModelScope, SharingStarted.Eagerly, "cards")
+    // Wait for DataStore instead of briefly showing Cards when List was saved.
+    val entryLayout: StateFlow<String?> =
+        app.settings.entryLayoutFlow
+            .catch { emit("cards") }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val currentWriter = MutableStateFlow<EditorDraftWriter<EntryEntity>?>(null)
     @OptIn(ExperimentalCoroutinesApi::class)

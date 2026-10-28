@@ -1,6 +1,7 @@
 package com.myvault.app.ui
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
@@ -93,9 +94,13 @@ fun VaultTheme(
     SideEffect {
         activity?.window?.let { window ->
             val darkBars = dark || forceDarkSystemBars
-            val barColor = if (forceDarkSystemBars) Color(0xFF191918) else scheme.background
-            window.statusBarColor = barColor.toArgb()
-            window.navigationBarColor = barColor.toArgb()
+            window.statusBarColor = Color.Transparent.toArgb()
+            // Android 7 cannot draw dark navigation icons. A translucent scrim
+            // keeps its white icons readable over a light writing surface.
+            window.navigationBarColor =
+                if (Build.VERSION.SDK_INT < 26 && !darkBars)
+                    Color.Black.copy(alpha = 0.32f).toArgb()
+                else Color.Transparent.toArgb()
             WindowCompat.getInsetsController(window, window.decorView).apply {
                 isAppearanceLightStatusBars = !darkBars
                 isAppearanceLightNavigationBars = !darkBars
