@@ -64,6 +64,7 @@ fi
 truncated_der=$(printf '\x30\x82\x10\x00\x01' | base64 -w0)
 expect_failure env ANDROID_KEYSTORE_BASE64="$truncated_der" "$ci_dir/prepare-signing.sh"
 grep -q 'truncated outer sequence' "$tmp/output"
+grep -q 'decoded Actions keystore is incomplete' "$tmp/output"
 [[ ! -e "$RUNNER_TEMP/myvault-release.keystore" ]]
 expect_failure env ANDROID_KEY_ALIAS='wrong-alias' "$ci_dir/prepare-signing.sh"
 grep -q 'alias could not be found' "$tmp/output"

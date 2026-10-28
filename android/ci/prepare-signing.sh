@@ -63,7 +63,9 @@ PY
   esac
   rm -f "$keystore"
   printf '::notice title=Keystore format diagnostic::Decoded input classification: %s; Java category: %s.\n' "$kind" "$reason"
-  if [[ "$store_result" == *'password was incorrect'* || "$store_result" == *'Keystore was tampered with'* ]]; then
+  if [[ "$kind" == *truncated* ]]; then
+    printf '::error::The decoded Actions keystore is incomplete. Verify that ANDROID_KEYSTORE_BASE64 contains the entire existing keystore file.\n' >&2
+  elif [[ "$store_result" == *'password was incorrect'* || "$store_result" == *'Keystore was tampered with'* ]]; then
     printf '::error::The decoded keystore was recognized, but could not be opened with the configured store password. Check that the Actions keystore and store password belong together.\n' >&2
   elif [[ "$store_result" == *'Unrecognized keystore format'* || "$store_result" == *'Invalid keystore format'* ]]; then
     printf '::error::Java did not recognize the decoded Actions keystore format. Check that the secret contains the complete encoded keystore file.\n' >&2
