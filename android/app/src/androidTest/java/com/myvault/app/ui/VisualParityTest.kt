@@ -4,9 +4,14 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -33,6 +38,7 @@ import com.myvault.app.ui.editor.EditorSaveState
 import com.myvault.app.ui.editor.EntryEditorScreen
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -63,6 +69,41 @@ class VisualParityTest {
         )
 
     @Test
+    fun themeProvidesReadableDefaultContentInDarkAndLightModes() {
+        val mode = mutableStateOf("dark")
+        var foreground = Color.Unspecified
+        var background = Color.Unspecified
+        var expectedForeground = Color.Unspecified
+        compose.setContent {
+            VaultTheme(settings.copy(mode = mode.value)) {
+                val contentColor = LocalContentColor.current
+                val backgroundColor = MaterialTheme.colorScheme.background
+                val onBackground = MaterialTheme.colorScheme.onBackground
+                SideEffect {
+                    foreground = contentColor
+                    background = backgroundColor
+                    expectedForeground = onBackground
+                }
+            }
+        }
+        fun assertReadable() {
+            assertEquals(expectedForeground, foreground)
+            val first = foreground.luminance()
+            val second = background.luminance()
+            val contrast = (maxOf(first, second) + 0.05f) / (minOf(first, second) + 0.05f)
+            assertTrue(
+                "Default content contrast should be at least 4.5:1, was $contrast",
+                contrast >= 4.5f,
+            )
+        }
+        compose.runOnIdle {
+            assertReadable()
+            mode.value = "light"
+        }
+        compose.runOnIdle { assertReadable() }
+    }
+
+    @Test
     fun welcomeHasBrandedCardsAccessibleActionsAndSpaceDialog() {
         compose.setContent {
             VaultTheme(settings) { dark ->
@@ -88,7 +129,6 @@ class VisualParityTest {
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
         compose.onNodeWithContentDescription("Options for Work").assertWidthIsAtLeast(48.dp)
-        capture("welcome")
         compose.onNodeWithContentDescription("Options for Work").performClick()
         compose.onNodeWithText("Edit space").performClick()
         compose.onNodeWithText("Space name").assertIsDisplayed()
@@ -235,13 +275,44 @@ class VisualParityTest {
         compose.onNodeWithContentDescription("Close preview").assertIsDisplayed()
     }
 
+    @Test
+    fun fullEditorShowsSavedEntry() {
+        compose.setContent {
+            VaultTheme(settings) { dark ->
+                EntryEditorScreen(
+                    entryId = note.id,
+                    title = note.title,
+                    content = note.content,
+                    coverImage = null,
+                    pinned = note.pinned,
+                    tags = listOf(ideas),
+                    darkTheme = dark,
+                    saveState = EditorSaveState.Saved,
+                    onTitleChange = {},
+                    onContentChange = {},
+                    onClose = {},
+                    onTogglePin = {},
+                    onChooseCover = {},
+                    onRemoveCover = {},
+                    onAddTag = {},
+                    onRemoveTag = {},
+                    onImport = {},
+                    onDelete = {},
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Entry title").assertTextContains("A thoughtful note")
+        compose.onNodeWithContentDescription("Close editor").assertIsDisplayed()
+        capture("editor")
+    }
+
     private fun capture(name: String) {
         if (InstrumentationRegistry.getArguments().getString("myvault.capture") != "true") return
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val node = if (name == "settings") compose.onNode(isDialog()) else compose.onRoot()
         val original = node.captureToImage().asAndroidBitmap()
-        val width = 300
+        val width = 260
         val scaled =
             Bitmap.createScaledBitmap(
                 original,
@@ -251,7 +322,7 @@ class VisualParityTest {
             )
         val dir = instrumentation.targetContext.filesDir
         File(dir, "myvault-$name.jpg").outputStream().use {
-            scaled.compress(Bitmap.CompressFormat.JPEG, 35, it)
+            scaled.compress(Bitmap.CompressFormat.JPEG, 30, it)
         }
         scaled.recycle()
         original.recycle()

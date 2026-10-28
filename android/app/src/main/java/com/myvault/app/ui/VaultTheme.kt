@@ -3,6 +3,7 @@ package com.myvault.app.ui
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -104,6 +105,13 @@ fun VaultTheme(
     CompositionLocalProvider(
         LocalDensity provides Density(density.density, density.fontScale * fontMultiplier)
     ) {
-        MaterialTheme(colorScheme = scheme, shapes = shapes) { content(dark) }
+        MaterialTheme(colorScheme = scheme, shapes = shapes) {
+            // MaterialTheme does not set LocalContentColor itself. The app draws its
+            // backdrop in a Box rather than a Surface, so provide readable defaults
+            // for text and icons that do not declare their own color.
+            CompositionLocalProvider(LocalContentColor provides scheme.onBackground) {
+                content(dark)
+            }
+        }
     }
 }

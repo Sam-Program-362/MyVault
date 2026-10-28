@@ -54,7 +54,7 @@ if [[ ${MYVAULT_CAPTURE_FIXTURES:-0} == 1 ]]; then
   checked 'Install current APK for synthetic screenshots' adb install -r "$app_apk"
   checked 'Install instrumentation APK for screenshots' adb install -r "$test_apk"
   run_instrumentation visual com.myvault.app.ui.VisualParityTest -e myvault.capture true
-  for name in welcome dashboard settings; do
+  for name in dashboard settings editor; do
     if ! adb exec-out run-as "$app_id" cat "files/myvault-$name.jpg" > "$work/$name.jpg" 2> "$work/capture-error.log"; then
       echo "::warning::Could not retrieve synthetic $name screenshot; offline tests will continue."
       continue
