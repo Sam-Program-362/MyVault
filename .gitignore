@@ -22,3 +22,7 @@ android/keystore.properties
 *.keystore.b64
 *.p12.b64
 *.pfx.b64
+
+# Python test helper bytecode.
+__pycache__/
+*.pyc
