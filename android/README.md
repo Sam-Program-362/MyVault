@@ -41,7 +41,7 @@ In the repository, open **Settings → Secrets and variables → Actions → New
 | `ANDROID_KEY_ALIAS` | The alias of the private key entry inside the keystore. |
 | `ANDROID_KEY_PASSWORD` | The password for that private key. It can be the same as the keystore password. |
 
-`ANDROID_KEYSTORE_PATH` is created automatically on the runner and is **not** a GitHub secret. Do not put the keystore, Base64 value, passwords or alias in chat, issues, commits or workflow files.
+`ANDROID_KEYSTORE_PATH` is created automatically on the runner and is **not** a GitHub secret. Do not put the keystore, Base64 value, passwords or alias in chat, issues, commits or workflow files. The SHA-256 certificate fingerprint included with the signed artifact is public metadata, not the private signing key.
 
 ### Use the existing signing key
 
