@@ -174,12 +174,24 @@ jobs:
           disable-animations: true
           disable-spellchecker: true
           working-directory: android
-          script: >-
-            bash ci/run-device-tests.sh &&
-            MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/run-motion-inset-tests.sh &&
-            MYVAULT_DISPOSABLE_EMULATOR=1
-            MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk"
-            bash ci/run-offline-restart-test.sh
+          script: |
+            set -e
+            bash ci/run-device-tests.sh
+            MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/run-motion-inset-tests.sh
+            if [ '${{ matrix.api }}' = '30' ]; then
+              MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/capture-synthetic-ui.sh
+            fi
+            MYVAULT_DISPOSABLE_EMULATOR=1 \
+              MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" \
+              bash ci/run-offline-restart-test.sh
+      - name: Upload synthetic UI screenshots
+        if: ${{ always() && matrix.api == 30 }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: myvault-android-synthetic-screenshots
+          path: android/app/build/reports/synthetic-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload test report on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

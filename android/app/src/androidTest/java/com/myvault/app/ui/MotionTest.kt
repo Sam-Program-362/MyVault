@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -140,15 +141,16 @@ class MotionTest {
             }
         }
         compose.mainClock.advanceTimeBy(500)
-        val collapsed =
-            compose.onNodeWithTag("entry-list-motion").getUnclippedBoundsInRoot().height.value
+        fun rowHeight(): Float {
+            val bounds = compose.onNodeWithTag("entry-list-motion").getUnclippedBoundsInRoot()
+            return (bounds.bottom - bounds.top).value
+        }
+        val collapsed = rowHeight()
         compose.onNodeWithContentDescription("Expand Animated note").performClick()
         compose.mainClock.advanceTimeBy(80)
-        val midway =
-            compose.onNodeWithTag("entry-list-motion").getUnclippedBoundsInRoot().height.value
+        val midway = rowHeight()
         compose.mainClock.advanceTimeBy(400)
-        val expanded =
-            compose.onNodeWithTag("entry-list-motion").getUnclippedBoundsInRoot().height.value
+        val expanded = rowHeight()
         assertTrue("Expanded row must grow", expanded > collapsed)
         assertTrue(
             "Expansion should pass through an intermediate height",
@@ -159,11 +161,9 @@ class MotionTest {
             .assertIsDisplayed()
             .performClick()
         compose.mainClock.advanceTimeBy(80)
-        val collapsing =
-            compose.onNodeWithTag("entry-list-motion").getUnclippedBoundsInRoot().height.value
+        val collapsing = rowHeight()
         compose.mainClock.advanceTimeBy(400)
-        val closed =
-            compose.onNodeWithTag("entry-list-motion").getUnclippedBoundsInRoot().height.value
+        val closed = rowHeight()
         assertTrue(
             "Collapse should pass through an intermediate height",
             collapsing > closed && collapsing < expanded,

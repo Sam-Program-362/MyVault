@@ -150,7 +150,11 @@ ADB
     bash "$ci_dir/run-motion-inset-tests.sh"
   grep -q 'disposable emulator' "$tmp/output"
   env MYVAULT_DISPOSABLE_EMULATOR=1 bash "$ci_dir/run-motion-inset-tests.sh" > "$fixture/motion-success"
-  grep -q 'Android motion' "$fixture/motion-success"
-  grep -q 'Android cutout' "$fixture/motion-success"
+  grep -q 'Android motion and cutout' "$fixture/motion-success"
+  expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR bash "$ci_dir/capture-synthetic-ui.sh"
+  grep -q 'disposable emulator' "$tmp/output"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \
+    bash "$ci_dir/capture-synthetic-ui.sh"
+  grep -q 'disposable emulator' "$tmp/output"
 )
 printf 'Offline, motion and cutout emulator guards and diagnostics passed (adb mocked).\n'

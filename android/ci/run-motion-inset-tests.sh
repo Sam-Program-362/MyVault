@@ -50,7 +50,6 @@ for setting in animator_duration_scale window_animation_scale transition_animati
   adb shell settings put global "$setting" 1 || exit 1
 done
 run_test motion com.myvault.app.ui.MotionTest -e myvault.motion true
-printf '::notice title=Android motion::Expansion and collapse were tested with system animations enabled.\n'
 
 overlay_list=$(adb shell cmd overlay list | tr -d '\r')
 if grep -Fq "$overlay" <<< "$overlay_list"; then
@@ -59,7 +58,7 @@ if grep -Fq "$overlay" <<< "$overlay_list"; then
   adb shell am force-stop "$app_id" || exit 1
   adb shell am start -n "$app_id/com.myvault.app.MainActivity" >/dev/null || exit 1
   run_test cutout com.myvault.app.ui.SystemChromeTest -e myvault.expectCutout true
-  printf '::notice title=Android cutout::Inset-safe content and transparent bars were checked with an emulated corner cutout.\n'
+  printf '::notice title=Android motion and cutout::Motion ran with animations enabled; transparent bars and safe content were checked with an emulated corner cutout.\n'
 else
-  echo '::warning::The emulator image does not provide a corner-cutout overlay; cutout emulation was not run.'
+  echo '::warning title=Android motion and cutout::Motion ran with animations enabled, but the emulator has no corner-cutout overlay; that phase was skipped.'
 fi
