@@ -43,10 +43,9 @@ class SystemChromeTest {
             val insets = requireNotNull(ViewCompat.getRootWindowInsets(decor))
             val safe =
                 insets.getInsets(
-                    WindowInsetsCompat.Type.systemBars() or
-                        WindowInsetsCompat.Type.displayCutout() or
-                        WindowInsetsCompat.Type.systemGestures()
+                    WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
                 )
+            val gestures = insets.getInsets(WindowInsetsCompat.Type.systemGestures())
             val density = activity.resources.displayMetrics.density
             assertEquals(
                 "Compose content should fill the window behind the bars",
@@ -69,12 +68,24 @@ class SystemChromeTest {
                 bounds.right.value * density <= rootSize.width - safe.right + 1,
             )
             assertTrue(
-                "New space must clear the left gesture/cutout inset",
+                "New space must clear the left bar/cutout inset",
                 newSpaceBounds.left.value * density + 1 >= safe.left,
             )
             assertTrue(
-                "New space must clear the bottom system/gesture inset",
+                "New space must clear the bottom system-bar inset",
                 newSpaceBounds.bottom.value * density <= rootSize.height - safe.bottom + 1,
+            )
+            // Drawing within the back-gesture region is allowed; tappable centres stay
+            // outside it so the action remains reachable without shrinking all content.
+            assertTrue(
+                "New space's touch centre must clear the left back-gesture region",
+                (newSpaceBounds.left.value + newSpaceBounds.right.value) * density / 2f >=
+                    gestures.left,
+            )
+            assertTrue(
+                "Settings' touch centre must clear the right back-gesture region",
+                (bounds.left.value + bounds.right.value) * density / 2f <=
+                    rootSize.width - gestures.right,
             )
             if (
                 InstrumentationRegistry.getArguments().getString("myvault.expectCutout") == "true"

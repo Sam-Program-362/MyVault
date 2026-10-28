@@ -154,12 +154,12 @@ fun EntriesScreen(
         )
         Row(
             Modifier.fillMaxWidth()
+                .testTag("space-navigation")
                 .background(
-                    if (dark) Color(0xFF0A0A0A).copy(alpha = 0.4f)
-                    else Color.White.copy(alpha = 0.5f)
+                    MaterialTheme.colorScheme.surface.copy(alpha = if (dark) 0.18f else 0.3f)
                 )
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -236,7 +236,7 @@ fun EntriesScreen(
             // Cards retain the existing adaptive dimensions. List mode uses the same keyed
             // collection and data, so switching layouts never reloads the vault.
             columns = if (listLayout) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 300.dp),
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("entries-grid"),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(if (listLayout) 6.dp else 16.dp),
@@ -496,81 +496,90 @@ private fun DashboardHeader(
     onSettings: () -> Unit,
     dark: Boolean,
 ) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    BoxWithConstraints(Modifier.fillMaxWidth().testTag("dashboard-toolbar")) {
         val showAppName = maxWidth >= 600.dp
-        Row(
+        val compact = maxWidth < 350.dp
+        Column(
             Modifier.fillMaxWidth()
                 .background(
-                    if (dark) Color(0xFF0A0A0A).copy(alpha = 0.65f)
-                    else Color.White.copy(alpha = 0.7f)
+                    MaterialTheme.colorScheme.surface.copy(alpha = if (dark) 0.18f else 0.3f)
                 )
-                .padding(horizontal = 2.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 8.dp, vertical = 2.dp)
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(
-                    Icons.Default.GridView,
-                    "Back to spaces",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            if (showAppName) {
-                Text(
-                    appName.ifBlank { "MyVault" },
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 180.dp).padding(end = 12.dp),
-                )
-            }
-            DashboardSearch(query, onQueryChange, allSpaces, Modifier.weight(1f))
-            Spacer(Modifier.width(4.dp))
-            val toggleColor by
-                animateColorAsState(
-                    if (allSpaces) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    animationSpec = tween(160),
-                    label = "All spaces selection",
-                )
-            Box(
-                Modifier.heightIn(min = 48.dp)
-                    .selectable(
-                        selected = allSpaces,
-                        role = Role.Checkbox,
-                        onClick = onToggleAllSpaces,
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        Icons.Default.GridView,
+                        "Back to spaces",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
                     )
-                    .semantics { contentDescription = "All spaces" },
-                contentAlignment = Alignment.Center,
-            ) {
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = toggleColor,
-                    contentColor =
-                        if (allSpaces) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurface,
-                    border =
-                        if (allSpaces) null
-                        else
-                            BorderStroke(
-                                1.dp,
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
-                            ),
-                ) {
-                    Box(
-                        Modifier.heightIn(min = 34.dp).padding(horizontal = 9.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            "All spaces",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                        )
-                    }
+                }
+                if (showAppName) {
+                    Text(
+                        appName.ifBlank { "MyVault" },
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 180.dp).padding(end = 12.dp),
+                    )
+                }
+                if (compact) Spacer(Modifier.weight(1f))
+                else DashboardSearch(query, onQueryChange, allSpaces, Modifier.weight(1f))
+                Spacer(Modifier.width(4.dp))
+                AllSpacesToggle(allSpaces, onToggleAllSpaces)
+                IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.Settings, "Settings", modifier = Modifier.size(18.dp))
                 }
             }
-            IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Default.Settings, "Settings", modifier = Modifier.size(18.dp))
+            // Give the search a full row on narrow phones rather than compressing
+            // the text field and the adjacent 48dp touch targets.
+            if (compact) {
+                DashboardSearch(
+                    query,
+                    onQueryChange,
+                    allSpaces,
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AllSpacesToggle(allSpaces: Boolean, onToggle: () -> Unit) {
+    val toggleColor by
+        animateColorAsState(
+            if (allSpaces) MaterialTheme.colorScheme.primary else Color.Transparent,
+            animationSpec = tween(160),
+            label = "All spaces selection",
+        )
+    Box(
+        Modifier.heightIn(min = 48.dp)
+            .selectable(selected = allSpaces, role = Role.Checkbox, onClick = onToggle)
+            .semantics { contentDescription = "All spaces" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = toggleColor,
+            contentColor =
+                if (allSpaces) MaterialTheme.colorScheme.onPrimary
+                else MaterialTheme.colorScheme.onSurface,
+            border =
+                if (allSpaces) null
+                else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+        ) {
+            Box(
+                Modifier.heightIn(min = 34.dp).padding(horizontal = 9.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "All spaces",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
             }
         }
     }

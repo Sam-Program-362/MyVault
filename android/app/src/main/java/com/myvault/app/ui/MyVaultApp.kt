@@ -5,6 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -19,7 +21,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContent
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
@@ -143,9 +145,11 @@ fun MyVaultApp(vault: VaultViewModel) {
         Box(Modifier.fillMaxSize().background(rootColor)) {
             if (editor == null)
                 VaultBackdrop(settings, dark = dark, splash = contentScreen == "spaces")
-            // Backgrounds draw edge-to-edge. Only interactive content is inset, so the
-            // status/navigation bars and cutouts never create an opaque strip.
-            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeContent)) {
+            // Let the chrome and content span the drawable window. safeContent also
+            // adds horizontal system-gesture insets, shrinking the *entire* layout on
+            // gesture-navigation phones. safeDrawing protects bars, cutouts and IME;
+            // individual controls keep their own touch padding from the screen edges.
+            Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val draftState = editor
                 if (draftState != null) {
                     val entry = draftState.value
@@ -153,34 +157,48 @@ fun MyVaultApp(vault: VaultViewModel) {
                         refs.any { it.entryId == entry.id && it.tagId == tag.id }
                     }
                     BackHandler(enabled = !busy) { closeEditor() }
-                    EntryEditorScreen(
-                        entryId = entry.id,
-                        title = entry.title,
-                        content = entry.content,
-                        coverImage = entry.coverImagePath,
-                        pinned = entry.pinned,
-                        tags = selectedTags,
-                        darkTheme = dark,
-                        saveState = draftState.saveState,
-                        externalUpdate = externalUpdate,
-                        onTitleChange = { value -> vault.updateDraft { it.copy(title = value) } },
-                        onContentChange = { value ->
-                            vault.updateDraft { it.copy(content = value) }
-                        },
-                        onClose = { closeEditor() },
-                        onTogglePin = { vault.updateDraft { it.copy(pinned = !it.pinned) } },
-                        onChooseCover = { coverPicker.launch(arrayOf("image/*")) },
-                        onRemoveCover = { vault.updateDraft { it.copy(coverImagePath = null) } },
-                        onAddTag = { showTags = true },
-                        onRemoveTag = vault::removeTag,
-                        onImport = { selection: TextRange ->
-                            importTarget = entry.id
-                            selectionStart = selection.min
-                            selectionEnd = selection.max
-                            textPicker.launch(arrayOf("text/*", "application/octet-stream"))
-                        },
-                        onDelete = { confirmDelete = true },
-                    )
+                    val editorVisibility =
+                        remember(entry.id) {
+                            MutableTransitionState(false).apply { targetState = true }
+                        }
+                    AnimatedVisibility(
+                        visibleState = editorVisibility,
+                        modifier = Modifier.fillMaxSize(),
+                        enter = fadeIn(tween(200)) + slideInHorizontally(tween(200)) { it / 30 },
+                    ) {
+                        EntryEditorScreen(
+                            entryId = entry.id,
+                            title = entry.title,
+                            content = entry.content,
+                            coverImage = entry.coverImagePath,
+                            pinned = entry.pinned,
+                            tags = selectedTags,
+                            darkTheme = dark,
+                            saveState = draftState.saveState,
+                            externalUpdate = externalUpdate,
+                            onTitleChange = { value ->
+                                vault.updateDraft { it.copy(title = value) }
+                            },
+                            onContentChange = { value ->
+                                vault.updateDraft { it.copy(content = value) }
+                            },
+                            onClose = { closeEditor() },
+                            onTogglePin = { vault.updateDraft { it.copy(pinned = !it.pinned) } },
+                            onChooseCover = { coverPicker.launch(arrayOf("image/*")) },
+                            onRemoveCover = {
+                                vault.updateDraft { it.copy(coverImagePath = null) }
+                            },
+                            onAddTag = { showTags = true },
+                            onRemoveTag = vault::removeTag,
+                            onImport = { selection: TextRange ->
+                                importTarget = entry.id
+                                selectionStart = selection.min
+                                selectionEnd = selection.max
+                                textPicker.launch(arrayOf("text/*", "application/octet-stream"))
+                            },
+                            onDelete = { confirmDelete = true },
+                        )
+                    }
                     if (showTags)
                         TagPickerDialog(
                             tags,
@@ -285,6 +303,7 @@ fun MyVaultApp(vault: VaultViewModel) {
                 } else {
                     AnimatedContent(
                         targetState = contentScreen,
+                        modifier = Modifier.fillMaxSize(),
                         transitionSpec = {
                             (fadeIn(tween(200)) +
                                 slideInHorizontally(tween(200)) {

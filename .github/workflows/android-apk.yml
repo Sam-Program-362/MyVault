@@ -2,7 +2,8 @@ name: Android APK
 
 on:
   push:
-    branches: [main]
+    # The session branch may request one owner-authorized signed artifact without merging.
+    branches: [main, arena/e04112a5-myvault]
     paths:
       - "android/**"
       - ".github/workflows/android-apk.yml"
@@ -44,7 +45,7 @@ concurrency:
 jobs:
   debug:
     name: Debug APK, unit tests and release build check
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_type == 'debug' }}
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'debug') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -114,6 +115,11 @@ jobs:
             awk '/^[[:space:]]*SHA256:/ && !seen++ {print $2}')
           export ANDROID_EXPECTED_CERT_SHA256 ANDROID_INSTALLED_PACKAGE_ID=com.myvault.app ANDROID_INSTALLED_VERSION_CODE=3
           bash android/ci/verify-release-update.sh android/app/build/outputs/apk/release/app-release.apk
+      - name: Verify disposable release package and version
+        run: >-
+          bash android/ci/verify-release-artifact.sh
+          android/app/build/outputs/apk/release/app-release.apk
+          "$RUNNER_TEMP/disposable-release-identity.txt"
       - name: Remove disposable key
         if: ${{ always() }}
         run: rm -f "$RUNNER_TEMP/myvault-test.p12"
@@ -188,7 +194,7 @@ jobs:
 
   emulator-tests:
     name: Android emulator tests (API ${{ matrix.api }})
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_type == 'debug' }}
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'debug') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -251,6 +257,14 @@ jobs:
           git archive 8f28127f4eb23310059f7e96b44957d523c8431d android | tar -x -C "$previous"
           cd "$previous/android"
           bash "$GITHUB_WORKSPACE/android/ci/run-gradle-check.sh" :app:assembleDebug
+      - name: Build the unchanged pre-fix APK for the real-window comparison
+        run: |
+          before="$RUNNER_TEMP/myvault-native-before"
+          mkdir -p "$before"
+          # Use the exact PR head from before this fix, without switching branches.
+          git archive 4264b40975a9fa0c2d53071b36823f20c751712f android | tar -x -C "$before"
+          cd "$before/android"
+          bash "$GITHUB_WORKSPACE/android/ci/run-gradle-check.sh" :app:assembleDebug
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -271,6 +285,15 @@ jobs:
             MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_REQUIRE_CUTOUT=1 bash ci/run-motion-inset-tests.sh
             if [ '${{ matrix.api }}' = '30' ]; then MYVAULT_DISPOSABLE_EMULATOR=1 bash ci/capture-synthetic-ui.sh; fi
             MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_CONFLICT_APK="$RUNNER_TEMP/myvault-incompatible-debug.apk" MYVAULT_PREVIEW_APK="$RUNNER_TEMP/myvault-preview.apk" bash ci/run-offline-restart-test.sh
+            MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_BASELINE_APK="$RUNNER_TEMP/myvault-native-before/android/app/build/outputs/apk/debug/app-debug.apk" bash ci/run-native-window-evidence.sh
+      - name: Upload real-window before-and-after evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: myvault-native-window-evidence-api-${{ matrix.api }}
+          path: android/app/build/reports/native-window-evidence/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload synthetic UI screenshots
         if: ${{ always() && matrix.api == 30 }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -290,33 +313,40 @@ jobs:
 
   release:
     name: Signed release APK
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_type == 'release' }}
+    # Never sign PR events. The explicitly requested owner push is the only way to
+    # produce a signed artifact on this PR branch before a workflow can be dispatched
+    # from the default branch; regular branch pushes do not receive signing secrets.
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release') ||
+          (github.event_name == 'push' && github.ref == 'refs/heads/arena/e04112a5-myvault' &&
+           github.actor == github.repository_owner &&
+           github.event.head_commit.message == 'build: package signed Android APK') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Require the default branch for signing
+      - name: Require a trusted signing request
         env:
+          EVENT_NAME: ${{ github.event_name }}
           CURRENT_REF: ${{ github.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          PUSH_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          if [[ "$CURRENT_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
-            echo "::error::Run signed releases from the default branch only."
+          if [[ "$EVENT_NAME" == workflow_dispatch && "$CURRENT_REF" == "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo 'Trusted manual default-branch release.'
+          elif [[ "$CURRENT_REF" == refs/heads/arena/e04112a5-myvault && "$ACTOR" == "$OWNER" ]] && \
+               { [[ "$EVENT_NAME" == workflow_dispatch ]] || \
+                 [[ "$EVENT_NAME" == push && "$PUSH_MESSAGE" == 'build: package signed Android APK' ]]; }; then
+            echo 'Owner-authorized signing on the assigned PR branch.'
+          else
+            echo '::error::Signing requires a manual default-branch release or an explicit owner request on the assigned branch.'
             exit 1
           fi
       - name: Check out trusted sources
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Require release reference metadata
-        env:
-          INSTALLED_PACKAGE: ${{ inputs.release_installed_package_id }}
-          EXPECTED_CERT: ${{ inputs.release_cert_sha256 }}
-          INSTALLED_VERSION: ${{ inputs.release_installed_version_code }}
-        run: |
-          if [[ -z "$INSTALLED_PACKAGE" || -z "$EXPECTED_CERT" || -z "$INSTALLED_VERSION" ]]; then
-            echo '::error::Provide the installed package ID, certificate SHA-256 and versionCode (none and 0 only for a confirmed fresh install).'
-            exit 1
-          fi
       - name: Check Android app sources
         run: bash android/ci/check-project.sh
       - name: Set up Java 17
@@ -345,25 +375,53 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon -PrequireReleaseSigning=true :app:assembleRelease
+        run: |
+          # Gradle errors can contain signing configuration details. Keep its output private
+          # and report only a safe summary; the temporary log is removed on all paths.
+          log="$RUNNER_TEMP/myvault-signing-gradle.log"
+          trap 'rm -f "$log"' EXIT
+          if ! ./gradlew --no-daemon -PrequireReleaseSigning=true :app:assembleRelease > "$log" 2>&1; then
+            if grep -Eiq 'failed to read key|cannot recover key|key password|password was incorrect' "$log"; then
+              echo '::error::Release signing failed. Check the configured alias and private-key password.'
+            else
+              echo '::error::The release Gradle build or signing task failed; check the signing configuration and run a local build for diagnostics.'
+            fi
+            exit 1
+          fi
+          echo 'Gradle assembled the signed release APK.'
       - name: Verify the release signature
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: bash android/ci/verify-signing.sh android/app/build/outputs/apk/release/app-release.apk
-      - name: Verify release update identity against the supplied reference
+      - name: Verify release package, version and public certificate
+        run: >-
+          bash android/ci/verify-release-artifact.sh
+          android/app/build/outputs/apk/release/app-release.apk
+          android/app/build/outputs/apk/release/SIGNED-APK-IDENTITY.txt
+      - name: Optionally check the supplied installed-app reference
         env:
           ANDROID_INSTALLED_PACKAGE_ID: ${{ inputs.release_installed_package_id }}
           ANDROID_EXPECTED_CERT_SHA256: ${{ inputs.release_cert_sha256 }}
           ANDROID_INSTALLED_VERSION_CODE: ${{ inputs.release_installed_version_code }}
-        run: bash android/ci/verify-release-update.sh android/app/build/outputs/apk/release/app-release.apk
+        run: |
+          if [[ -z "$ANDROID_INSTALLED_PACKAGE_ID" && -z "$ANDROID_EXPECTED_CERT_SHA256" && -z "$ANDROID_INSTALLED_VERSION_CODE" ]]; then
+            echo '::warning::No installed-app reference was supplied; this artifact has not been verified as an in-place update.'
+          elif [[ -z "$ANDROID_INSTALLED_PACKAGE_ID" || -z "$ANDROID_EXPECTED_CERT_SHA256" || -z "$ANDROID_INSTALLED_VERSION_CODE" ]]; then
+            echo '::error::Supply all three installed-app reference fields, or leave all three blank.'
+            exit 1
+          else
+            bash android/ci/verify-release-update.sh android/app/build/outputs/apk/release/app-release.apk
+          fi
       - name: Remove the temporary keystore
         if: ${{ always() }}
         run: rm -f "$RUNNER_TEMP/myvault-release.keystore"
       - name: Upload signed release APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: myvault-release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: myvault-signed-apk
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/SIGNED-APK-IDENTITY.txt
           if-no-files-found: error
           retention-days: 14

@@ -118,11 +118,14 @@ esac
 case "$file" in
   *-old.apk|*-same.apk) code=2 ;;
   high.apk) code=2147483648 ;;
+  *-current.apk) code=5 ;;
   *) code=3 ;;
 esac
 major=''
 if [[ "$file" == major.apk ]]; then major=" versionCodeMajor='1'"; fi
-printf "package: name='%s' versionCode='%s'%s versionName='1.0.2'\n" "$app_id" "$code" "$major"
+version_name='1.0.2'
+if [[ "$file" == *-current.apk ]]; then version_name='1.0.4'; fi
+printf "package: name='%s' versionCode='%s'%s versionName='%s'\n" "$app_id" "$code" "$major" "$version_name"
 AAPT
 cat > "$tmp/identity-signer" <<'SIGNER'
 #!/usr/bin/env bash
@@ -136,7 +139,7 @@ if [[ "$file" == *multi.apk ]]; then printf 'Signer #2 certificate SHA-256 diges
 SIGNER
 chmod +x "$tmp/aapt" "$tmp/identity-signer"
 export AAPT="$tmp/aapt" APKSIGNER="$tmp/identity-signer"
-for name in release-old release-new release-same release-other debug-old debug-new debug-other preview-new unsigned multi malformed high major; do
+for name in release-old release-new release-same release-other release-current debug-current debug-old debug-new debug-other preview-new unsigned multi malformed high major; do
   printf 'synthetic %s APK\n' "$name" > "$tmp/$name.apk"
 done
 export ANDROID_EXPECTED_CERT_SHA256
@@ -170,6 +173,12 @@ grep -q 'separate installations' "$tmp/output"
 expect_failure "$ci_dir/check-apk-update.sh" "$tmp/release-old.apk" "$tmp/release-same.apk"
 expect_failure "$ci_dir/check-apk-update.sh" "$tmp/release-old.apk" "$tmp/unsigned.apk"
 expect_failure "$ci_dir/check-apk-update.sh" "$tmp/release-old.apk" "$tmp/multi.apk"
+bash "$ci_dir/verify-release-artifact.sh" "$tmp/release-current.apk" "$tmp/release-identity.txt" >/dev/null
+grep -q '^Application ID: com.myvault.app$' "$tmp/release-identity.txt"
+grep -q '^Version code: 5$' "$tmp/release-identity.txt"
+expect_failure bash "$ci_dir/verify-release-artifact.sh" "$tmp/debug-current.apk" "$tmp/release-identity.txt"
+expect_failure bash "$ci_dir/verify-release-artifact.sh" "$tmp/release-old.apk" "$tmp/release-identity.txt"
+expect_failure bash "$ci_dir/verify-release-artifact.sh" "$tmp/unsigned.apk" "$tmp/release-identity.txt"
 printf 'APK identity, incompatible-update and release reference checks passed (tools mocked).\n'
 
 # Unit-test failures should be visible in CI annotations, not only in runner logs.
@@ -283,5 +292,15 @@ ADB
   env MYVAULT_DISPOSABLE_EMULATOR=1 bash "$ci_dir/capture-synthetic-ui.sh" > "$fixture/capture-success"
   grep -q 'Launcher home screen::The emulator home screen displayed the MyVault pinned shortcut' "$fixture/capture-success"
   [[ -s app/build/reports/synthetic-screenshots/welcome.png ]]
+  expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR bash "$ci_dir/run-native-window-evidence.sh"
+  grep -q 'disposable emulator' "$tmp/output"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \
+    bash "$ci_dir/run-native-window-evidence.sh"
+  grep -q 'not a physical device' "$tmp/output"
+  expect_failure env -u MYVAULT_DISPOSABLE_EMULATOR python3 "$ci_dir/record-native-motion.py"
+  grep -q 'disposable emulator' "$tmp/output"
+  expect_failure env MYVAULT_DISPOSABLE_EMULATOR=1 MOCK_SERIAL=physical-123 \
+    python3 "$ci_dir/record-native-motion.py"
+  grep -q 'disposable emulator' "$tmp/output"
 )
-printf 'Offline, motion, cutout and synthetic-capture guards passed (adb mocked).\n'
+printf 'Offline, motion, cutout and capture guards passed (adb mocked).\n'

@@ -40,9 +40,9 @@ android {
         applicationId = "com.myvault.app"
         minSdk = 24
         targetSdk = 34
-        // Bump the APK version for in-place updates of the previous native build.
-        versionCode = 4
-        versionName = "1.0.3"
+        // A newer version is necessary (but not sufficient) for an in-place update.
+        versionCode = 5
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

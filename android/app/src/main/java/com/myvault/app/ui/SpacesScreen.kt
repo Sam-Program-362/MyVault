@@ -115,80 +115,87 @@ fun SpacesScreen(
                 maxWidth >= 600.dp -> 3
                 else -> 2
             }
-        // Like the web splash, short grids sit near the bottom while the welcome fills
-        // the remaining height. Longer lists keep a minimum hero and scroll naturally.
-        val cardCount = spaces.size + if (creating) 0 else 1
-        val rows = (cardCount + columns - 1) / columns
-        val gridHeight = 136.dp * rows + 12.dp * rows + 48.dp
-        val heroHeight = (maxHeight - gridHeight).coerceAtLeast(230.dp)
-        val sidePadding = if (maxWidth >= 600.dp) 36.dp else 24.dp
         val compactHeading = maxWidth < 360.dp
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(columns),
-            state = gridState,
-            modifier = Modifier.widthIn(max = 820.dp).fillMaxSize().align(Alignment.TopCenter),
-            contentPadding = PaddingValues(start = sidePadding, end = sidePadding, bottom = 48.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }, key = "welcome") {
+        val compactHeight = maxHeight < 650.dp
+        Column(Modifier.fillMaxSize()) {
+            // Settings shares a real header with the vault badge, rather than
+            // floating alone over an oversized, empty hero.
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Box(
-                    Modifier.fillMaxWidth().heightIn(min = heroHeight),
-                    contentAlignment = Alignment.Center,
+                    Modifier.weight(1f).padding(end = 8.dp),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
+                    WelcomeBadge()
+                }
+                IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = Color.White.copy(alpha = 0.72f),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(columns),
+                state = gridState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding =
+                    PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                // Center a short welcome + cards group together. When it grows beyond
+                // the viewport, the same lazy grid scrolls without invented heights.
+                verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "welcome") {
+                    Column(Modifier.fillMaxWidth()) {
+                        AnimatedVisibility(
+                            visible = introVisible,
+                            enter =
+                                fadeIn(tween(320)) +
+                                    scaleIn(tween(320), initialScale = 0.97f) +
+                                    slideInVertically(tween(320)) { it / 12 },
+                        ) {
+                            WelcomeHeading(appName, compact = compactHeading)
+                        }
+                        Spacer(Modifier.height(if (compactHeight) 8.dp else 16.dp))
+                    }
+                }
+                items(spaces, key = { "space-${it.id}" }) { space ->
+                    var cardVisible by remember(space.id) { mutableStateOf(false) }
+                    LaunchedEffect(space.id) { cardVisible = true }
                     AnimatedVisibility(
-                        visible = introVisible,
-                        enter =
-                            fadeIn(tween(320)) +
-                                scaleIn(tween(320), initialScale = 0.97f) +
-                                slideInVertically(tween(320)) { it / 12 },
+                        visible = cardVisible,
+                        modifier = Modifier.animateItem(),
+                        enter = fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f),
+                        label = "Space card",
                     ) {
-                        WelcomeHeading(appName, compact = compactHeading)
+                        SpaceCard(
+                            space = space,
+                            count = entries.count { it.spaceId == space.id },
+                            onOpen = { onOpen(space.id) },
+                            onEdit = { editing = space },
+                            onDelete = { deleting = space },
+                        )
+                    }
+                }
+                if (!creating) {
+                    item(key = "create-space") { NewSpaceCard { creating = true } }
+                } else {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "new-space-form") {
+                        NewSpaceForm(
+                            onCancel = { creating = false },
+                            onCreate = { name, description, color, icon ->
+                                creating = false
+                                onCreate(name, description, color, icon)
+                            },
+                        )
                     }
                 }
             }
-            items(spaces, key = { "space-${it.id}" }) { space ->
-                var cardVisible by remember(space.id) { mutableStateOf(false) }
-                LaunchedEffect(space.id) { cardVisible = true }
-                AnimatedVisibility(
-                    visible = cardVisible,
-                    modifier = Modifier.animateItem(),
-                    enter = fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f),
-                    label = "Space card",
-                ) {
-                    SpaceCard(
-                        space = space,
-                        count = entries.count { it.spaceId == space.id },
-                        onOpen = { onOpen(space.id) },
-                        onEdit = { editing = space },
-                        onDelete = { deleting = space },
-                    )
-                }
-            }
-            if (!creating) {
-                item(key = "create-space") { NewSpaceCard { creating = true } }
-            } else {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "new-space-form") {
-                    NewSpaceForm(
-                        onCancel = { creating = false },
-                        onCreate = { name, description, color, icon ->
-                            creating = false
-                            onCreate(name, description, color, icon)
-                        },
-                    )
-                }
-            }
-        }
-        IconButton(
-            onClick = onSettings,
-            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(48.dp),
-        ) {
-            Icon(
-                Icons.Default.Settings,
-                contentDescription = "Settings",
-                tint = Color.White.copy(alpha = 0.72f),
-                modifier = Modifier.size(18.dp),
-            )
         }
     }
 
@@ -228,37 +235,40 @@ fun SpacesScreen(
 }
 
 @Composable
+private fun WelcomeBadge() {
+    Surface(
+        color = Color.White.copy(alpha = 0.09f),
+        shape = CircleShape,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 15.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.AutoAwesome,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "YOUR ORGANIZED VAULT",
+                color = Color.White.copy(alpha = 0.72f),
+                fontSize = 10.sp,
+                letterSpacing = 2.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+}
+
+@Composable
 private fun WelcomeHeading(appName: String, compact: Boolean) {
     Column(
-        Modifier.fillMaxWidth().padding(top = 48.dp, bottom = 24.dp),
+        Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Surface(
-            color = Color.White.copy(alpha = 0.09f),
-            shape = CircleShape,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
-        ) {
-            Row(
-                Modifier.padding(horizontal = 15.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(14.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "YOUR ORGANIZED VAULT",
-                    color = Color.White.copy(alpha = 0.72f),
-                    fontSize = 10.sp,
-                    letterSpacing = 2.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-        }
-        Spacer(Modifier.height(12.dp))
         Text(
             appName.ifBlank { "MyVault" },
             color = Color.White,
