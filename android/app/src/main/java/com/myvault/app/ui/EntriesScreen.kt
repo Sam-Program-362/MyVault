@@ -123,7 +123,7 @@ fun EntriesScreen(
                 onClick = {
                     if (selectedSpaceId != null) onNewEntry(selectedSpaceId) else chooseSpace = true
                 },
-                icon = { Icon(Icons.Default.Add, null) },
+                icon = { Icon(Icons.Default.Add, "New entry") },
                 text = { Text("New entry") },
                 expanded = true,
             )

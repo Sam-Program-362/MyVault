@@ -91,7 +91,7 @@ fun SpacesScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { creating = true },
-                icon = { Icon(Icons.Default.Add, null) },
+                icon = { Icon(Icons.Default.Add, "New space") },
                 text = { Text("New space") },
             )
         },

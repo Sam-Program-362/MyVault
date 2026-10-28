@@ -33,13 +33,18 @@ for path in reports:
             failures += 1
             details = f"{case.get('classname', '')}.{case.get('name', '')}: {failure.get('message', '')}\n{failure.text or ''}"
             annotate("error", "Android device test failed", details[:8000])
+if reports:
+    annotate("notice", "Android device test summary", f"{tests} test(s), {failures} failure(s).")
+if not status and not tests:
+    annotate("error", "No Android device tests found", "Gradle succeeded without producing any instrumentation test cases.")
+    sys.exit(1)
 if status and not failures:
     excerpt = "\n".join(log.read_text(errors="replace").splitlines()[-100:])
     logcat = pathlib.Path(f"{log}.logcat")
     if logcat.exists():
         excerpt += "\nAndroid runtime log:\n" + "\n".join(logcat.read_text(errors="replace").splitlines()[-80:])
     annotate("error", "Android device tests failed", excerpt[-8000:])
-elif not status:
-    annotate("notice", "Android device tests passed", f"{tests} instrumentation test(s) passed.")
 PY
+report_status=$?
+if ((report_status != 0)); then exit "$report_status"; fi
 exit "$status"

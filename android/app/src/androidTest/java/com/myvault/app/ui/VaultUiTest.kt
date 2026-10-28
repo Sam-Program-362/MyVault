@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.myvault.app.MainActivity
@@ -22,13 +23,16 @@ class VaultUiTest {
     @Test
     fun createWritePreviewCloseAndReopen() {
         val space = "Test space ${System.currentTimeMillis()}"
-        compose.onNodeWithText("New space").performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription("New space").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("New space").performClick()
         compose.onNodeWithText("Space name").performTextInput(space)
         compose.onNodeWithText("Create").performClick()
         compose.waitUntil(15_000) {
-            compose.onAllNodesWithText("New entry").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("New entry").performClick()
+        compose.onNodeWithContentDescription("New entry").performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithContentDescription("Entry title").fetchSemanticsNodes().isNotEmpty()
         }
@@ -38,9 +42,15 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Preview").performClick()
         compose.onNodeWithText("Markdown").assertIsDisplayed()
         compose.onNodeWithContentDescription("Close preview").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Find and replace").performClick()
+        compose.onNodeWithText("Find").performTextInput("little")
+        compose.onNodeWithText("Replace with").performTextInput("small")
+        compose.onNodeWithText("Replace all").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Entry content").assertTextContains("A small Markdown")
+        compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Add tag…", substring = true).performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
-        compose.onNodeWithText("Create & add tag").performClick()
+        compose.onNodeWithText("Create & add tag").performScrollTo().performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithContentDescription("Remove Journal tag").fetchSemanticsNodes().isNotEmpty()
         }
@@ -53,7 +63,7 @@ class VaultUiTest {
             compose.onAllNodesWithContentDescription("Entry content").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithContentDescription("Entry title").assertTextContains("A saved note")
-        compose.onNodeWithContentDescription("Entry content").assertTextContains("A little Markdown")
+        compose.onNodeWithContentDescription("Entry content").assertTextContains("A small Markdown")
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
         compose.onNodeWithContentDescription("Remove Journal tag").assertIsDisplayed()
     }
