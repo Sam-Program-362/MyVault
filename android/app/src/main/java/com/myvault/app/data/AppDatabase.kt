@@ -40,6 +40,12 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("""CREATE TRIGGER IF NOT EXISTS tag_link_insert BEFORE INSERT ON entry_tags BEGIN
                 SELECT CASE WHEN EXISTS (SELECT 1 FROM tags t JOIN entries e ON e.id = NEW.entryId WHERE t.id = NEW.tagId AND t.scope = 'local' AND t.ownerSpaceId != e.spaceId) THEN RAISE(ABORT, 'Tag belongs to another Space') END;
             END""")
+            db.execSQL("""CREATE TRIGGER IF NOT EXISTS tag_link_update BEFORE UPDATE ON entry_tags BEGIN
+                SELECT CASE WHEN EXISTS (SELECT 1 FROM tags t JOIN entries e ON e.id = NEW.entryId WHERE t.id = NEW.tagId AND t.scope = 'local' AND t.ownerSpaceId != e.spaceId) THEN RAISE(ABORT, 'Tag belongs to another Space') END;
+            END""")
+            db.execSQL("""CREATE TRIGGER IF NOT EXISTS space_delete_local_tags BEFORE DELETE ON spaces BEGIN
+                DELETE FROM tags WHERE scope = 'local' AND ownerSpaceId = OLD.id;
+            END""")
             db.execSQL("""CREATE TRIGGER IF NOT EXISTS entry_space_update BEFORE UPDATE OF spaceId ON entries BEGIN
                 SELECT CASE WHEN EXISTS (SELECT 1 FROM entry_tags et JOIN tags t ON t.id = et.tagId WHERE et.entryId = NEW.id AND t.scope = 'local' AND t.ownerSpaceId != NEW.spaceId) THEN RAISE(ABORT, 'Entry has a local tag from another Space') END;
             END""")

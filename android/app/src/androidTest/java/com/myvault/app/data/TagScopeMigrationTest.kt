@@ -60,6 +60,8 @@ class TagScopeMigrationTest {
                 try { db.tagDao().update(TagEntity(id = "local1", name = "Ideas", scope = "local", ownerSpaceId = "other")) }
                 catch (_: Exception) { invalidEditRejected = true }
                 org.junit.Assert.assertTrue(invalidEditRejected)
+                db.spaceDao().delete("other")
+                org.junit.Assert.assertTrue(db.tagDao().getAll().none { it.id == "local2" })
                 assertEquals("Body", db.entryDao().getById("e")?.content)
                 assertEquals(setOf("t", "local1"), db.entryDao().tagRefsForEntry("e").map { it.tagId }.toSet())
             } finally { db.close() }
