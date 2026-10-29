@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
@@ -75,6 +76,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -386,6 +388,7 @@ fun EntryEditorScreen(
                             }
                         },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrect = true),
                         textStyle =
                             TextStyle(
                                 color = palette.foreground,
@@ -422,11 +425,12 @@ fun EntryEditorScreen(
                                 Color(android.graphics.Color.parseColor(tag.color))
                             }
                                 .getOrDefault(palette.subtle)
-                            val tagTextColor = runCatching {
-                                Color(android.graphics.Color.parseColor(tag.textColor))
-                            }
-                                .getOrDefault(palette.foreground)
-                            Surface(color = tagColor, shape = RoundedCornerShape(50)) {
+                            val tagTextColor = palette.foreground
+                            Surface(
+                                color = tagColor.copy(alpha = 0.08f),
+                                shape = RoundedCornerShape(50),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, tagColor),
+                            ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         tag.name,
@@ -462,6 +466,7 @@ fun EntryEditorScreen(
                     BasicTextField(
                         value = editorValue,
                         onValueChange = ::updateBody,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrect = true),
                         textStyle =
                             TextStyle(
                                 color = palette.foreground,

@@ -36,3 +36,10 @@ Baseline: main at ef1aea8, before changes in this branch. This is a work in prog
 | Android 10 background / Android 11 | Unverified | N/A |
 
 This audit does not claim that pre-existing functionality is broken. In particular, v1 backup and tag behavior should not be rewritten without regression fixtures and cross-platform validation.
+
+## Branch checks and remaining validation
+
+- Web lint, TypeScript and production build passed locally (build used a dummy `DATABASE_URL`, not a production database). The Playwright suite was attempted, but all 19 tests failed at browser launch because Chromium is not installed; no application assertions ran.
+- Android CI helper tests and source preflight passed. Android Gradle unit tests could not start because Java is absent; no SDK/emulator is available locally. API 29, 30 and 34 have not been tested on this branch. Adding API 29 to the workflow does not establish a pass or complete the requested screenshot coverage.
+- This branch only adds input-method hints and outlined editor tags on both platforms, plus the API 29 matrix entry. Hints depend on the keyboard/browser and have not been verified with Gboard or a physical device. Other tag surfaces remain unchanged. No database migration, JSON format, import/export or upload behavior has been changed.
+- Remaining work is the dependency plan above, including real report access, actual API screenshots and background diagnosis, cross-platform tests, GFM equivalence and all outstanding user-facing features. Do not treat this branch as satisfying the acceptance criteria.

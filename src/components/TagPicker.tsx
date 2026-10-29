@@ -78,8 +78,8 @@ export default function TagPicker({ selected, onChange, onPendingChange }: Props
         {selected.map((tag) => (
           <span
             key={tag.id}
-            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
-            style={{ background: tag.color, color: tag.textColor }}
+            className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium"
+            style={{ borderColor: tag.color, backgroundColor: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
           >
             {tag.name}
             <button type="button" onClick={() => removeTag(tag.id)} aria-label={`Remove ${tag.name} tag`} className="opacity-80 hover:opacity-100">

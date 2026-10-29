@@ -456,13 +456,15 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
         <div className="editor-paper">
           <div className="editor-meta">
-            <input value={title} disabled={closing} onChange={(event) => updateTitle(event.target.value)} placeholder="Entry title / manual name" aria-label="Entry title" className="editor-title" />
+            <input autoCapitalize="sentences" autoCorrect="on" value={title} disabled={closing} onChange={(event) => updateTitle(event.target.value)} placeholder="Entry title / manual name" aria-label="Entry title" className="editor-title" />
             <div className="editor-tags"><TagPicker selected={entryTags} onChange={handleTagsChange} onPendingChange={setCreatingTag} /></div>
           </div>
           <div className="editor-writing">
             {highlightedContent && <div ref={highlightRef} className="editor-highlight" aria-hidden="true">{highlightedContent}</div>}
             <textarea
               ref={textareaRef}
+              autoCapitalize="sentences"
+              autoCorrect="on"
               value={content}
               disabled={closing}
               onChange={(event) => updateContent(event.target.value)}
