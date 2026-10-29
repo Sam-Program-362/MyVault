@@ -217,12 +217,12 @@ fun EntriesScreen(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = if (selected) color else color.copy(alpha = 0.14f),
+                            color = color.copy(alpha = if (selected) 0.18f else 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, color),
                         ) {
                             Text(
                                 tag.name,
-                                color =
-                                    if (selected) parseColor(tag.textColor, Color.White) else color,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
@@ -809,12 +809,13 @@ private fun EntryCard(
                         tags.take(3).forEach { tag ->
                             val color = parseColor(tag.color)
                             Surface(
-                                color = color.copy(alpha = 0.14f),
+                                color = color.copy(alpha = 0.08f),
                                 shape = RoundedCornerShape(50),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, color),
                             ) {
                                 Text(
                                     tag.name,
-                                    color = color,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     fontSize = 11.sp,
                                     maxLines = 1,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),

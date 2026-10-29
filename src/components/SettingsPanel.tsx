@@ -325,8 +325,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                   {reusableTags.map((tag) => (
                     <span
                       key={tag.id}
-                      className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
-                      style={{ background: tag.color, color: tag.textColor }}
+                      className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
+                      style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                     >
                       {tag.name}
                       <button
@@ -350,8 +350,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                   {oneOffTags.map((tag) => (
                     <span
                       key={tag.id}
-                      className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium opacity-80"
-                      style={{ background: tag.color, color: tag.textColor }}
+                      className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-80"
+                      style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                     >
                       {tag.name}
                       <button

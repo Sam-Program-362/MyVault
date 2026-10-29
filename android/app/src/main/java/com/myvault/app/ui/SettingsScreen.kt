@@ -276,16 +276,13 @@ fun SettingsScreen(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                 ) {
                                                     Surface(
-                                                        color = parseColor(tag.color),
-                                                        shape = MaterialTheme.shapes.small,
+                                                        color = parseColor(tag.color).copy(alpha = 0.08f),
+                                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                                                        border = BorderStroke(1.dp, parseColor(tag.color)),
                                                     ) {
                                                         Text(
                                                             tag.name,
-                                                            color =
-                                                                parseColor(
-                                                                    tag.textColor,
-                                                                    Color.White,
-                                                                ),
+                                                            color = MaterialTheme.colorScheme.onSurface,
                                                             fontSize = 13.sp,
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis,

@@ -351,6 +351,9 @@ test.describe("desktop editor", () => {
     await page.getByLabel("Add tag").focus();
     await page.locator(".tag-picker-menu").getByRole("button", { name: "Ideas" }).click();
     await expect(page.getByRole("button", { name: "Remove Ideas tag" })).toBeVisible();
+    const pill = page.getByRole("button", { name: "Remove Ideas tag" }).locator("..");
+    await expect(pill).toHaveCSS("border-top-width", "1px");
+    await expect(pill).toHaveCSS("border-top-color", "rgb(139, 92, 246)");
 
     await page.locator('input[accept="image/*"]').setInputFiles({
       name: "cover.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL6WQAAAABJRU5ErkJggg==", "base64"),

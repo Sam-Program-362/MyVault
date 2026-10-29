@@ -253,10 +253,11 @@ export default function AppShell() {
                     <button
                       key={tag.id}
                       onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}
-                      className="rounded-full px-3 py-1 text-xs font-medium transition"
+                      className="rounded-full border px-3 py-1 text-xs font-medium transition"
                       style={{
-                        background: tagFilter === tag.id ? tag.color : `${tag.color}22`,
-                        color: tagFilter === tag.id ? tag.textColor : tag.color,
+                        borderColor: tag.color,
+                        background: `color-mix(in srgb, ${tag.color} ${tagFilter === tag.id ? 18 : 8}%, transparent)`,
+                        color: "inherit",
                       }}
                     >
                       {tag.name}
@@ -320,8 +321,8 @@ export default function AppShell() {
                         {entry.tags.slice(0, 3).map((tag) => (
                           <span
                             key={tag.id}
-                            className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                            style={{ background: `${tag.color}22`, color: tag.color }}
+                            className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                            style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                           >
                             {tag.name}
                           </span>

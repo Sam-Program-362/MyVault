@@ -77,10 +77,14 @@ fun TagPickerDialog(
                         Modifier.fillMaxWidth().clickable { onSelect(tag) }.padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Surface(color = parseColor(tag.color), shape = MaterialTheme.shapes.small) {
+                        Surface(
+                            color = parseColor(tag.color).copy(alpha = 0.08f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, parseColor(tag.color)),
+                        ) {
                             Text(
                                 tag.name,
-                                color = parseColor(tag.textColor, Color.White),
+                                color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                 fontSize = 13.sp,
                             )
