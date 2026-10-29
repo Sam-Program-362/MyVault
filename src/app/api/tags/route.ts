@@ -4,38 +4,26 @@ import { db } from "@/db";
 import { tags } from "@/db/schema";
 
 export async function GET() {
-  const rows = await db.select().from(tags).orderBy(asc(tags.name));
-  return NextResponse.json(rows);
+  return NextResponse.json(await db.select().from(tags).orderBy(asc(tags.name)));
 }
 
 export async function POST(request: Request) {
   const body = await request.json();
-
-  if (!body.name || typeof body.name !== "string") {
-    return NextResponse.json({ error: "Tag name is required" }, { status: 400 });
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name || !["local", "global"].includes(body.scope) ||
+      (body.scope === "local" ? typeof body.ownerSpaceId !== "string" || !body.ownerSpaceId : body.ownerSpaceId != null)) {
+    return NextResponse.json({ error: "Enter a name and explicitly choose a valid tag scope." }, { status: 400 });
   }
-
-  const name = body.name.trim();
-  if (!name) {
-    return NextResponse.json({ error: "Tag name is required" }, { status: 400 });
-  }
-
-  const existing = await db.select().from(tags);
-  const match = existing.find((t) => t.scope === "global" && t.name.toLowerCase() === name.toLowerCase());
-  if (match) {
-    return NextResponse.json(match);
-  }
-
-  const [created] = await db
-    .insert(tags)
-    .values({
-      id: crypto.randomUUID(),
-      name,
-      color: body.color || "#6366f1",
-      textColor: body.textColor || "#ffffff",
+  try {
+    const [created] = await db.insert(tags).values({ id: crypto.randomUUID(), name,
+      color: body.color || "#6366f1", textColor: body.textColor || "#ffffff",
       reusable: body.reusable === undefined ? true : Boolean(body.reusable),
-    })
-    .returning();
-
-  return NextResponse.json(created, { status: 201 });
+      scope: body.scope, ownerSpaceId: body.scope === "local" ? body.ownerSpaceId : null }).returning();
+    return NextResponse.json(created, { status: 201 });
+  } catch (error) {
+    const code = (error as { cause?: { code?: string }; code?: string }).cause?.code ?? (error as { code?: string }).code;
+    if (["23505", "23503", "23514", "22P02"].includes(code ?? "")) return NextResponse.json({ error: "Tag name or Space conflicts with an existing tag. Choose a different name or Space." }, { status: 409 });
+    console.error("Create tag failed", error);
+    return NextResponse.json({ error: "Could not create tag." }, { status: 500 });
+  }
 }

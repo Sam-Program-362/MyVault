@@ -406,6 +406,8 @@ test.describe("desktop editor", () => {
     vault.delayTagCreation(700);
     await openNewEntry(page);
     await page.getByLabel("Add tag").fill("Slow tag");
+    await expect(page.getByRole("button", { name: "Create & add tag" })).toBeDisabled();
+    await page.getByLabel("Global", { exact: true }).check();
     await page.getByRole("button", { name: "Create & add tag" }).click();
     await expect(page.getByRole("button", { name: "Close editor" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Remove Slow tag tag" })).toBeVisible();

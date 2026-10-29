@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useAppData } from "@/context/AppDataContext";
 import { api } from "@/lib/api";
-import type { AppSettings } from "@/lib/types";
+import type { AppSettings, Tag } from "@/lib/types";
 
 const ACCENTS = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#06b6d4", "#8b5cf6", "#ef4444", "#0ea5e9"];
 const FONT_SIZES: { value: AppSettings["fontSize"]; label: string }[] = [
@@ -40,6 +40,7 @@ export default function SettingsPanel({ onClose, spaceId }: { onClose: () => voi
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<string | null>(null);
+  const [editingTag, setEditingTag] = useState<Tag | null>(null);
   const [tab, setTab] = useState<"theme" | "tags" | "data">("theme");
   const wallpaperInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -328,7 +329,8 @@ export default function SettingsPanel({ onClose, spaceId }: { onClose: () => voi
                       className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
                       style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                     >
-                      {tag.name}
+                      {tag.name} <span className="opacity-70">{tag.scope === "local" ? "Local" : "Global"}</span>
+                      <button type="button" aria-label={`Edit ${tag.name} tag`} onClick={() => setEditingTag(tag)}>Edit</button>
                       <button
                         onClick={async () => {
                           if (confirm(`Delete tag “${tag.name}” from all entries?`)) {
@@ -353,7 +355,8 @@ export default function SettingsPanel({ onClose, spaceId }: { onClose: () => voi
                       className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-80"
                       style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                     >
-                      {tag.name}
+                      {tag.name} <span className="opacity-70">{tag.scope === "local" ? "Local" : "Global"}</span>
+                      <button type="button" aria-label={`Edit ${tag.name} tag`} onClick={() => setEditingTag(tag)}>Edit</button>
                       <button
                         onClick={async () => {
                           await api.tags.update(tag.id, { reusable: true });
@@ -367,6 +370,21 @@ export default function SettingsPanel({ onClose, spaceId }: { onClose: () => voi
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {tab === "tags" && editingTag && (
+            <div className="ui-radius mt-4 flex flex-col gap-2 border border-black/10 p-3 dark:border-white/10" role="dialog" aria-label="Edit tag">
+              <label>Tag name <input aria-label="Tag name" value={editingTag.name} onChange={(e) => setEditingTag({ ...editingTag, name: e.target.value })} /></label>
+              <label>Tag color <input type="color" aria-label="Tag color" value={editingTag.color} onChange={(e) => setEditingTag({ ...editingTag, color: e.target.value })} /></label>
+              <label>Tag scope <select aria-label="Tag scope" value={editingTag.scope ?? "global"} onChange={(e) => setEditingTag({ ...editingTag, scope: e.target.value as "local" | "global", ownerSpaceId: e.target.value === "local" ? spaceId : null })}>
+                <option value="global">Global</option><option value="local" disabled={!spaceId}>Local to current Space</option>
+              </select></label>
+              <p className="text-xs">Changing scope is rejected if existing entries would no longer be valid or the name conflicts.</p>
+              <div className="flex gap-3"><button type="button" disabled={!editingTag.name.trim() || (editingTag.scope === "local" && !editingTag.ownerSpaceId)} onClick={async () => {
+                try { await api.tags.update(editingTag.id, { name: editingTag.name, color: editingTag.color, scope: editingTag.scope ?? "global", ownerSpaceId: editingTag.ownerSpaceId ?? null }); await refreshTags(); setEditingTag(null); }
+                catch (error) { alert(error instanceof Error ? error.message : "Could not update tag."); }
+              }}>Save tag</button><button type="button" onClick={() => setEditingTag(null)}>Cancel</button></div>
             </div>
           )}
 

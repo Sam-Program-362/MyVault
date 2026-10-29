@@ -318,7 +318,7 @@ class VisualParityTest {
                     onBack = {},
                     onUpdate = { current.value = it(current.value) },
                     onChooseWallpaper = {},
-                    onCreateTag = { _, _, _ -> },
+                    onCreateTag = { _, _, _, _ -> },
                     onSetReusable = { _, _ -> },
                     onDeleteTag = {},
                     onExport = { exported.value = true },

@@ -106,6 +106,9 @@ class OfflineRestartTest {
         if (newWelcome) addTag.performScrollTo()
         addTag.performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Offline tag")
+        // The seed APK can predate scoped tags; select explicitly when supported.
+        if (compose.onAllNodesWithText("Global tag").fetchSemanticsNodes().isNotEmpty())
+            compose.onNodeWithText("Global tag").performScrollTo().performClick()
         compose.onNodeWithText("Create & add tag").performScrollTo().performClick()
         compose.waitUntil(15_000) {
             compose

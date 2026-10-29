@@ -83,6 +83,7 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Add tag…", substring = true).performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
+        compose.onNodeWithText("Global tag").performScrollTo().performClick()
         val createTagButton = compose.onNodeWithText("Create & add tag").performScrollTo()
         var busyBeforeTagClick = false
         compose.runOnIdle {

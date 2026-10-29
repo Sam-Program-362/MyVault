@@ -20,3 +20,11 @@ another Space. It does not add scope-aware uniqueness enforcement. Scoped tag
 creation and editing must remain disabled until safe concurrent uniqueness
 and legacy-duplicate handling are implemented. Apply the migrations in order
 only through a reviewed deployment procedure.
+
+`0003_tag_scope_guards.sql` installs PostgreSQL triggers that serialize tag
+mutations and link checks with a transaction-scoped advisory lock. Legacy
+case-variant duplicates remain in place; new conflicting keys and edits that
+would strand associations are rejected. The SQLite Room 2→3 migration uses
+SQLite's serialized writes and analogous triggers. Neither migration is applied
+to production by CI. Cross-platform Unicode case folding and legacy-duplicate
+backup import are not yet fully verified.

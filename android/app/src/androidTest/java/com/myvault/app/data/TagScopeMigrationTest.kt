@@ -37,7 +37,7 @@ class TagScopeMigrationTest {
                 old.version = 1
             }
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
-                .addMigrations(AppDatabase.MIGRATION_1_2).build()
+                .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).build()
             try {
                 val tags = db.tagDao().getAll()
                 assertEquals(2, tags.size)
@@ -45,8 +45,23 @@ class TagScopeMigrationTest {
                 assertEquals("global", tag.scope)
                 assertNull(tag.ownerSpaceId)
                 assertFalse(tag.reusable)
+                // Legacy duplicates can still be edited without collapsing their identities.
+                db.tagDao().update(tag.copy(color = "#123456"))
+                var duplicateRejected = false
+                try { db.tagDao().upsert(TagEntity(id = "new", name = "IDEAS")) }
+                catch (_: Exception) { duplicateRejected = true }
+                org.junit.Assert.assertTrue(duplicateRejected)
+                assertEquals(2, db.tagDao().getAll().size)
+                db.spaceDao().upsert(SpaceEntity(id = "other", name = "Other"))
+                db.tagDao().upsert(TagEntity(id = "local1", name = "Ideas", scope = "local", ownerSpaceId = "s"))
+                db.tagDao().upsert(TagEntity(id = "local2", name = "Ideas", scope = "local", ownerSpaceId = "other"))
+                db.entryDao().addTagRef(EntryTagCrossRef("e", "local1"))
+                var invalidEditRejected = false
+                try { db.tagDao().update(TagEntity(id = "local1", name = "Ideas", scope = "local", ownerSpaceId = "other")) }
+                catch (_: Exception) { invalidEditRejected = true }
+                org.junit.Assert.assertTrue(invalidEditRejected)
                 assertEquals("Body", db.entryDao().getById("e")?.content)
-                assertEquals(listOf("t"), db.entryDao().tagRefsForEntry("e").map { it.tagId })
+                assertEquals(setOf("t", "local1"), db.entryDao().tagRefsForEntry("e").map { it.tagId }.toSet())
             } finally { db.close() }
         } finally { context.deleteDatabase(name) }
     }

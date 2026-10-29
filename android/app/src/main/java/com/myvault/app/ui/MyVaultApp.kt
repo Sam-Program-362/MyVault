@@ -208,9 +208,9 @@ fun MyVaultApp(vault: VaultViewModel) {
                                 showTags = false
                                 vault.addTag(tag)
                             },
-                            onCreate = { name, color, reusable ->
+                            onCreate = { name, color, reusable, scope ->
                                 showTags = false
-                                vault.createTag(name, color, reusable, true)
+                                vault.createTag(name, color, reusable, scope, entry.spaceId, true)
                             },
                         )
                     if (confirmDelete)
@@ -381,8 +381,8 @@ fun MyVaultApp(vault: VaultViewModel) {
                         onBack = { screen = settingsReturn },
                         onUpdate = vault::updateSettings,
                         onChooseWallpaper = { wallpaperPicker.launch(arrayOf("image/*")) },
-                        onCreateTag = { name, color, reusable ->
-                            vault.createTag(name, color, reusable, false)
+                        onCreateTag = { name, color, reusable, scope ->
+                            vault.createTag(name, color, reusable, scope, selectedSpaceId, false)
                         },
                         onSetReusable = vault::setTagReusable,
                         onDeleteTag = vault::deleteTag,
@@ -406,6 +406,8 @@ fun MyVaultApp(vault: VaultViewModel) {
                             )
                         },
                         visible = screen == "settings",
+                        scopeSpaceId = selectedSpaceId,
+                        onEditTag = vault::editTag,
                     )
                 }
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))

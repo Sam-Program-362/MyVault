@@ -33,6 +33,7 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
   const [newColor, setNewColor] = useState(COLOR_CHOICES[0]);
   const [saveForFuture, setSaveForFuture] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [scope, setScope] = useState<"local" | "global" | "">("");
 
   const suggestions = useMemo(() => {
     const selectedIds = new Set(selected.map((t) => t.id));
@@ -44,7 +45,7 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
       .slice(0, 8);
   }, [tags, query, selected, spaceId]);
 
-  const exactMatch = tags.some((t) => (t.scope !== "local" || t.ownerSpaceId === spaceId) && t.name.toLowerCase() === query.trim().toLowerCase());
+  const exactMatch = scope !== "" && tags.some((t) => (t.scope ?? "global") === scope && (scope === "global" || t.ownerSpaceId === spaceId) && t.name.toLowerCase() === query.trim().toLowerCase());
 
   const addExisting = (tag: Tag) => {
     onChange([...selected, tag]);
@@ -57,14 +58,15 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
 
   const createTag = async () => {
     const name = query.trim();
-    if (!name || creating) return;
+    if (!name || !scope || exactMatch || creating) return;
     setCreating(true);
     onPendingChange(true);
     try {
-      const created = await api.tags.create({ name, color: newColor, textColor: "#ffffff", reusable: saveForFuture });
+      const created = await api.tags.create({ name, scope, ownerSpaceId: scope === "local" ? spaceId : null, color: newColor, textColor: "#ffffff", reusable: saveForFuture });
       // Attach the new tag before refreshing the shared tag list.
       onChange([...selected, created]);
       setQuery("");
+      setScope("");
       await refreshTags();
     } catch (error) {
       alert(error instanceof Error ? error.message : "Couldn’t create the tag.");
@@ -134,11 +136,16 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
             )}
           </div>
 
-          {query.trim() && !exactMatch && (
+          {query.trim() && (
             <div className="mt-3 border-t border-black/10 pt-3 dark:border-white/10">
               <p className="mb-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                 Create new tag “{query.trim()}”
               </p>
+              <fieldset className="mb-2 flex gap-3 text-xs"><legend>Tag scope (required)</legend>
+                <label><input type="radio" name="tag-scope" value="local" checked={scope === "local"} onChange={() => setScope("local")} /> Local to this Space</label>
+                <label><input type="radio" name="tag-scope" value="global" checked={scope === "global"} onChange={() => setScope("global")} /> Global</label>
+              </fieldset>
+              {exactMatch && <p role="status" className="text-xs">A tag with this name already exists in this scope. Select it above.</p>}
               <div className="flex flex-wrap gap-1.5">
                 {COLOR_CHOICES.map((c) => (
                   <button
@@ -167,7 +174,8 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
               </label>
               <button
                 onClick={createTag}
-                className="accent-bg mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold text-white"
+                disabled={!scope || exactMatch}
+                className="accent-bg disabled:opacity-40 mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold text-white"
               >
                 <Plus size={13} /> Create &amp; add tag
               </button>

@@ -88,15 +88,18 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onUpdate: ((AppSettings) -> AppSettings) -> Unit,
     onChooseWallpaper: () -> Unit,
-    onCreateTag: (String, String, Boolean) -> Unit,
+    onCreateTag: (String, String, Boolean, String) -> Unit,
     onSetReusable: (TagEntity, Boolean) -> Unit,
     onDeleteTag: (TagEntity) -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
     visible: Boolean = true,
+    scopeSpaceId: String? = null,
+    onEditTag: (TagEntity, String, String, String, String?) -> Unit = { _, _, _, _, _ -> },
 ) {
     var tab by rememberSaveable { mutableStateOf(0) }
     var deleting by remember { mutableStateOf<TagEntity?>(null) }
+    var editingTag by remember { mutableStateOf<TagEntity?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
     val visibility = remember { MutableTransitionState(false) }
     visibility.targetState = visible
@@ -295,13 +298,14 @@ fun SettingsScreen(
                                                     }
                                                     Spacer(Modifier.width(8.dp))
                                                     Text(
-                                                        if (tag.reusable) "Reusable" else "One-off",
+                                                        "${if (tag.scope == "local") "Local" else "Global"} · ${if (tag.reusable) "Reusable" else "One-off"}",
                                                         modifier = Modifier.weight(1f),
                                                         color =
                                                             MaterialTheme.colorScheme
                                                                 .onSurfaceVariant,
                                                         fontSize = 12.sp,
                                                     )
+                                                    TextButton(onClick = { editingTag = tag }) { Text("Edit") }
                                                     if (!tag.reusable)
                                                         TextButton(
                                                             onClick = { onSetReusable(tag, true) }
@@ -358,9 +362,15 @@ fun SettingsScreen(
         }
     }
     if (creating && visible) {
-        TagCreateDialog(onDismiss = { creating = false }) { name, color, reusable ->
+        TagCreateDialog(onDismiss = { creating = false }, allowLocal = scopeSpaceId != null) { name, color, reusable, scope ->
             creating = false
-            onCreateTag(name, color, reusable)
+            onCreateTag(name, color, reusable, scope)
+        }
+    }
+    editingTag?.let { tag ->
+        TagEditDialog(tag = tag, spaceId = scopeSpaceId, onDismiss = { editingTag = null }) { name, color, scope, owner ->
+            editingTag = null
+            onEditTag(tag, name, color, scope, owner)
         }
     }
     deleting?.let { tag ->
@@ -598,8 +608,9 @@ private fun SettingsCard(title: String, description: String, content: @Composabl
 }
 
 @Composable
-fun TagCreateDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -> Unit) {
+fun TagCreateDialog(onDismiss: () -> Unit, allowLocal: Boolean, onCreate: (String, String, Boolean, String) -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }
+    var scope by rememberSaveable { mutableStateOf("") }
     var color by rememberSaveable { mutableStateOf(paletteColors.first()) }
     var reusable by rememberSaveable { mutableStateOf(true) }
     AlertDialog(
@@ -614,6 +625,7 @@ fun TagCreateDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -
                     singleLine = true,
                 )
                 Spacer(Modifier.height(8.dp))
+                TagScopeChoices(scope, allowLocal) { scope = it }
                 ColorChoices(color) { color = it }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
@@ -629,10 +641,31 @@ fun TagCreateDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -
             }
         },
         confirmButton = {
-            TextButton(onClick = { onCreate(name, color, reusable) }, enabled = name.isNotBlank()) {
+            TextButton(onClick = { onCreate(name, color, reusable, scope) }, enabled = name.isNotBlank() && scope.isNotBlank()) {
                 Text("Create")
             }
         },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun TagEditDialog(tag: TagEntity, spaceId: String?, onDismiss: () -> Unit, onSave: (String, String, String, String?) -> Unit) {
+    var name by rememberSaveable(tag.id) { mutableStateOf(tag.name) }
+    var color by rememberSaveable(tag.id) { mutableStateOf(tag.color) }
+    var scope by rememberSaveable(tag.id) { mutableStateOf(tag.scope) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit tag") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tag name") }, singleLine = true)
+            TagScopeChoices(scope, spaceId != null) { scope = it }
+            ColorChoices(color) { color = it }
+            Text("Changes are rejected if existing entries would become invalid or the name conflicts.", fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(enabled = name.isNotBlank() && (scope != "local" || spaceId != null), onClick = {
+            onSave(name, color, scope, if (scope == "local") spaceId else null)
+        }) { Text("Save tag") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
