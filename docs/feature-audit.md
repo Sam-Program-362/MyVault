@@ -45,3 +45,18 @@ This audit does not claim that pre-existing functionality is broken. In particul
 - Remaining work is the dependency plan above, including real report access, actual API screenshots and background diagnosis, cross-platform tests, GFM equivalence and all outstanding user-facing features. Do not treat this branch as satisfying the acceptance criteria.
 
 - Web CI now runs lint, typecheck, build and the Playwright suite on GitHub-hosted runners; it uses intercepted browser API fixtures and a dummy database URL. A representative web GFM rendering fixture was added. Its CI result is pending; it does not demonstrate Android rendering parity.
+
+## Scope foundation increment
+
+An additive Room 1→2 migration and PostgreSQL SQL migration add reserved scope
+and owning-space columns; all old tags default to global independently of
+`reusable`, and existing records/links and case-variant legacy names are left
+intact. Android includes a real version-1 database migration test; web CI runs
+an isolated transactional PostgreSQL fixture. These tests are pending CI at
+this commit. Local scope is deliberately not exposed yet: creating local tags
+before scoped uniqueness, deletion and portable cross-platform backups are in
+place would risk data loss. PostgreSQL deployment requires applying the reviewed
+migration first; it is not run by CI against production.
+
+Outlined compact tag presentation now also covers additional dashboard,
+picker and settings surfaces on both platforms. This is not scope-aware UI.

@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+      - 'drizzle/**'
+      - 'scripts/test-tag-scope-migration.mjs'
       - 'tests/**'
       - 'package.json'
       - 'playwright.config.ts'
@@ -23,6 +25,16 @@ jobs:
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: migration_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d migration_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       # The browser tests intercept API requests. Never point CI at production data.
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/app_db
@@ -34,6 +46,9 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
+      - run: node scripts/test-tag-scope-migration.mjs
+        env:
+          MIGRATION_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/migration_test
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build

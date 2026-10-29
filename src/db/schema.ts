@@ -43,6 +43,9 @@ export const tags = pgTable("tags", {
   // Whether this tag should show up as a reusable suggestion for future
   // entries, or was only meant for this one-off use.
   reusable: boolean("reusable").notNull().default(true),
+  // Reserved for scoped tags; legacy tags are global regardless of reusable.
+  scope: text("scope").notNull().default("global"),
+  ownerSpaceId: uuid("owner_space_id").references(() => spaces.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
