@@ -33,7 +33,7 @@ const RADII: { value: AppSettings["radius"]; label: string }[] = [
   { value: "xl", label: "Very round" },
 ];
 
-export default function SettingsPanel({ onClose }: { onClose: () => void }) {
+export default function SettingsPanel({ onClose, spaceId }: { onClose: () => void; spaceId: string | null }) {
   const { settings, updateSettings, tags, refreshTags } = useAppData();
   const [appName, setAppName] = useState(settings?.appName ?? "MyVault");
   const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
@@ -95,8 +95,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const reusableTags = tags.filter((t) => t.reusable);
-  const oneOffTags = tags.filter((t) => !t.reusable);
+  const reusableTags = tags.filter((t) => t.reusable && (t.scope !== "local" || t.ownerSpaceId === spaceId));
+  const oneOffTags = tags.filter((t) => !t.reusable && (t.scope !== "local" || t.ownerSpaceId === spaceId));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

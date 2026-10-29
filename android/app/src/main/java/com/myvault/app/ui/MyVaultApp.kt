@@ -201,7 +201,7 @@ fun MyVaultApp(vault: VaultViewModel) {
                     }
                     if (showTags)
                         TagPickerDialog(
-                            tags,
+                            tags.filter { it.scope != "local" || it.ownerSpaceId == entry.spaceId },
                             selectedTags,
                             onDismiss = { showTags = false },
                             onSelect = { tag ->
@@ -377,7 +377,7 @@ fun MyVaultApp(vault: VaultViewModel) {
                     }
                     SettingsScreen(
                         settings,
-                        tags,
+                        tags.filter { it.scope != "local" || it.ownerSpaceId == selectedSpaceId },
                         onBack = { screen = settingsReturn },
                         onUpdate = vault::updateSettings,
                         onChooseWallpaper = { wallpaperPicker.launch(arrayOf("image/*")) },

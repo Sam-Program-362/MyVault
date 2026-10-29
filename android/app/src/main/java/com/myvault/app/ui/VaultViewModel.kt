@@ -142,7 +142,10 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteSpace(space: SpaceEntity, onDeleted: () -> Unit) =
         action("Couldn’t delete space.") {
-            spacesDao.delete(space.id)
+            db.withTransaction {
+                tagsDao.deleteForSpace(space.id)
+                spacesDao.delete(space.id)
+            }
             onDeleted()
             message("Space deleted.")
         }
@@ -229,8 +232,9 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addTag(tag: TagEntity) =
         action("Couldn’t add tag.") {
-            val entryId = currentWriter.value?.state?.value?.value?.id ?: return@action
-            entriesDao.addTagRef(EntryTagCrossRef(entryId, tag.id))
+            val entry = currentWriter.value?.state?.value?.value ?: return@action
+            require(tag.scope != "local" || tag.ownerSpaceId == entry.spaceId) { "This tag belongs to another Space." }
+            entriesDao.addTagRef(EntryTagCrossRef(entry.id, tag.id))
         }
 
     fun createTag(name: String, color: String, reusable: Boolean, attachToEditor: Boolean) {

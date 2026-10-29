@@ -60,3 +60,21 @@ migration first; it is not run by CI against production.
 
 Outlined compact tag presentation now also covers additional dashboard,
 picker and settings surfaces on both platforms. This is not scope-aware UI.
+
+## Scoped-backup increment (in progress)
+
+Version-2 exports now carry `scope` and `ownerSpaceId` in tag records. Both
+importers validate local ownership and map owners through imported Spaces;
+web imports use a PostgreSQL transaction and Android imports use the existing
+Room transaction. Version-1 tags without scope default to global. Conflicting
+or ambiguous names are rejected rather than silently merged. In particular,
+backups containing legacy case-variant duplicate names cannot yet be imported;
+existing database duplicates remain untouched. Imported local tags are limited
+to their owner in editor/filter/settings surfaces, and cross-Space attachment
+is rejected. This is not complete scope support: explicit Local/Global creation,
+scope editing, database uniqueness, full v1 edge-case compatibility and
+cross-platform round-trip verification are still pending.
+
+Both PostgreSQL migrations must be applied before deploying this code; no
+production migration is run here. The second removes the old global name
+constraint and does not establish the required scoped uniqueness guarantee.

@@ -21,11 +21,12 @@ const COLOR_CHOICES = [
 
 interface Props {
   selected: Tag[];
+  spaceId: string;
   onChange: (tags: Tag[]) => void;
   onPendingChange: (pending: boolean) => void;
 }
 
-export default function TagPicker({ selected, onChange, onPendingChange }: Props) {
+export default function TagPicker({ selected, spaceId, onChange, onPendingChange }: Props) {
   const { tags, refreshTags } = useAppData();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -37,12 +38,13 @@ export default function TagPicker({ selected, onChange, onPendingChange }: Props
     const selectedIds = new Set(selected.map((t) => t.id));
     const q = query.trim().toLowerCase();
     return tags
+      .filter((t) => t.scope !== "local" || t.ownerSpaceId === spaceId)
       .filter((t) => !selectedIds.has(t.id))
       .filter((t) => (q ? t.name.toLowerCase().includes(q) : t.reusable))
       .slice(0, 8);
-  }, [tags, query, selected]);
+  }, [tags, query, selected, spaceId]);
 
-  const exactMatch = tags.some((t) => t.name.toLowerCase() === query.trim().toLowerCase());
+  const exactMatch = tags.some((t) => (t.scope !== "local" || t.ownerSpaceId === spaceId) && t.name.toLowerCase() === query.trim().toLowerCase());
 
   const addExisting = (tag: Tag) => {
     onChange([...selected, tag]);
@@ -121,6 +123,7 @@ export default function TagPicker({ selected, onChange, onPendingChange }: Props
               >
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: tag.color }} />
                 <span className="text-neutral-700 dark:text-neutral-200">{tag.name}</span>
+                <span className="text-[10px] text-neutral-400">{tag.scope === "local" ? "Local" : "Global"}</span>
                 {!tag.reusable && (
                   <span className="ml-auto text-[10px] text-neutral-400">one-off</span>
                 )}

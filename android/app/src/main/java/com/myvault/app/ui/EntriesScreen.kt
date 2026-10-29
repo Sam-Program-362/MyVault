@@ -117,7 +117,10 @@ fun EntriesScreen(
     var chooseSpace by rememberSaveable { mutableStateOf(false) }
     var creatingSpace by rememberSaveable { mutableStateOf(false) }
     var lastSpaceId by rememberSaveable { mutableStateOf(selectedSpaceId) }
-    LaunchedEffect(selectedSpaceId) { if (selectedSpaceId != null) lastSpaceId = selectedSpaceId }
+    LaunchedEffect(selectedSpaceId) {
+        if (selectedSpaceId != null) lastSpaceId = selectedSpaceId
+        tagFilter = null
+    }
     val space = spaces.find { it.id == selectedSpaceId }
     val filtered =
         remember(entries, tagRefs, selectedSpaceId, query, tagFilter) {
@@ -202,7 +205,7 @@ fun EntriesScreen(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                tags.forEach { tag ->
+                tags.filter { it.scope != "local" || (selectedSpaceId != null && it.ownerSpaceId == selectedSpaceId) }.forEach { tag ->
                     val selected = tagFilter == tag.id
                     val color = parseColor(tag.color)
                     Box(

@@ -13,3 +13,10 @@ intentionally disabled: the local-space relationship, deletion policy, scoped
 uniqueness, UI and portable backup/import must be completed together before
 this migration can support the feature. Do not use these columns to create
 local tags in the meantime; existing v1 importers cannot preserve them.
+
+`0002_allow_scoped_tag_names.sql` removes the old global exact-name
+constraint, which otherwise prevents a local tag sharing a name with a tag in
+another Space. It does not add scope-aware uniqueness enforcement. Scoped tag
+creation and editing must remain disabled until safe concurrent uniqueness
+and legacy-duplicate handling are implemented. Apply the migrations in order
+only through a reviewed deployment procedure.

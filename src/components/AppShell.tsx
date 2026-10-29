@@ -145,7 +145,7 @@ export default function AppShell() {
             />
           </div>
           <button
-            onClick={() => setSearchAllSpaces((v) => !v)}
+            onClick={() => { setTagFilter(null); setSearchAllSpaces((v) => !v); }}
             className={`app-all-spaces ui-radius border px-3 py-2 text-xs font-medium transition ${
               searchAllSpaces
                 ? "accent-bg border-transparent text-white"
@@ -193,7 +193,7 @@ export default function AppShell() {
                   />
                 ) : (
                   <button
-                    onClick={() => setCurrentSpaceId(space.id)}
+                    onClick={() => { setTagFilter(null); setCurrentSpaceId(space.id); }}
                     onDoubleClick={() => setEditingSpace({ id: space.id, name: space.name })}
                     className={`ui-radius flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium transition ${
                       currentSpaceId === space.id
@@ -245,10 +245,10 @@ export default function AppShell() {
 
           {/* Main content */}
           <main className="flex-1 p-4 md:p-6">
-            {tags.filter((t) => t.reusable).length > 0 && (
+            {tags.filter((t) => t.reusable && (t.scope !== "local" || (!searchAllSpaces && t.ownerSpaceId === currentSpaceId))).length > 0 && (
               <div className="mb-4 flex flex-wrap gap-2">
                 {tags
-                  .filter((t) => t.reusable)
+                  .filter((t) => t.reusable && (t.scope !== "local" || (!searchAllSpaces && t.ownerSpaceId === currentSpaceId)))
                   .map((tag) => (
                     <button
                       key={tag.id}
@@ -356,7 +356,7 @@ export default function AppShell() {
         />
       )}
 
-      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPanel spaceId={currentSpaceId} onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

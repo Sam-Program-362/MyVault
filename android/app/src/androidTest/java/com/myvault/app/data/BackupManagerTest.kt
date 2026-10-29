@@ -108,6 +108,31 @@ class BackupManagerTest {
     }
 
     @Test
+    fun localTagOwnershipSurvivesBackupAndInvalidOwnershipRollsBack() = runBlocking {
+        source.spaceDao().upsert(SpaceEntity(id = "s", name = "Work"))
+        source.tagDao().upsert(TagEntity(id = "local", name = "Ideas", scope = "local", ownerSpaceId = "s", reusable = false))
+        source.entryDao().upsert(EntryEntity(id = "entry", spaceId = "s", content = "body"))
+        source.entryDao().addTagRef(EntryTagCrossRef("entry", "local"))
+        target.spaceDao().upsert(SpaceEntity(id = "existing", name = "Work"))
+        val file = File(tempDir, "scoped.json")
+        BackupManager(app, source, app.settings, app.media).exportTo(Uri.fromFile(file))
+        BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), false)
+        val entry = target.entryDao().getAll().single()
+        val tag = target.entryDao().tagsForEntry(entry.id).single()
+        assertEquals("existing", entry.spaceId)
+        assertEquals("local", tag.scope)
+        assertEquals("existing", tag.ownerSpaceId)
+        assertFalse(tag.reusable)
+        val before = target.entryDao().getAll().size
+        file.writeText(file.readText().replace("\"ownerSpaceId\": \"s\"", "\"ownerSpaceId\": \"missing\""))
+        var failed = false
+        try { BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), false) }
+        catch (_: Exception) { failed = true }
+        assertTrue(failed)
+        assertEquals(before, target.entryDao().getAll().size)
+    }
+
+    @Test
     fun failedDatabaseImportRollsBackSpacesAndTags() = runBlocking {
         target.openHelper.writableDatabase.execSQL(
             "CREATE TRIGGER reject_entry BEFORE INSERT ON entries BEGIN SELECT RAISE(ABORT, 'test failure'); END"

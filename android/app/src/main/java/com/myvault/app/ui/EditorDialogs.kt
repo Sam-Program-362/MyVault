@@ -89,6 +89,7 @@ fun TagPickerDialog(
                                 fontSize = 13.sp,
                             )
                         }
+                        Text("  ${if (tag.scope == "local") "Local" else "Global"}", fontSize = 12.sp)
                         if (!tag.reusable)
                             Text(
                                 "  One-off",

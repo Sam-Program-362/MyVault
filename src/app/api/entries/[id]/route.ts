@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { entries, entryTags, tags } from "@/db/schema";
+import { tagsAllowedInSpace } from "@/lib/tag-scope";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -31,6 +32,13 @@ export async function PATCH(request: Request, { params }: Params) {
   const { id } = await params;
   const body = await request.json();
 
+  const current = await getEntryWithTags(id);
+  if (!current) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+  const spaceId = body.spaceId ?? current.spaceId;
+  const tagIds = Array.isArray(body.tagIds) ? body.tagIds : current.tags.map((tag) => tag.id);
+  if (typeof spaceId !== "string" || !tagIds.every((tagId: unknown) => typeof tagId === "string") || !(await tagsAllowedInSpace(tagIds, spaceId))) {
+    return NextResponse.json({ error: "Tags must belong to this Space or be global." }, { status: 400 });
+  }
   const allowed: Record<string, unknown> = {};
   for (const field of ["title", "content", "coverImage", "pinned", "spaceId"] as const) {
     if (field in body) allowed[field] = body[field];

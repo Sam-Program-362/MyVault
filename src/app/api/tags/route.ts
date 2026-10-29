@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   }
 
   const existing = await db.select().from(tags);
-  const match = existing.find((t) => t.name.toLowerCase() === name.toLowerCase());
+  const match = existing.find((t) => t.scope === "global" && t.name.toLowerCase() === name.toLowerCase());
   if (match) {
     return NextResponse.json(match);
   }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, or, ilike } from "drizzle-orm";
 import { db } from "@/db";
 import { entries, entryTags, tags } from "@/db/schema";
+import { tagsAllowedInSpace } from "@/lib/tag-scope";
 
 type TagRow = typeof tags.$inferSelect;
 
@@ -70,6 +71,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "spaceId is required" }, { status: 400 });
   }
 
+  const tagIds: string[] = Array.isArray(body.tagIds) ? body.tagIds : [];
+  if (!tagIds.every((id) => typeof id === "string") || !(await tagsAllowedInSpace(tagIds, body.spaceId))) {
+    return NextResponse.json({ error: "Tags must belong to this Space or be global." }, { status: 400 });
+  }
   const id = crypto.randomUUID();
   const [created] = await db
     .insert(entries)
@@ -83,7 +88,6 @@ export async function POST(request: Request) {
     })
     .returning();
 
-  const tagIds: string[] = Array.isArray(body.tagIds) ? body.tagIds : [];
   if (tagIds.length > 0) {
     await db.insert(entryTags).values(tagIds.map((tagId) => ({ entryId: id, tagId })));
   }

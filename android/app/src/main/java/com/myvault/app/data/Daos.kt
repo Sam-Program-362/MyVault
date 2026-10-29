@@ -39,7 +39,7 @@ interface TagDao {
     @Query("SELECT * FROM tags ORDER BY name ASC")
     suspend fun getAll(): List<TagEntity>
 
-    @Query("SELECT * FROM tags WHERE lower(name) = lower(:name) LIMIT 1")
+    @Query("SELECT * FROM tags WHERE scope = 'global' AND lower(name) = lower(:name) LIMIT 1")
     suspend fun findByName(name: String): TagEntity?
 
     @Upsert
@@ -50,6 +50,9 @@ interface TagDao {
 
     @Query("DELETE FROM tags WHERE id = :id")
     suspend fun delete(id: String)
+
+    @Query("DELETE FROM tags WHERE scope = 'local' AND ownerSpaceId = :spaceId")
+    suspend fun deleteForSpace(spaceId: String)
 }
 
 @Dao
