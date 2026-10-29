@@ -101,7 +101,7 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
     return json({ error: `Unexpected ${method} ${pathname}` }, 404);
   });
   return {
-    entries, patches, settings,
+    entries, patches, settings, tags,
     failDrafts: (count: number) => { draftFailuresRemaining = count; },
     failField: (field: string, count: number) => { failedField = field; fieldFailuresRemaining = count; },
     delayUpload: (milliseconds: number) => { uploadDelay = milliseconds; },
@@ -399,6 +399,25 @@ test.describe("desktop editor", () => {
     await page.getByRole("button", { name: "Close editor" }).click();
     await expect(page.locator(".entry-editor")).toBeHidden();
     expect(vault.entries[0].coverImage).toMatch(/^data:image/);
+  });
+
+  test("scoped suggestions stay in their Space and creation requires an explicit scope", async ({ page }) => {
+    const vault = await mockVault(page);
+    vault.tags.push({ ...reusableTag, id: "local-a", name: "Local A", scope: "local", ownerSpaceId: "space-1" } as typeof reusableTag);
+    vault.tags.push({ ...reusableTag, id: "local-b", name: "Local B", scope: "local", ownerSpaceId: "space-2" } as typeof reusableTag);
+    await openNewEntry(page);
+    await page.getByLabel("Add tag").focus();
+    const menu = page.locator(".tag-picker-menu");
+    await expect(menu.getByRole("button", { name: /Local A/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /Local B/ })).toHaveCount(0);
+    await page.getByLabel("Add tag").fill("New local");
+    const create = page.getByRole("button", { name: "Create & add tag" });
+    await expect(create).toBeDisabled();
+    await page.getByLabel("Local to this Space").check();
+    await expect(create).toBeEnabled();
+    await create.click();
+    await expect(page.getByRole("button", { name: "Remove New local tag" })).toBeVisible();
+    expect(vault.tags.find((tag) => tag.name === "New local")).toMatchObject({ scope: "local", ownerSpaceId: "space-1" });
   });
 
   test("waits for a new tag to be created and attached before closing", async ({ page }) => {

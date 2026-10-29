@@ -1,5 +1,6 @@
 package com.myvault.app.ui
 
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
@@ -83,6 +84,7 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Add tag…", substring = true).performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
+        compose.onNodeWithText("Create & add tag").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("Global tag").performScrollTo().performClick()
         val createTagButton = compose.onNodeWithText("Create & add tag").performScrollTo()
         var busyBeforeTagClick = false
