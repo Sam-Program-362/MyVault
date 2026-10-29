@@ -291,6 +291,27 @@ test.describe("desktop editor", () => {
     await expect(preview).toBeHidden();
   });
 
+  test("renders representative GFM content in preview", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    await page.getByLabel("Entry content").fill([
+      "# Heading", "", "- Parent", "  - Child", "- [x] Done", "", "> Quote", "",
+      "| Name | Value |", "| --- | --- |", "| One | Two |", "",
+      "```js", "const answer = 42;", "```", "", "[Safe link](https://example.com)",
+      "", "![Example image](https://example.com/image.png)",
+    ].join("\n"));
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    const preview = page.getByRole("complementary", { name: "Markdown preview" });
+    await expect(preview.getByRole("heading", { name: "Heading" })).toBeVisible();
+    await expect(preview.locator("li ul li")).toHaveText("Child");
+    await expect(preview.getByRole("checkbox")).toBeChecked();
+    await expect(preview.locator("blockquote")).toContainText("Quote");
+    await expect(preview.getByRole("cell", { name: "Two" })).toBeVisible();
+    await expect(preview.locator("pre code")).toContainText("const answer = 42;");
+    await expect(preview.getByRole("link", { name: "Safe link" })).toHaveAttribute("href", "https://example.com");
+    await expect(preview.getByRole("img", { name: "Example image" })).toHaveAttribute("src", "https://example.com/image.png");
+  });
+
   test("find and replace stays editable and treats special characters literally", async ({ page }) => {
     const vault = await mockVault(page);
     await openNewEntry(page);
