@@ -1,8 +1,8 @@
 -- Disposable proof guard for SQLite. Seed identity_cache from existing rows
 -- before installing triggers; duplicates are intentionally retained there.
-CREATE TABLE identity_cache(id INTEGER PRIMARY KEY,scope TEXT NOT NULL,owner TEXT,identity TEXT NOT NULL);
+CREATE TABLE identity_cache(id TEXT NOT NULL PRIMARY KEY,scope TEXT NOT NULL,owner TEXT,identity TEXT NOT NULL);
 CREATE INDEX identity_cache_lookup ON identity_cache(scope,owner,identity);
-CREATE TABLE pending_identity(id INTEGER PRIMARY KEY,scope TEXT NOT NULL,owner TEXT,identity TEXT NOT NULL);
+CREATE TABLE pending_identity(id TEXT NOT NULL PRIMARY KEY,scope TEXT NOT NULL,owner TEXT,identity TEXT NOT NULL);
 INSERT INTO identity_cache(id,scope,owner,identity)
 SELECT n.id,n.scope,n.owner,(SELECT keys.identity FROM keys WHERE keys.id=n.id) FROM n;
 
