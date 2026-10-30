@@ -74,6 +74,8 @@ await pg.query('INSERT INTO n(id,name) SELECT id,name FROM json_to_recordset($1:
 const sqliteKeys=sqlite.prepare('SELECT id,identity FROM keys ORDER BY id').all().map(r=>r.identity);
 const pgKeys=(await pg.query('SELECT id,identity FROM keys ORDER BY id')).rows.map(r=>r.identity);
 assert.deepEqual(sqliteKeys,pgKeys,'different DB identity keys');
+const expectedKeys=JSON.parse(readFileSync(new URL('./expected-keys.json',import.meta.url)));
+assert.deepEqual(sqliteKeys,expectedKeys,'database keys differ from pinned Unicode 15.1 reference');
 let i=0;
 for (const pair of fixture.pairs) {assert.equal(sqliteKeys[i]===sqliteKeys[i+1],pair.equal,JSON.stringify(pair)); i+=2;}
 for (const test of fixture.scopedCases) {
@@ -81,7 +83,7 @@ for (const test of fixture.scopedCases) {
  assert.equal(sqliteKeys[i]===sqliteKeys[i+1] && a.scope===b.scope && a.owner===b.owner,test.conflict,JSON.stringify(test)); i+=2;
 }
 assert.equal(sqliteKeys[i],''); assert.equal(sqliteKeys[i+1],'');
-console.log(`PASS SQLite and PostgreSQL: ${fixture.pairs.length} comparison vectors, ${fixture.scopedCases.length} scope cases, 2 empty-name keys; ${inputs.length} identical NFD keys.`);
+console.log(`PASS SQLite and PostgreSQL: ${fixture.pairs.length} comparison vectors, ${fixture.scopedCases.length} scope cases, 2 empty-name keys; ${inputs.length} identical NFD keys matching the pinned reference.`);
 // Install prototype guards *after* deliberately creating legacy collisions.
 // This is a disposable test schema, not a migration or application code.
 sqlite.exec("DELETE FROM n; INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café'); CREATE TABLE links(entry_id INTEGER,tag_id INTEGER); INSERT INTO links VALUES(11,1),(12,2)");

@@ -19,3 +19,19 @@ for cp in range(0x110000):
 obj={'unicode':'15.1.0','caseFoldingSha256':hashlib.sha256(source.encode()).hexdigest(),'description':'Canonical decomposition; full default case fold then decomposition; canonical combining class. Unicode 15.1.0.', 'rows':rows}
 open('experiments/tag-name/ucd-15.1.json','w',encoding='utf8').write(json.dumps(obj,ensure_ascii=False,separators=(',',':'))+'\n')
 print(len(rows),len(open('experiments/tag-name/ucd-15.1.json','rb').read()),obj['caseFoldingSha256'])
+
+# Independent expected keys for the actual shared inputs. Evaluate the exact
+# documented NFC -> full fold -> NFC policy, then NFD only for comparison
+# with the SQL prototype's NFD keys.
+white = set(chr(cp) for cp in [9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288])
+fixture=json.load(open('tests/fixtures/tag-name-policy-vectors.json',encoding='utf8'))
+inputs=[]
+for p in fixture['pairs']: inputs.extend((p['left'],p['right']))
+for case in fixture['scopedCases']: inputs.extend(t['name'] for t in case['tags'])
+inputs.extend(('', ' \u00a0\t', 'Café'))
+def expected(s):
+ s=' '.join(part for part in ''.join(' ' if c in white else c for c in s).split(' ') if part)
+ s=u.normalize('NFC',s)
+ s=''.join(fold.get(ord(c),c) for c in s)
+ return u.normalize('NFD',u.normalize('NFC',s))
+open('experiments/tag-name/expected-keys.json','w',encoding='utf8').write(json.dumps([expected(s) for s in inputs],ensure_ascii=False,indent=2)+'\n')
