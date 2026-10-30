@@ -24,13 +24,21 @@ for report in reports:
   for failure in failures:
    text=(case.attrib.get('name','')+': '+failure.attrib.get('message','')+'\n'+(failure.text or ''))[-6000:]
    print('::error title=Driver proof device failure::'+text.replace('%','%25').replace('\n','%0A').replace('\r','%0D'))
-if status and not cases:
+if status:
  text=log.read_text(errors='replace')[-6000:]
  print('::error title=Driver proof execution failure::'+text.replace('%','%25').replace('\n','%0A').replace('\r','%0D'))
 if not status and not cases:
  print('::error title=Driver proof::No test results for '+target);sys.exit(1)
 PY
   report=$?
+  if ((result != 0)); then
+    adb logcat -d -s AndroidRuntime:E ActivityManager:E DEBUG:E > "${log}.logcat" 2>/dev/null || true
+    python3 - "${log}.logcat" <<'PYLOG'
+import pathlib,sys
+s=pathlib.Path(sys.argv[1]).read_text(errors='replace')[-5000:]
+print('::error title=Driver proof logcat::'+s.replace('%','%25').replace('\n','%0A').replace('\r','%0D'))
+PYLOG
+  fi
   ((result == 0 && report == 0)) || status=1
 done
 exit "$status"
