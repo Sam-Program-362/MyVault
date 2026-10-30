@@ -84,6 +84,9 @@ class PlatformSqlProofTest {
             exec("CREATE TABLE links(entry_id INTEGER,tag_id INTEGER)")
             exec("INSERT INTO links VALUES(11,1),(12,2)")
             exec(read("sqlite-proof-guard.sql"))
+            db.rawQuery("SELECT id,scope,hex(identity),quote(identity) FROM identity_cache ORDER BY id", null).use { c ->
+                while (c.moveToNext()) Log.i("MVSqlProof", "identity_cache id=${c.getInt(0)} scope=${c.getString(1)} hex=${c.getString(2)} identity=${c.getString(3)}")
+            }
             db.rawQuery("SELECT group_concat(id,',') FROM identity_cache GROUP BY scope,owner,identity HAVING count(*)>1", null).use { c ->
                 assertTrue("Expected the pre-existing canonical duplicate report", c.moveToFirst())
                 assertEquals("1,2", c.getString(0))
