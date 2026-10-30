@@ -6,6 +6,7 @@ root=experiments/tag-name/driver
 status=0
 read -r -a classes <<< "${PROOF_CLASSES:-PlatformSqlProofTest BundledDriverProofTest}"
 for class in "${classes[@]}"; do
+  echo "::notice title=Running isolated proof class::$class"
   log="${RUNNER_TEMP:-/tmp}/tag-driver-proof-$class.log"
   adb logcat -c || true
   bash android/gradlew -p "$root" --no-daemon :app:connectedDebugAndroidTest \
