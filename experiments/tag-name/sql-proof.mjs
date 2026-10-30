@@ -3,7 +3,11 @@
 // node --experimental-sqlite experiments/tag-name/sql-proof.mjs
 import { DatabaseSync } from 'node:sqlite';
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
+import { randomBytes } from 'node:crypto';
 import assert from 'node:assert/strict';
 
 const fixture = JSON.parse(readFileSync(new URL('../../tests/fixtures/tag-name-policy-vectors.json', import.meta.url)));
@@ -38,8 +42,21 @@ function viewSql(engine) {
  spaces(id,i,s) AS (SELECT id,1,CAST('' AS TEXT) FROM o1 UNION ALL SELECT spaces.id,spaces.i+1,CASE WHEN substr(o1.s,spaces.i,1)=' ' AND (length(spaces.s)=0 OR substr(spaces.s,length(spaces.s),1)=' ') THEN spaces.s ELSE spaces.s || substr(o1.s,spaces.i,1) END FROM spaces JOIN o1 ON o1.id=spaces.id WHERE spaces.i<=length(o1.s))
  SELECT spaces.id,rtrim(spaces.s,' ') COLLATE ${collation} AS identity FROM spaces JOIN o1 ON o1.id=spaces.id WHERE spaces.i>length(o1.s)`;
 }
-const sqlite = new DatabaseSync(':memory:');
-const pg = await PGlite.create(); // embedded, disposable PostgreSQL; never a remote service
+const tempDir=mkdtempSync(join(tmpdir(),'myvault-sql-proof-'));
+const sqliteFile=join(tempDir,'proof.sqlite');
+const sqlite = new DatabaseSync(sqliteFile);
+// Optional real PostgreSQL is strictly restricted to an explicitly authorized,
+// localhost-only test database. Otherwise use disposable embedded PGlite.
+const pgUrl=process.env.MYVAULT_PROOF_PG_URL;
+let pg, pgClient, pgSchema;
+if (pgUrl) {
+ const url=new URL(pgUrl);
+ if (process.env.MYVAULT_DISPOSABLE_DATABASE !== '1' || url.hostname !== '127.0.0.1' || url.pathname !== '/tag_identity_proof') throw new Error('Only explicitly authorized localhost tag_identity_proof database is allowed');
+ const {Client}=await import('pg'); pgClient=new Client({connectionString:pgUrl}); await pgClient.connect();
+ pgSchema='proof_'+randomBytes(8).toString('hex');
+ await pgClient.query(`CREATE SCHEMA "${pgSchema}"`); await pgClient.query(`SET search_path TO "${pgSchema}"`);
+ pg={query:(...args)=>pgClient.query(...args),exec:(sql)=>pgClient.query(sql),close:async()=>{await pgClient.query(`DROP SCHEMA "${pgSchema}" CASCADE`);await pgClient.end();}};
+} else pg=await PGlite.create();
 sqlite.exec("CREATE TABLE ucd(cp INTEGER PRIMARY KEY,nfd TEXT,fold TEXT,cc INTEGER NOT NULL); CREATE TABLE n(id INTEGER PRIMARY KEY,name TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'global',owner TEXT,reusable INTEGER NOT NULL DEFAULT 1)");
 await pg.exec("CREATE TABLE ucd(cp INTEGER PRIMARY KEY,nfd TEXT,fold TEXT,cc INTEGER NOT NULL); CREATE TABLE n(id INTEGER PRIMARY KEY,name TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'global',owner TEXT,reusable INTEGER NOT NULL DEFAULT 1)");
 sqlite.exec('BEGIN'); const ins = sqlite.prepare('INSERT INTO ucd VALUES (?,?,?,?)');
@@ -101,5 +118,39 @@ assert.equal((await pg.query('SELECT count(*)::int AS c FROM links')).rows[0].c,
 assert.equal(sqlite.prepare('SELECT count(*) AS c FROM n').get().c,4);
 assert.equal((await pg.query('SELECT count(*)::int AS c FROM n')).rows[0].c,4);
 console.log('PASS SQLite and PostgreSQL prototype triggers: legacy IDs/links retained, unchanged reusable update, conflicts and empty keys rejected, scope separation and rollback.');
-console.log('LIMITATIONS: change to canonically equivalent spelling of a legacy duplicate is rejected; no concurrent writers, Room migration, Android driver, or network PostgreSQL tested.');
-sqlite.close(); await pg.close();
+// Independent connections race for the same global identity. SQLite serializes
+// writers; the loser must see the committed winner and abort in the trigger.
+const gate=new SharedArrayBuffer(4);
+let ready=0;
+const workers=[['Straße',21],['STRASSE',22]].map(([name,id])=>new Worker(new URL('./sqlite-worker.mjs',import.meta.url), {workerData:{name,id,file:sqliteFile,gate}}));
+const results=workers.map(worker=>new Promise((resolve,reject)=>{
+ worker.on('error',reject); worker.on('message',message=>{
+  if(message==='ready') {if(++ready===workers.length) {Atomics.store(new Int32Array(gate),0,1); Atomics.notify(new Int32Array(gate),0);}}
+  else resolve(message);
+ });
+}));
+const raced=await Promise.all(results);
+assert.equal(raced.filter(r=>r.ok).length,1,JSON.stringify(raced));
+assert.match(raced.find(r=>!r.ok).message,/collision/);
+assert.equal(sqlite.prepare('SELECT count(*) AS c FROM n WHERE id IN (21,22)').get().c,1);
+console.log('PASS SQLite conflicting writes: two independent connections raced; one committed and one was rejected.');
+if (pgUrl) {
+ const {Client}=await import('pg');
+ async function contender(id,name) {
+  const c=new Client({connectionString:pgUrl}); await c.connect();
+  try {
+   await c.query(`SET search_path TO "${pgSchema}"`); await c.query("SET statement_timeout TO '15s'");
+   await c.query('BEGIN');
+   await c.query('INSERT INTO n(id,name) VALUES($1,$2)',[id,name]);
+   await c.query('COMMIT'); return {ok:true};
+  } catch (error) { await c.query('ROLLBACK'); return {ok:false,message:error.message}; }
+  finally {await c.end();}
+ }
+ const pgRace=await Promise.all([contender(31,'Straße'),contender(32,'STRASSE')]);
+ assert.equal(pgRace.filter(r=>r.ok).length,1,JSON.stringify(pgRace));
+ assert.match(pgRace.find(r=>!r.ok).message,/collision/);
+ assert.equal((await pg.query('SELECT count(*)::int AS c FROM n WHERE id IN (31,32)')).rows[0].c,1);
+ console.log('PASS PostgreSQL conflicting writes: two independent connections raced; one committed and one was rejected.');
+} else console.log('PostgreSQL concurrency not tested: embedded PGlite has one connection.');
+console.log('LIMITATIONS: change to canonically equivalent spelling of a legacy duplicate is rejected; no Room migration or Android SQL test.');
+sqlite.close(); await pg.close(); rmSync(tempDir,{recursive:true,force:true});

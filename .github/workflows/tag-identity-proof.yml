@@ -12,6 +12,19 @@ permissions:
 jobs:
   sql-proof:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tag_identity_proof
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tag_identity_proof"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      MYVAULT_DISPOSABLE_DATABASE: '1'
+      MYVAULT_PROOF_PG_URL: postgresql://postgres:postgres@127.0.0.1:5432/tag_identity_proof
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -20,7 +33,10 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.13
-      - run: node --experimental-sqlite experiments/tag-name/sql-proof.mjs
+      - name: Run SQL proof
+        run: |
+          node --experimental-sqlite experiments/tag-name/sql-proof.mjs | tee "$RUNNER_TEMP/sql-proof.log"
+          while IFS= read -r line; do echo "::notice title=SQL proof::$line"; done < "$RUNNER_TEMP/sql-proof.log"
   android-driver-proof:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -41,9 +57,13 @@ jobs:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
       - name: Build isolated proof APK
-        run: bash android/gradlew -p experiments/tag-name/driver --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+        run: bash android/gradlew -p experiments/tag-name/driver --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee "$RUNNER_TEMP/driver-proof-build.log"
+      - name: Surface build failure
+        if: failure()
+        run: |
+          python3 -c 'import os,pathlib; s=pathlib.Path(os.environ["RUNNER_TEMP"],"driver-proof-build.log").read_text(errors="replace")[-6000:]; print("::error title=Driver build::"+s.replace("%","%25").replace("\n","%0A").replace("\r","%0D"))'
       - name: Report native ABI sizes in proof APK
-        run: unzip -l experiments/tag-name/driver/app/build/outputs/apk/debug/app-debug.apk | grep 'libsqlite3x.so'
+        run: unzip -l experiments/tag-name/driver/app/build/outputs/apk/debug/app-debug.apk | awk '/libsqlite3x.so/ {printf "::notice title=Bundled SQLite ABI::%s %s bytes\n", $4, $1}'
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

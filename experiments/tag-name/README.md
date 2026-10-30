@@ -13,17 +13,16 @@ npm install --no-save --package-lock=false --ignore-scripts @electric-sql/pglite
 node --experimental-sqlite experiments/tag-name/sql-proof.mjs
 ```
 
-The script creates in-memory SQLite and PGlite PostgreSQL databases and loads the
+The script creates a temporary SQLite database and an in-memory PGlite PostgreSQL database and loads the
 same Unicode 15.1 decomposition, combining class, and default full-fold data.
 It reads the shared fixture and compares *database-computed* NFD keys. The final
 policy specifies NFC: NFD and NFC have the same equality classes for canonically
 equivalent strings, but these prototype keys are not the policy's NFC bytes.
-It also exercises disposable insert/update triggers and transaction rollback.
+It also exercises disposable insert/update triggers, transaction rollback, and two competing SQLite connections.
 
 Known limitations: the trigger rejects a spelling-only change on a legacy
 collision even when identity is unchanged; SQLite `length`/`substr` stop at an
-embedded NUL while PostgreSQL text rejects NUL; no concurrent writer or Room
-migration test; PGlite is embedded PostgreSQL, not a deployed PostgreSQL service.
+embedded NUL while PostgreSQL text rejects NUL; no Room migration test. The default PGlite mode has no PostgreSQL concurrency test; the workflow also runs against a disposable PostgreSQL 16 service with two independent connections.
 View evaluation recomputes all keys and has quadratic combining-mark ordering;
 no performance or resource bound has been established. This is not safe to ship.
 
