@@ -133,9 +133,6 @@ class PlatformSqlProofTest {
             catch (_: android.database.sqlite.SQLiteException) { }
             try { exec("INSERT INTO n(id,name) VALUES(4,'   ')"); fail("Expected empty key rejection") }
             catch (_: android.database.sqlite.SQLiteException) { }
-            exec("INSERT INTO n(id,name) VALUES(43,'${"x".repeat(24)}')")
-            try { exec("INSERT INTO n(id,name) VALUES(42,'${"x".repeat(25)}')"); fail("Expected the prototype length limit") }
-            catch (e: android.database.sqlite.SQLiteException) { assertTrue(e.message.orEmpty().contains("24")) }
             val nulInsert = db.compileStatement("INSERT INTO n(id,name) VALUES(?,?)")
             nulInsert.bindLong(1, 41); nulInsert.bindString(2, "a\u0000b")
             try { nulInsert.executeInsert(); fail("Expected embedded NUL rejection") }
@@ -154,6 +151,9 @@ class PlatformSqlProofTest {
             exec("INSERT INTO n(id,name,scope,owner) VALUES(10,'new local','local','space-a')")
             try { exec("UPDATE n SET name='CAFÉ' WHERE id=10"); fail("Expected new conflict on update") }
             catch (_: android.database.sqlite.SQLiteException) { }
+            exec("INSERT INTO n(id,name) VALUES(43,'${"x".repeat(24)}')")
+            try { exec("INSERT INTO n(id,name) VALUES(42,'${"x".repeat(25)}')"); fail("Expected the prototype length limit") }
+            catch (e: android.database.sqlite.SQLiteException) { assertTrue(e.message.orEmpty().contains("24")) }
             db.rawQuery("SELECT count(*) FROM pending_identity",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(0,c.getInt(0)) }
             db.rawQuery("SELECT count(*) FROM links",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(2,c.getInt(0)) }
             db.rawQuery("SELECT count(*) FROM n",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(6,c.getInt(0)) }
