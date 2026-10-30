@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 /** Runs the same proof view on Android's platform SQLite, never on a user DB. */
 @RunWith(AndroidJUnit4::class)
 class PlatformSqlProofTest {
-    @Test fun platformSqlComputesSharedUnicodeKeys() {
+    @Test(timeout = 300_000) fun platformSqlComputesSharedUnicodeKeys() {
         val assets = InstrumentationRegistry.getInstrumentation().context.assets
         fun read(name: String) = assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
         val rows = JSONObject(read("ucd-15.1.json")).getJSONArray("rows")
