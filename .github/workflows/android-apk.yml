@@ -288,6 +288,13 @@ jobs:
           # This action executes each input line separately with sh -c; keep it complete.
           script: |
             MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_API_LEVEL='${{ matrix.api }}' MYVAULT_BASELINE_APK="$RUNNER_TEMP/myvault-native-before/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_CONFLICT_APK="$RUNNER_TEMP/myvault-incompatible-debug.apk" MYVAULT_PREVIEW_APK="$RUNNER_TEMP/myvault-preview.apk" bash ci/run-emulator-suite.sh
+      # Artifact storage may be inaccessible from the coding sandbox. Expose compact
+      # synthetic screenshots in bounded annotation chunks from a separate step.
+      - name: Publish compact visual evidence
+        if: ${{ always() && (matrix.api == 29 || matrix.api == 30) }}
+        env:
+          EVIDENCE_API: ${{ matrix.api }}
+        run: python3 android/ci/annotate-screenshots.py
       - name: Upload real-window before-and-after evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
