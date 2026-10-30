@@ -19,6 +19,7 @@ export function viewSql(engine) {
  const orig = 'substr(n.name,d0.i,1)', folded = 'substr(nfc.s,d1.i,1)';
  const curr = 'substr(o0.s,m.i,1)';
  const currCc = cc(curr);
+ const composed = `(SELECT value FROM compositions WHERE a=CASE WHEN length(m.starter)>0 THEN ${ord}(m.starter) ELSE -1 END AND b=${ord}(${curr}) AND (m.lastcc=0 OR m.lastcc<${currCc}))`;
  return `CREATE VIEW keys AS WITH RECURSIVE
  d0(id,i,s) AS (SELECT id,1,CAST('' AS TEXT) FROM n UNION ALL SELECT d0.id,d0.i+1,d0.s || CASE WHEN ${ord}(${orig}) IN (${whitespace}) THEN ' ' ELSE ${ch(orig,'nfd')} END FROM d0 JOIN n ON n.id=d0.id WHERE d0.i<=length(n.name)),
  r0(id,s) AS (SELECT d0.id,d0.s FROM d0 JOIN n ON n.id=d0.id WHERE d0.i>length(n.name)),
@@ -27,13 +28,11 @@ export function viewSql(engine) {
  m(id,i,prefix,starter,marks,lastcc) AS (
    SELECT id,1,CAST('' AS TEXT),CAST('' AS TEXT),CAST('' AS TEXT),0 FROM o0
    UNION ALL SELECT m.id,m.i+1,
-     CASE WHEN cm.value IS NOT NULL THEN m.prefix WHEN ${currCc}=0 THEN m.prefix||m.starter||m.marks ELSE m.prefix END,
-     CASE WHEN cm.value IS NOT NULL THEN cm.value WHEN ${currCc}=0 THEN ${curr} ELSE m.starter END,
-     CASE WHEN cm.value IS NOT NULL THEN m.marks WHEN ${currCc}=0 THEN '' ELSE m.marks||${curr} END,
-     CASE WHEN cm.value IS NOT NULL THEN m.lastcc ELSE ${currCc} END
+     CASE WHEN ${composed} IS NOT NULL THEN m.prefix WHEN ${currCc}=0 THEN m.prefix||m.starter||m.marks ELSE m.prefix END,
+     CASE WHEN ${composed} IS NOT NULL THEN ${composed} WHEN ${currCc}=0 THEN ${curr} ELSE m.starter END,
+     CASE WHEN ${composed} IS NOT NULL THEN m.marks WHEN ${currCc}=0 THEN '' ELSE m.marks||${curr} END,
+     CASE WHEN ${composed} IS NOT NULL THEN m.lastcc ELSE ${currCc} END
    FROM m JOIN o0 ON o0.id=m.id
-   LEFT JOIN compositions cm ON cm.a=CASE WHEN length(m.starter)>0 THEN ${ord}(m.starter) ELSE -1 END
-     AND cm.b=${ord}(${curr}) AND (m.lastcc=0 OR m.lastcc<${currCc})
    WHERE m.i<=length(o0.s)),
  nfc(id,s) AS (SELECT m.id,m.prefix||m.starter||m.marks FROM m JOIN o0 ON o0.id=m.id WHERE m.i>length(o0.s)),
  d1(id,i,s) AS (SELECT id,1,CAST('' AS TEXT) FROM nfc UNION ALL SELECT d1.id,d1.i+1,d1.s || ${ch(folded,'fold')} FROM d1 JOIN nfc ON nfc.id=d1.id WHERE d1.i<=length(nfc.s)),

@@ -6,13 +6,11 @@ CREATE VIEW keys AS WITH RECURSIVE
  m(id,i,prefix,starter,marks,lastcc) AS (
    SELECT id,1,CAST('' AS TEXT),CAST('' AS TEXT),CAST('' AS TEXT),0 FROM o0
    UNION ALL SELECT m.id,m.i+1,
-     CASE WHEN cm.value IS NOT NULL THEN m.prefix WHEN coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0)=0 THEN m.prefix||m.starter||m.marks ELSE m.prefix END,
-     CASE WHEN cm.value IS NOT NULL THEN cm.value WHEN coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0)=0 THEN substr(o0.s,m.i,1) ELSE m.starter END,
-     CASE WHEN cm.value IS NOT NULL THEN m.marks WHEN coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0)=0 THEN '' ELSE m.marks||substr(o0.s,m.i,1) END,
-     CASE WHEN cm.value IS NOT NULL THEN m.lastcc ELSE coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0) END
+     CASE WHEN (SELECT value FROM compositions WHERE a=CASE WHEN length(m.starter)>0 THEN unicode(m.starter) ELSE -1 END AND b=unicode(substr(o0.s,m.i,1)) AND (m.lastcc=0 OR m.lastcc<coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0))) IS NOT NULL THEN m.prefix WHEN coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0)=0 THEN m.prefix||m.starter||m.marks ELSE m.prefix END,
+     CASE WHEN (SELECT value FROM compositions WHERE a=CASE WHEN length(m.starter)>0 THEN unicode(m.starter) ELSE -1 END AND b=unicode(substr(o0.s,m.i,1)) AND (m.lastcc=0 OR m.lastcc<coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0))) IS NOT NULL THEN (SELECT value FROM compositions WHERE a=CASE WHEN length(m.starter)>0 THEN unicode(m.starter) ELSE -1 END AND b=unicode(substr(o0.s,m.i,1)) AND (m.lastcc=0 OR m.lastcc<coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0))) WHEN coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0)=0 THEN substr(o0.s,m.i,1) ELSE m.starter END,
+     CASE WHEN (SELECT value FROM compositions WHERE a=CASE WHEN length(m.starter)>0 THEN unicode(m.starter) ELSE -1 END AND b=unicode(substr(o0.s,m.i,1)) AND (m.lastcc=0 OR m.lastcc<coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0))) IS NOT NULL THEN m.marks WHEN coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0)=0 THEN '' ELSE m.marks||substr(o0.s,m.i,1) END,
+     CASE WHEN (SELECT value FROM compositions WHERE a=CASE WHEN length(m.starter)>0 THEN unicode(m.starter) ELSE -1 END AND b=unicode(substr(o0.s,m.i,1)) AND (m.lastcc=0 OR m.lastcc<coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0))) IS NOT NULL THEN m.lastcc ELSE coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0) END
    FROM m JOIN o0 ON o0.id=m.id
-   LEFT JOIN compositions cm ON cm.a=CASE WHEN length(m.starter)>0 THEN unicode(m.starter) ELSE -1 END
-     AND cm.b=unicode(substr(o0.s,m.i,1)) AND (m.lastcc=0 OR m.lastcc<coalesce((SELECT cc FROM ucd WHERE cp=unicode(substr(o0.s,m.i,1))),0))
    WHERE m.i<=length(o0.s)),
  nfc(id,s) AS (SELECT m.id,m.prefix||m.starter||m.marks FROM m JOIN o0 ON o0.id=m.id WHERE m.i>length(o0.s)),
  d1(id,i,s) AS (SELECT id,1,CAST('' AS TEXT) FROM nfc UNION ALL SELECT d1.id,d1.i+1,d1.s || coalesce((SELECT fold FROM ucd WHERE cp=unicode(substr(nfc.s,d1.i,1))),substr(nfc.s,d1.i,1)) FROM d1 JOIN nfc ON nfc.id=d1.id WHERE d1.i<=length(nfc.s)),
