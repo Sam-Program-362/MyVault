@@ -157,9 +157,12 @@ class BackupManagerTest {
     @Test
     fun legacyAmbiguousFixtureFailsPreciselyWithoutChangingExistingIdentitiesOrLinks() = runBlocking {
         target.spaceDao().upsert(SpaceEntity(id = "existing-space", name = "Existing"))
+        // In-memory target models two pre-migration case-variant legacy rows.
         target.tagDao().upsert(TagEntity(id = "existing-tag", name = "Saved", reusable = false))
+        target.tagDao().upsert(TagEntity(id = "existing-tag-2", name = "saved", reusable = true))
         target.entryDao().upsert(EntryEntity(id = "existing-entry", spaceId = "existing-space"))
         target.entryDao().addTagRef(EntryTagCrossRef("existing-entry", "existing-tag"))
+        target.entryDao().addTagRef(EntryTagCrossRef("existing-entry", "existing-tag-2"))
         val file = File(tempDir, "legacy-v1.json")
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets
             .open("legacy-v1-ambiguous.json").use { input -> file.outputStream().use { input.copyTo(it) } }
@@ -170,9 +173,10 @@ class BackupManagerTest {
         assertNotNull(error)
         assertTrue(error!!.message!!.contains("Ambiguous imported tags named", ignoreCase = true))
         assertEquals(listOf("existing-space"), target.spaceDao().getAll().map { it.id })
-        assertEquals(listOf("existing-tag"), target.tagDao().getAll().map { it.id })
-        assertFalse(target.tagDao().getAll().single().reusable)
-        assertEquals(listOf("existing-tag"), target.entryDao().tagRefsForEntry("existing-entry").map { it.tagId })
+        assertEquals(setOf("existing-tag", "existing-tag-2"), target.tagDao().getAll().map { it.id }.toSet())
+        assertFalse(target.tagDao().getAll().single { it.id == "existing-tag" }.reusable)
+        assertTrue(target.tagDao().getAll().single { it.id == "existing-tag-2" }.reusable)
+        assertEquals(setOf("existing-tag", "existing-tag-2"), target.entryDao().tagRefsForEntry("existing-entry").map { it.tagId }.toSet())
         assertEquals(listOf("existing-entry"), target.entryDao().getAll().map { it.id })
         file.writeText(file.readText().replace("\"ideas\"", "\"Ideas\""))
         val exactError = try {
@@ -180,9 +184,9 @@ class BackupManagerTest {
             null
         } catch (e: IllegalArgumentException) { e }
         assertTrue(exactError?.message?.contains("Ambiguous imported tags named", ignoreCase = true) == true)
-        assertEquals(listOf("existing-tag"), target.entryDao().tagRefsForEntry("existing-entry").map { it.tagId })
+        assertEquals(setOf("existing-tag", "existing-tag-2"), target.entryDao().tagRefsForEntry("existing-entry").map { it.tagId }.toSet())
         assertEquals(1, target.spaceDao().getAll().size)
-        assertEquals(1, target.tagDao().getAll().size)
+        assertEquals(2, target.tagDao().getAll().size)
         assertEquals(1, target.entryDao().getAll().size)
     }
 
