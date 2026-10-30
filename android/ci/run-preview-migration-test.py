@@ -114,8 +114,21 @@ def main():
         click(name, contains=True)
         if api > 30 and find("Import backup?", timeout=8) is None and find("Open", timeout=3) is not None:
             click("Open")
+        if api == 30 and find("Import backup?", timeout=8) is None:
+            # Exercise DocumentsUI's explicit selection mode on Android 11. This is
+            # still a real user gesture on the displayed document, not a supplied URI.
+            node = find(name, contains=True, timeout=5)
+            if node is not None:
+                bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
+                if bounds:
+                    x1, y1, x2, y2 = map(int, bounds.groups())
+                    x, y = (x1 + x2) // 2, (y1 + y2) // 2
+                    trace.append(f"long-press filename x={x} y={y} duration=900ms")
+                    adb("shell", "input", "swipe", str(x), str(y), str(x), str(y), "900")
+                    if find("Open", timeout=4) is not None:
+                        click("Open")
         if find("Import backup?", timeout=8) is None:
-            # Do not repeat the raw tap; require confirmation after any accessible action.
+            # Require the app's confirmation after any accessible action.
             activate_accessibly()
     if find("Import backup?", timeout=25) is None:
         raise AssertionError("The preview did not show the backup confirmation.")
