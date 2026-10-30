@@ -2,6 +2,7 @@ package com.myvault.app.ui
 
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.KeyEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.fail
@@ -19,12 +20,16 @@ class DocumentPickerActionTest {
         val automation = instrumentation.uiAutomation
         val deadline = SystemClock.uptimeMillis() + 12_000
         var rowActionSent = false
+        var focusAttempted = false
+        var focusSucceeded = false
         var diagnostic = "No synthetic document row was found"
         while (SystemClock.uptimeMillis() < deadline) {
             val root = automation.rootInActiveWindow
             // If a successful action already opened the app's confirmation, do not click again.
-            if (root?.findAccessibilityNodeInfosByText("Import backup?")?.isNotEmpty() == true)
+            if (root?.findAccessibilityNodeInfosByText("Import backup?")?.isNotEmpty() == true) {
+                println("MYVAULT_PICKER rowActionSent=$rowActionSent focusAttempted=$focusAttempted focusSucceeded=$focusSucceeded")
                 return
+            }
             // Ignore the grid's separate "Preview the file ..." thumbnail node.
             val file =
                 root?.findAccessibilityNodeInfosByText("myvault-ci-migration.json")?.firstOrNull {
@@ -52,14 +57,26 @@ class DocumentPickerActionTest {
                         candidate.isEnabled &&
                             candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
                     } ?: chain.lastOrNull()
-                if (!rowActionSent && target != null && target.isEnabled) {
+                if (!rowActionSent && target != null && target.isEnabled &&
+                    target.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }) {
                     rowActionSent = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                }
+                // Some Android 11 DocumentsUI rows advertise keyboard focus but no
+                // accessibility click. Focus the actual row and send Enter, then
+                // still require the app's confirmation (and later import/restart).
+                if (!rowActionSent && !focusAttempted) {
+                    focusAttempted = true
+                    val focusTarget = chain.asReversed().firstOrNull { candidate ->
+                        candidate.isEnabled && candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_FOCUS }
+                    }
+                    focusSucceeded = focusTarget?.performAction(AccessibilityNodeInfo.ACTION_FOCUS) == true
+                    if (focusSucceeded) instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
                 }
             }
             SystemClock.sleep(250)
         }
         fail(
-            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent). Accessibility chain: $diagnostic"
+            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent, focusAttempted=$focusAttempted, focusSucceeded=$focusSucceeded). Accessibility chain: $diagnostic"
         )
     }
 }

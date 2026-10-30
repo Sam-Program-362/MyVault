@@ -100,6 +100,8 @@ def main():
         trace.append(f"picker accessibility action: exit={result.returncode} output={result.stdout[-1200:]}")
         if result.returncode or "OK (1 test)" not in result.stdout:
             raise AssertionError("The system picker could not activate the synthetic document.")
+        marker = next((line for line in result.stdout.splitlines() if "MYVAULT_PICKER" in line), "no activation marker")
+        print(f"::notice title=DocumentsUI activation diagnostics::{marker}", flush=True)
 
     if find("Import backup?", timeout=4) is None:
         if api <= 30:
