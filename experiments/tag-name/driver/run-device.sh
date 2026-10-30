@@ -4,7 +4,8 @@
 set -uo pipefail
 root=experiments/tag-name/driver
 status=0
-for class in PlatformSqlProofTest BundledDriverProofTest; do
+read -r -a classes <<< "${PROOF_CLASSES:-PlatformSqlProofTest BundledDriverProofTest}"
+for class in "${classes[@]}"; do
   log="${RUNNER_TEMP:-/tmp}/tag-driver-proof-$class.log"
   adb logcat -c || true
   bash android/gradlew -p "$root" --no-daemon :app:connectedDebugAndroidTest \
