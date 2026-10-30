@@ -43,6 +43,14 @@ for i in range(0,len(text),2500):
  print('::notice title=Platform SQLite trace '+str(i//2500+1)+'::'+part)
 PYTRACE
   fi
+  if [[ "$class" == RoomSqlMigrationProofTest ]]; then
+    adb logcat -d -v brief -s MVRoomProof:I > "${log}.room" 2>/dev/null || true
+    python3 - "${log}.room" <<'PYROOM'
+import pathlib,sys
+for line in pathlib.Path(sys.argv[1]).read_text(errors='replace').splitlines():
+ print('::notice title=Room migration proof::'+line.replace('%','%25').replace('\n','%0A').replace('\r','%0D'))
+PYROOM
+  fi
   if ((result != 0)); then
     adb logcat -d -s AndroidRuntime:E ActivityManager:E DEBUG:E > "${log}.logcat" 2>/dev/null || true
     python3 - "${log}.logcat" <<'PYLOG'

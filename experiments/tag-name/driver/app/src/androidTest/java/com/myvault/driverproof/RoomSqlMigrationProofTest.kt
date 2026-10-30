@@ -111,6 +111,7 @@ class RoomSqlMigrationProofTest {
                 assertEquals(setOf("legacy-cafe-a", "legacy-cafe-b"), room.tagDao().getAll().map { it.id }.toSet())
                 assertEquals(setOf("legacy-cafe-a", "legacy-cafe-b"), room.entryDao().tagRefsForEntry("entry-a").map { it.tagId }.toSet())
                 assertEquals("Body", room.entryDao().getById("entry-a")?.content)
+                android.util.Log.i("MVRoomProof", "PASS disposable Room v1->v3 migration retained tag IDs and entry-tag links; mirror-table SQL guard preserved legacy duplicates")
             } finally { room.close() }
         } finally { context.deleteDatabase(name) }
     }
