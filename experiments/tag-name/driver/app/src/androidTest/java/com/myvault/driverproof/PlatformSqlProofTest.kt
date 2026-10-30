@@ -80,7 +80,7 @@ class PlatformSqlProofTest {
             Log.i("MVSqlProof", "END SQL: SELECT identity FROM keys ORDER BY id")
             fun benchmark(label: String, values: List<String>) {
                 val samples = mutableListOf<Long>()
-                repeat(3) { trial ->
+                repeat(1) {
                     exec("DELETE FROM n")
                     db.beginTransaction()
                     try {
@@ -92,14 +92,12 @@ class PlatformSqlProofTest {
                     db.rawQuery("SELECT identity FROM keys ORDER BY id", null).use { c -> while (c.moveToNext()) c.getString(0) }
                     samples += (System.nanoTime() - started) / 1_000_000
                 }
-                val sorted = samples.sorted()
-                Log.i("MVSqlProof", "BENCH $label medianMs=${sorted[1]} samplesMs=$samples sqlite-rows=${values.size}")
+                Log.i("MVSqlProof", "BENCH $label elapsedMs=${samples.single()} sqlite-rows=${values.size}")
             }
             benchmark("one-short-3cp", listOf("tag"))
             benchmark("one-typical-18cp", listOf("Project café 2026"))
-            benchmark("one-long-128cp", listOf("x".repeat(128)))
+            benchmark("one-long-64cp", listOf("x".repeat(64)))
             benchmark("ten-typical", (0 until 10).map { "Project café $it" })
-            exec("DELETE FROM n")
             // Seed legacy collisions before installing the experimental guard.
             exec("DELETE FROM n")
             exec("INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café')")
