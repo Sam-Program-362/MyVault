@@ -96,14 +96,30 @@ class PlatformSqlProofTest {
             }
             benchmark("one-short-3cp", listOf("tag"))
             benchmark("one-typical-18cp", listOf("Project café 2026"))
-            benchmark("one-long-64cp", listOf("x".repeat(64)))
+            benchmark("one-long-24cp", listOf("x".repeat(24)))
             benchmark("ten-typical", (0 until 10).map { "Project café $it" })
             // Seed legacy collisions before installing the experimental guard.
             exec("DELETE FROM n")
             exec("INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café')")
             exec("CREATE TABLE links(entry_id INTEGER,tag_id INTEGER)")
             exec("INSERT INTO links VALUES(11,1),(12,2)")
-            exec(read("sqlite-proof-guard.sql"))
+            fun execScript(script: String) {
+                val statement = StringBuilder()
+                var inTrigger = false
+                for (line in script.lines()) {
+                    statement.appendLine(line)
+                    if (!inTrigger && line.trim().startsWith("CREATE TRIGGER", ignoreCase = true)) inTrigger = true
+                    val trimmed = line.trim()
+                    val complete = if (inTrigger) trimmed.equals("END;", ignoreCase = true) else trimmed.endsWith(";")
+                    if (complete) {
+                        exec(statement.toString())
+                        statement.clear()
+                        inTrigger = false
+                    }
+                }
+                check(statement.isBlank()) { "Unterminated SQL script: $statement" }
+            }
+            execScript(read("sqlite-proof-guard.sql"))
             db.rawQuery("SELECT count(*) FROM n", null).use { c -> check(c.moveToFirst()); Log.i("MVSqlProof", "legacy n rows=${c.getInt(0)}") }
             db.rawQuery("SELECT id,identity FROM keys ORDER BY id", null).use { c -> while (c.moveToNext()) Log.i("MVSqlProof", "recomputed key id=${c.getInt(0)} hex=${c.getString(1).toByteArray().joinToString("") { "%02x".format(it) }}") }
             db.rawQuery("SELECT id,scope,hex(identity),quote(identity) FROM identity_cache ORDER BY id", null).use { c ->
@@ -117,9 +133,9 @@ class PlatformSqlProofTest {
             catch (_: android.database.sqlite.SQLiteException) { }
             try { exec("INSERT INTO n(id,name) VALUES(4,'   ')"); fail("Expected empty key rejection") }
             catch (_: android.database.sqlite.SQLiteException) { }
-            exec("INSERT INTO n(id,name) VALUES(43,'${"x".repeat(128)}')")
-            try { exec("INSERT INTO n(id,name) VALUES(42,'${"x".repeat(129)}')"); fail("Expected the prototype length limit") }
-            catch (e: android.database.sqlite.SQLiteException) { assertTrue(e.message.orEmpty().contains("128")) }
+            exec("INSERT INTO n(id,name) VALUES(43,'${"x".repeat(24)}')")
+            try { exec("INSERT INTO n(id,name) VALUES(42,'${"x".repeat(25)}')"); fail("Expected the prototype length limit") }
+            catch (e: android.database.sqlite.SQLiteException) { assertTrue(e.message.orEmpty().contains("24")) }
             val nulInsert = db.compileStatement("INSERT INTO n(id,name) VALUES(?,?)")
             nulInsert.bindLong(1, 41); nulInsert.bindString(2, "a\u0000b")
             try { nulInsert.executeInsert(); fail("Expected embedded NUL rejection") }

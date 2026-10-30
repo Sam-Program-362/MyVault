@@ -75,7 +75,7 @@ BEGIN
  IF TG_OP='UPDATE' AND OLD.name=NEW.name AND OLD.scope=NEW.scope AND OLD.owner IS NOT DISTINCT FROM NEW.owner THEN RETURN NEW; END IF;
  SELECT identity INTO new_identity FROM keys WHERE id=NEW.id;
  IF new_identity IS NULL OR new_identity='' THEN RAISE EXCEPTION 'empty'; END IF;
- IF char_length(NEW.name)>128 THEN RAISE EXCEPTION 'maximum tag name length is 128 code points'; END IF;
+ IF char_length(NEW.name)>24 THEN RAISE EXCEPTION 'maximum tag name length is 24 code points'; END IF;
  IF TG_OP='UPDATE' THEN
    SELECT identity,scope,owner INTO old_identity,old_scope,old_owner FROM identity_cache WHERE id=OLD.id;
    IF new_identity=old_identity AND NEW.scope IS NOT DISTINCT FROM old_scope AND NEW.owner IS NOT DISTINCT FROM old_owner THEN
@@ -105,7 +105,7 @@ assert.throws(()=>sqlite.exec("INSERT INTO n(id,name) VALUES(4,'   ' )"),/empty/
 await assert.rejects(pg.exec("INSERT INTO n(id,name) VALUES(4,'   ' )"),/empty/);
 const validateTagInput = name => {
  if(name.includes('\0')) throw new Error('tag name contains U+0000; embedded NUL is not supported');
- if([...name].length>128) throw new Error('tag name exceeds 128 Unicode code points');
+ if([...name].length>24) throw new Error('tag name exceeds 24 Unicode code points');
 };
 const nulName='a\0b';
 assert.throws(()=>validateTagInput(nulName),/U\+0000/);
@@ -113,9 +113,9 @@ assert.throws(()=>sqlite.prepare('INSERT INTO n(id,name) VALUES(?,?)').run(40,nu
 const pgBeforeNul=(await pg.query('SELECT count(*)::int AS c FROM n')).rows[0].c;
 assert.throws(()=>validateTagInput(nulName),/U\+0000/);
 assert.equal((await pg.query('SELECT count(*)::int AS c FROM n')).rows[0].c,pgBeforeNul);
-assert.throws(()=>validateTagInput('x'.repeat(129)),/128 Unicode code points/);
-assert.throws(()=>sqlite.prepare('INSERT INTO n(id,name) VALUES(?,?)').run(42,'x'.repeat(129)),/128 code points/);
-await assert.rejects(pg.exec(`INSERT INTO n(id,name) VALUES(42,'${'x'.repeat(129)}')`),/128 code points/);
+assert.throws(()=>validateTagInput('x'.repeat(25)),/24 Unicode code points/);
+assert.throws(()=>sqlite.prepare('INSERT INTO n(id,name) VALUES(?,?)').run(42,'x'.repeat(25)),/24 code points/);
+await assert.rejects(pg.exec(`INSERT INTO n(id,name) VALUES(42,'${'x'.repeat(25)}')`),/24 code points/);
 console.log('PASS NUL rule: SQLite rejects the direct SQL write; shared persistence-boundary validation rejects before PostgreSQL text binding.');
 for (const sql of ["UPDATE n SET reusable=0 WHERE id=1", "INSERT INTO n(id,name,scope,owner,reusable) VALUES(5,'CAFÉ','local','space-a',0)", "INSERT INTO n(id,name,scope,owner,reusable) VALUES(6,'CAFÉ','local','space-b',1)"]) {sqlite.exec(sql); await pg.exec(sql);}
 assert.throws(()=>sqlite.exec("INSERT INTO n(id,name,scope,owner,reusable) VALUES(7,'CAFÉ','local','space-a',1)"),/collision/);
