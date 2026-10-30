@@ -73,8 +73,9 @@ class DocumentPickerActionTest {
                     }
                     focusSucceeded = focusTarget?.performAction(AccessibilityNodeInfo.ACTION_FOCUS) == true
                     if (focusSucceeded) {
-                        keyDownSent = automation.injectInputEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER), true)
-                        keyUpSent = automation.injectInputEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER), true)
+                        val now = SystemClock.uptimeMillis()
+                        keyDownSent = automation.injectInputEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0), true)
+                        keyUpSent = automation.injectInputEvent(KeyEvent(now, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0), true)
                     }
                 }
             }
