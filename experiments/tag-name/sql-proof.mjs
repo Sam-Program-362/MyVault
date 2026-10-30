@@ -30,12 +30,15 @@ if (pgUrl) {
  await pgClient.query(`CREATE SCHEMA "${pgSchema}"`); await pgClient.query(`SET search_path TO "${pgSchema}"`);
  pg={query:(...args)=>pgClient.query(...args),exec:(sql)=>pgClient.query(sql),close:async()=>{await pgClient.query(`DROP SCHEMA "${pgSchema}" CASCADE`);await pgClient.end();}};
 } else pg=await PGlite.create();
-sqlite.exec("CREATE TABLE ucd(cp INTEGER PRIMARY KEY,nfd TEXT,fold TEXT,cc INTEGER NOT NULL); CREATE TABLE n(id INTEGER PRIMARY KEY,name TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'global',owner TEXT,reusable INTEGER NOT NULL DEFAULT 1)");
-await pg.exec("CREATE TABLE ucd(cp INTEGER PRIMARY KEY,nfd TEXT,fold TEXT,cc INTEGER NOT NULL); CREATE TABLE n(id INTEGER PRIMARY KEY,name TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'global',owner TEXT,reusable INTEGER NOT NULL DEFAULT 1)");
+sqlite.exec("CREATE TABLE ucd(cp INTEGER PRIMARY KEY,nfd TEXT,fold TEXT,cc INTEGER NOT NULL); CREATE TABLE compositions(a INTEGER,b INTEGER,value TEXT NOT NULL,PRIMARY KEY(a,b)); CREATE TABLE n(id INTEGER PRIMARY KEY,name TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'global',owner TEXT,reusable INTEGER NOT NULL DEFAULT 1)");
+await pg.exec("CREATE TABLE ucd(cp INTEGER PRIMARY KEY,nfd TEXT,fold TEXT,cc INTEGER NOT NULL); CREATE TABLE compositions(a INTEGER,b INTEGER,value TEXT NOT NULL,PRIMARY KEY(a,b)); CREATE TABLE n(id INTEGER PRIMARY KEY,name TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'global',owner TEXT,reusable INTEGER NOT NULL DEFAULT 1)");
 sqlite.exec('BEGIN'); const ins = sqlite.prepare('INSERT INTO ucd VALUES (?,?,?,?)');
 for (const row of data.rows) ins.run(...row);
+const comp=sqlite.prepare('INSERT INTO compositions VALUES(?,?,?)');
+for (const row of data.compositions) comp.run(...row);
 sqlite.exec('COMMIT');
 await pg.query('INSERT INTO ucd SELECT cp,nfd,fold,cc FROM json_to_recordset($1::json) AS x(cp integer,nfd text,fold text,cc integer)', [JSON.stringify(data.rows.map(([cp,nfd,fold,cc]) => ({cp,nfd,fold,cc})))]);
+await pg.query('INSERT INTO compositions SELECT a,b,value FROM json_to_recordset($1::json) AS x(a integer,b integer,value text)',[JSON.stringify(data.compositions.map(([a,b,value])=>({a,b,value})))]);
 sqlite.exec(viewSql('sqlite')); await pg.exec(viewSql('pg'));
 const inputs = [];
 for (const pair of fixture.pairs) inputs.push(pair.left,pair.right);

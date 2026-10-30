@@ -14,8 +14,8 @@ node --experimental-sqlite experiments/tag-name/sql-proof.mjs
 ```
 
 The script creates a temporary SQLite database and an in-memory PGlite PostgreSQL database and loads the
-same Unicode 15.1 decomposition, combining class, and default full-fold data.
-It reads the shared fixture and compares *database-computed* NFD keys. The final
+same Unicode 15.1 decomposition, canonical composition, combining class, and default full-fold data.
+It composes to NFC before case folding, then reads the shared fixture and compares *database-computed* NFD keys. The final
 policy specifies NFC: NFD and NFC have the same equality classes for canonically
 equivalent strings, but these prototype keys are not the policy's NFC bytes.
 It also exercises disposable insert/update triggers, transaction rollback, and two competing SQLite connections.
@@ -53,7 +53,7 @@ API 24 and 29 and prints the native libraries contained in its proof APK. It doe
 not run, edit, or suppress the separate API 30 DocumentsUI test.
 
 The separate `PlatformSqlProofTest` also runs the generated SQL view and the
-43 pinned expected keys on Android's **platform** SQLite, independently of the
+47-plus pinned expected keys on Android's **platform** SQLite, independently of the
 bundled driver. To regenerate its view after editing the template:
 
 ```sh

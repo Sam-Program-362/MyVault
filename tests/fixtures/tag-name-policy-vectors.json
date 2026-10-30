@@ -81,6 +81,26 @@
       "left": "अ",
       "right": "आ",
       "equal": false
+    },
+    {
+      "left": "ᾴ̖",
+      "right": "άι̖",
+      "equal": true
+    },
+    {
+      "left": "ᾴ̖",
+      "right": "ά̖ι",
+      "equal": false
+    },
+    {
+      "left": "각",
+      "right": "각",
+      "equal": true
+    },
+    {
+      "left": "ᄀ̀ᅡ",
+      "right": "가̀",
+      "equal": false
     }
   ],
   "scopedCases": [

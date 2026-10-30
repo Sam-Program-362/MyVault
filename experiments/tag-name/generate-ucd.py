@@ -16,7 +16,22 @@ for cp in range(0x110000):
  if 0xd800<=cp<=0xdfff:continue
  c=chr(cp);d=u.normalize('NFD',c); f=u.normalize('NFD',fold.get(cp,c));ccc=u.combining(c)
  if d!=c or f!=c or ccc: rows.append([cp,d if d!=c else None,f if f!=c else None,ccc])
-obj={'unicode':'15.1.0','caseFoldingSha256':hashlib.sha256(source.encode()).hexdigest(),'description':'Canonical decomposition; full default case fold then decomposition; canonical combining class. Unicode 15.1.0.', 'rows':rows}
+# Canonical compositions, including algorithmic Hangul. Only non-excluded
+# pairs that really compose under Unicode 15.1 NFC are included.
+compositions=[]
+for cp in range(0x110000):
+ if 0xd800<=cp<=0xdfff: continue
+ c=chr(cp); decomp=u.decomposition(c)
+ if not decomp or decomp.startswith('<'): continue
+ parts=[int(x,16) for x in decomp.split()]
+ if len(parts)==2 and u.normalize('NFC',''.join(map(chr,parts)))==c:
+  compositions.append([parts[0],parts[1],c])
+for l in range(0x1100,0x1113):
+ for v in range(0x1161,0x1176):
+  lv=0xac00+((l-0x1100)*21+(v-0x1161))*28
+  compositions.append([l,v,chr(lv)])
+  for t in range(1,28): compositions.append([lv,0x11a7+t,chr(lv+t)])
+obj={'compositions':compositions,'unicode':'15.1.0' ,'caseFoldingSha256':hashlib.sha256(source.encode()).hexdigest(),'description':'Canonical decomposition; full default case fold then decomposition; canonical combining class. Unicode 15.1.0.', 'rows':rows}
 open('experiments/tag-name/ucd-15.1.json','w',encoding='utf8').write(json.dumps(obj,ensure_ascii=False,separators=(',',':'))+'\n')
 print(len(rows),len(open('experiments/tag-name/ucd-15.1.json','rb').read()),obj['caseFoldingSha256'])
 

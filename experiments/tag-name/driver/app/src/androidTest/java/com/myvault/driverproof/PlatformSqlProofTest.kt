@@ -34,6 +34,7 @@ class PlatformSqlProofTest {
         inputs.addAll(listOf("", " \u00a0\t", "Café"))
         SQLiteDatabase.create(null).use { db ->
             db.execSQL("CREATE TABLE ucd(cp INTEGER PRIMARY KEY,nfd TEXT,fold TEXT,cc INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE compositions(a INTEGER,b INTEGER,value TEXT NOT NULL,PRIMARY KEY(a,b))")
             db.execSQL("CREATE TABLE n(id INTEGER PRIMARY KEY,name TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'global',owner TEXT,reusable INTEGER NOT NULL DEFAULT 1)")
             db.beginTransaction()
             try {
@@ -44,6 +45,12 @@ class PlatformSqlProofTest {
                     if (row.isNull(1)) insert.bindNull(2) else insert.bindString(2,row.getString(1))
                     if (row.isNull(2)) insert.bindNull(3) else insert.bindString(3,row.getString(2))
                     insert.bindLong(4,row.getLong(3)); insert.executeInsert()
+                }
+                val compositions = JSONObject(read("ucd-15.1.json")).getJSONArray("compositions")
+                val compose = db.compileStatement("INSERT INTO compositions VALUES(?,?,?)")
+                for (i in 0 until compositions.length()) {
+                    val row = compositions.getJSONArray(i)
+                    compose.bindLong(1,row.getLong(0)); compose.bindLong(2,row.getLong(1)); compose.bindString(3,row.getString(2)); compose.executeInsert()
                 }
                 val names = db.compileStatement("INSERT INTO n(id,name) VALUES(?,?)")
                 inputs.forEachIndexed { id, value -> names.bindLong(1,id.toLong()); names.bindString(2,value); names.executeInsert() }
