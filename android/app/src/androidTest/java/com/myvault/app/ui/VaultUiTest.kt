@@ -98,7 +98,7 @@ class VaultUiTest {
         }
         compose.onNodeWithText("Choose tag scope").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Local tag").assertIsDisplayed()
-        compose.onNodeWithText("Global tag").assertIsDisplayed()
+        compose.onNodeWithText("Global tag").performScrollTo().assertIsDisplayed()
         val createTagButton = compose.onNodeWithText("Create & add tag (paused)").performScrollTo()
         createTagButton.assertIsNotEnabled()
         compose.onNodeWithText("Global tag").performScrollTo().performClick()

@@ -40,8 +40,9 @@ class TagScopeMigrationTest {
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
                 .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).build()
             try {
-                db.openHelper.readableDatabase.query("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'tag_scope_insert'").use {
+                db.openHelper.readableDatabase.query("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'tag_scope_insert'").use {
                     assertTrue("v1-to-v3 migration must install the scope guards", it.moveToFirst())
+                    assertTrue("scope insert trigger must fail closed", it.getString(0).contains("RAISE(ABORT"))
                 }
                 val tags = db.tagDao().getAll()
                 assertEquals(setOf("t", "t2"), tags.map { it.id }.toSet())
@@ -51,7 +52,10 @@ class TagScopeMigrationTest {
                 db.tagDao().update(tags.single { it.id == "t" }.copy(color = "#123456", reusable = true))
                 assertTrue(db.tagDao().getAll().single { it.id == "t" }.reusable)
 
-                assertRejected("v1-to-v3 insert must be blocked") { db.tagDao().upsert(TagEntity(id = "new", name = "New")) }
+                assertRejected("v1-to-v3 direct SQL insert must be blocked") {
+                    db.openHelper.writableDatabase.execSQL("INSERT INTO tags(id, name, color, textColor, reusable, scope, ownerSpaceId, createdAt) VALUES ('sql-new', 'SQL new', '#000000', '#ffffff', 1, 'global', NULL, 1)")
+                }
+                assertRejected("v1-to-v3 DAO upsert must be blocked") { db.tagDao().upsert(TagEntity(id = "new", name = "New")) }
                 assertRejected("v1-to-v3 name edit must be blocked") { db.tagDao().update(tags.single { it.id == "t" }.copy(name = "Renamed")) }
                 assertEquals(setOf("t", "t2"), db.tagDao().getAll().map { it.id }.toSet())
                 assertEquals("Body", db.entryDao().getById("e")?.content)

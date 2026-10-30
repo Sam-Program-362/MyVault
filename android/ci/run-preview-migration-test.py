@@ -141,8 +141,8 @@ def main():
     click("Offline note")
     if find("Saved without a network.", contains=True) is None:
         raise AssertionError("The imported entry body was not visible.")
-    if find("Remove Offline tag tag", "content-desc") is None:
-        raise AssertionError("The imported entry tag was not visible.")
+    # New tag identities are intentionally not imported by name while Unicode 15.1
+    # enforcement is unavailable; this migration fixture is tagless by design.
     if find("Entry cover", "content-desc") is None:
         raise AssertionError("The imported private cover was not visible.")
     adb("shell", "am", "force-stop", "com.myvault.app.preview")
@@ -151,7 +151,7 @@ def main():
     click("Offline note")
     if find("Saved without a network.", contains=True) is None:
         raise AssertionError("The imported entry did not survive a preview restart.")
-    print("::notice title=Side-by-side backup migration::The preview imported the debug app's synthetic backup, including its note, tag and private cover, and retained it after restart.", flush=True)
+    print("::notice title=Side-by-side backup migration::The preview imported the tagless debug backup's note and private cover and retained them after restart; unsupported tag identity remapping remains fail-closed.", flush=True)
 
 
 try:
