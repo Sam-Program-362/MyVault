@@ -65,7 +65,7 @@ console.log(`PASS SQLite and PostgreSQL: ${fixture.pairs.length} comparison vect
 sqlite.exec("DELETE FROM n; INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café'); CREATE TABLE links(entry_id INTEGER,tag_id INTEGER); INSERT INTO links VALUES(11,1),(12,2)");
 await pg.exec("DELETE FROM n; INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café'); CREATE TABLE links(entry_id INTEGER,tag_id INTEGER); INSERT INTO links VALUES(11,1),(12,2)");
 const sqliteCheck = `SELECT CASE WHEN (SELECT identity FROM keys WHERE id=NEW.id) = '' THEN RAISE(ABORT,'empty') END;
- SELECT CASE WHEN EXISTS (SELECT 1 FROM keys a JOIN keys b ON a.identity=b.identity JOIN n x ON x.id=a.id JOIN n y ON y.id=b.id WHERE a.id=NEW.id AND b.id<>NEW.id AND x.scope=y.scope AND x.owner IS y.owner) THEN RAISE(ABORT,'collision') END;`;
+ SELECT CASE WHEN EXISTS (SELECT 1 FROM n x WHERE x.id<>NEW.id AND x.scope=NEW.scope AND x.owner IS NEW.owner AND (SELECT identity FROM keys WHERE id=x.id)=(SELECT identity FROM keys WHERE id=NEW.id)) THEN RAISE(ABORT,'collision') END;`;
 sqlite.exec(`CREATE TRIGGER proof_ins AFTER INSERT ON n BEGIN ${sqliteCheck} END;
 CREATE TRIGGER proof_upd AFTER UPDATE OF name,scope,owner ON n WHEN OLD.name<>NEW.name OR OLD.scope<>NEW.scope OR OLD.owner IS NOT NEW.owner BEGIN ${sqliteCheck} END;`);
 await pg.exec(`CREATE FUNCTION proof_guard() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN

@@ -69,9 +69,9 @@ class PlatformSqlProofTest {
             db.execSQL("INSERT INTO links VALUES(11,1),(12,2)")
             db.execSQL("""CREATE TRIGGER proof_ins AFTER INSERT ON n BEGIN
                 SELECT CASE WHEN (SELECT identity FROM keys WHERE id=NEW.id) = '' THEN RAISE(ABORT,'empty') END;
-                SELECT CASE WHEN EXISTS (SELECT 1 FROM keys a JOIN keys b ON a.identity=b.identity
-                  JOIN n x ON x.id=a.id JOIN n y ON y.id=b.id WHERE a.id=NEW.id AND b.id<>NEW.id
-                  AND x.scope=y.scope AND x.owner IS y.owner) THEN RAISE(ABORT,'collision') END;
+                SELECT CASE WHEN EXISTS (SELECT 1 FROM n x WHERE x.id<>NEW.id AND x.scope=NEW.scope
+                  AND x.owner IS NEW.owner AND (SELECT identity FROM keys WHERE id=x.id)=(SELECT identity FROM keys WHERE id=NEW.id))
+                  THEN RAISE(ABORT,'collision') END;
             END""")
             try { db.execSQL("INSERT INTO n(id,name) VALUES(3,'CAFÉ')"); fail("Expected collision") }
             catch (_: android.database.sqlite.SQLiteException) { }
