@@ -51,3 +51,11 @@ bash android/gradlew -p experiments/tag-name/driver :app:connectedDebugAndroidTe
 `.github/workflows/tag-identity-proof.yml` runs this standalone experiment on
 API 24 and 29 and prints the native libraries contained in its proof APK. It does
 not run, edit, or suppress the separate API 30 DocumentsUI test.
+
+The separate `PlatformSqlProofTest` also runs the generated SQL view and the
+43 pinned expected keys on Android's **platform** SQLite, independently of the
+bundled driver. To regenerate its view after editing the template:
+
+```sh
+node --input-type=module -e "import {viewSql} from './experiments/tag-name/sql-template.mjs'; import {writeFileSync} from 'node:fs';writeFileSync('experiments/tag-name/sqlite-proof-view.sql',viewSql('sqlite')+';\\n')"
+```

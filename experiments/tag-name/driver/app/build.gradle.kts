@@ -20,3 +20,12 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
+
+// Generated test assets are copied only into the standalone proof test APK.
+val copySqlProofAssets by tasks.registering(Copy::class) {
+    from("../..") { include("ucd-15.1.json", "expected-keys.json", "sqlite-proof-view.sql") }
+    from("../../../../tests/fixtures") { include("tag-name-policy-vectors.json") }
+    into(layout.buildDirectory.dir("generated/sql-proof-assets"))
+}
+android.sourceSets.getByName("androidTest").assets.srcDir(layout.buildDirectory.dir("generated/sql-proof-assets"))
+tasks.configureEach { if (name == "mergeDebugAndroidTestAssets") dependsOn(copySqlProofAssets) }

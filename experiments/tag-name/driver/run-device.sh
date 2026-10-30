@@ -13,7 +13,9 @@ for report in reports:
  except ET.ParseError: continue
  for case in tree.iter('testcase'):
   cases+=1
-  for failure in list(case.findall('failure'))+list(case.findall('error')):
+  failures=list(case.findall('failure'))+list(case.findall('error'))
+  if not failures: print('::notice title=Driver proof case passed::'+case.attrib.get('name',''))
+  for failure in failures:
    text=(case.attrib.get('name','')+': '+failure.attrib.get('message','')+'\n'+(failure.text or ''))[-6000:]
    print('::error title=Driver proof device failure::'+text.replace('%','%25').replace('\n','%0A').replace('\r','%0D'))
 if status and not cases:
