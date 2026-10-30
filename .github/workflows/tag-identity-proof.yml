@@ -79,4 +79,12 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: PROOF_CLASSES=PlatformSqlProofTest bash experiments/tag-name/driver/run-device.sh && PROOF_CLASSES=RoomSqlMigrationProofTest bash experiments/tag-name/driver/run-device.sh
+          script: PROOF_CLASSES=PlatformSqlProofTest bash experiments/tag-name/driver/run-device.sh
+      - name: Test disposable Room v1-to-v3 migration
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: PROOF_CLASSES=RoomSqlMigrationProofTest bash experiments/tag-name/driver/run-device.sh
