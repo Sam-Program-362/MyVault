@@ -1,0 +1,59 @@
+name: Tag identity research prototypes
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'experiments/tag-name/**'
+      - 'tests/fixtures/tag-name-policy-vectors.json'
+      - 'android/app/src/main/java/com/myvault/app/data/{AppDatabase,Entities,Daos}.kt'
+      - '.github/workflows/tag-identity-proof.yml'
+permissions:
+  contents: read
+jobs:
+  sql-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.13
+      - run: node --experimental-sqlite experiments/tag-name/sql-proof.mjs
+  android-driver-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [24, 29]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
+      - name: Build isolated proof APK
+        run: bash android/gradlew -p experiments/tag-name/driver --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Report native ABI sizes in proof APK
+        run: unzip -l experiments/tag-name/driver/app/build/outputs/apk/debug/app-debug.apk | grep 'libsqlite3x.so'
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test driver on isolated emulator database
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: bash android/gradlew -p experiments/tag-name/driver --no-daemon :app:connectedDebugAndroidTest
