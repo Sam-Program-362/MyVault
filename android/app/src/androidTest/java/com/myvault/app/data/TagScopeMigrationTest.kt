@@ -40,12 +40,9 @@ class TagScopeMigrationTest {
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
                 .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).build()
             try {
-                val triggers = SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READONLY)
-                try {
-                    triggers.rawQuery("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'tag_scope_insert'", null).use {
-                        assertTrue("v1-to-v3 migration must install the scope guards", it.moveToFirst())
-                    }
-                } finally { triggers.close() }
+                db.openHelper.readableDatabase.query("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'tag_scope_insert'").use {
+                    assertTrue("v1-to-v3 migration must install the scope guards", it.moveToFirst())
+                }
                 val tags = db.tagDao().getAll()
                 assertEquals(setOf("t", "t2"), tags.map { it.id }.toSet())
                 assertTrue(tags.all { it.scope == "global" && it.ownerSpaceId == null })

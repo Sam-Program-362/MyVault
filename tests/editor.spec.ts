@@ -342,7 +342,7 @@ test.describe("desktop editor", () => {
     await page.getByRole("button", { name: "Pin entry" }).click();
     await expect(page.getByRole("button", { name: "Unpin entry" })).toBeVisible();
     await page.getByLabel("Add tag").focus();
-    await page.locator(".tag-picker-menu").getByRole("button", { name: "Ideas" }).click();
+    await page.locator(".tag-picker-menu").getByRole("button", { name: /Ideas.*Global/ }).click();
     await expect(page.getByRole("button", { name: "Remove Ideas tag" })).toBeVisible();
     const pill = page.getByRole("button", { name: "Remove Ideas tag" }).locator("..");
     await expect(pill).toHaveCSS("border-top-width", "1px");

@@ -23,6 +23,9 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE tags ADD COLUMN scope TEXT NOT NULL DEFAULT 'global'")
                 db.execSQL("ALTER TABLE tags ADD COLUMN ownerSpaceId TEXT")
+                // Install the guard at the same upgrade boundary as scope metadata; v1-to-v3
+                // and any intermediate v1-to-v2 upgrade must never expose writable scope rows.
+                installScopeGuards(db)
             }
         }
 

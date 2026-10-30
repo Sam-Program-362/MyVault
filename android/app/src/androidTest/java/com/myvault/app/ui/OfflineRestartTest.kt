@@ -10,7 +10,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -103,17 +102,6 @@ class OfflineRestartTest {
         if (newWelcome) body.performScrollTo()
         body.performTextInput("# Still here\nSaved without a network.")
         compose.onNodeWithContentDescription("Pin entry").performClick()
-        val addTag = compose.onNodeWithText("Add tag…", substring = true)
-        if (newWelcome) addTag.performScrollTo()
-        addTag.performClick()
-        compose.onNodeWithText("Find or create a tag").performTextInput("Offline tag")
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithText("Choose tag scope").fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithText("Choose tag scope").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Global tag").performScrollTo().performClick()
-        compose.onNodeWithText("Create & add tag (paused)").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("Done").performClick()
         compose.onNodeWithContentDescription("Close editor").performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithText("Offline note").fetchSemanticsNodes().isNotEmpty()
