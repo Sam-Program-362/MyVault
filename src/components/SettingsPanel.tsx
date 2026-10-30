@@ -33,8 +33,8 @@ const RADII: { value: AppSettings["radius"]; label: string }[] = [
   { value: "xl", label: "Very round" },
 ];
 
-export default function SettingsPanel({ onClose, spaceId }: { onClose: () => void; spaceId: string | null }) {
-  const { settings, updateSettings, tags, refreshTags } = useAppData();
+export default function SettingsPanel({ onClose }: { onClose: () => void }) {
+  const { settings, updateSettings, tags, spaces, refreshTags } = useAppData();
   const [appName, setAppName] = useState(settings?.appName ?? "MyVault");
   const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -96,8 +96,17 @@ export default function SettingsPanel({ onClose, spaceId }: { onClose: () => voi
     }
   };
 
-  const reusableTags = tags.filter((t) => t.reusable && (t.scope !== "local" || t.ownerSpaceId === spaceId));
-  const oneOffTags = tags.filter((t) => !t.reusable && (t.scope !== "local" || t.ownerSpaceId === spaceId));
+  const reusableTags = tags.filter((t) => t.reusable);
+  const oneOffTags = tags.filter((t) => !t.reusable);
+  const tagScopeLabel = (tag: Tag) => tag.scope === "local"
+    ? `Local · ${spaces.find((space) => space.id === tag.ownerSpaceId)?.name ?? "Unknown Space"}`
+    : "Global";
+  // Diagnostic only: this runtime's lowercase mapping is not the pinned Unicode identity.
+  const possibleLegacyGroups = [...tags.reduce((groups, tag) => {
+    const key = JSON.stringify([tag.name.toLowerCase(), tag.scope ?? "global", tag.ownerSpaceId ?? null]);
+    groups.set(key, [...(groups.get(key) ?? []), tag]);
+    return groups;
+  }, new Map<string, Tag[]>()).values()].filter((group) => group.length > 1);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -319,6 +328,12 @@ export default function SettingsPanel({ onClose, spaceId }: { onClose: () => voi
 
           {tab === "tags" && (
             <div className="flex flex-col gap-5">
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+                <p>Unicode 15.1 conflict detection is not authoritative. Existing IDs and links are never auto-merged or changed.</p>
+                {possibleLegacyGroups.length === 0
+                  ? <p className="mt-1 opacity-70">No simple case-insensitive candidate groups found; other Unicode-equivalent variants may still exist.</p>
+                  : <div className="mt-1"><p>Possible legacy candidate groups (not a Unicode 15.1 verdict):</p>{possibleLegacyGroups.map((group) => <p key={group.map((tag) => tag.id).join(":")}>{group[0].name}: {group.map((tag) => tag.id).join(", ")}</p>)}</div>}
+              </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Saved reusable tags</p>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -329,7 +344,7 @@ export default function SettingsPanel({ onClose, spaceId }: { onClose: () => voi
                       className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
                       style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                     >
-                      {tag.name} <span className="opacity-70">{tag.scope === "local" ? "Local" : "Global"}</span>
+                      {tag.name} <span className="opacity-70">{tagScopeLabel(tag)}</span>
                       <button type="button" aria-label={`Edit ${tag.name} tag`} onClick={() => setEditingTag(tag)}>Edit</button>
                       <button
                         onClick={async () => {
@@ -355,7 +370,7 @@ export default function SettingsPanel({ onClose, spaceId }: { onClose: () => voi
                       className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-80"
                       style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                     >
-                      {tag.name} <span className="opacity-70">{tag.scope === "local" ? "Local" : "Global"}</span>
+                      {tag.name} <span className="opacity-70">{tagScopeLabel(tag)}</span>
                       <button type="button" aria-label={`Edit ${tag.name} tag`} onClick={() => setEditingTag(tag)}>Edit</button>
                       <button
                         onClick={async () => {
@@ -375,16 +390,14 @@ export default function SettingsPanel({ onClose, spaceId }: { onClose: () => voi
 
           {tab === "tags" && editingTag && (
             <div className="ui-radius mt-4 flex flex-col gap-2 border border-black/10 p-3 dark:border-white/10" role="dialog" aria-label="Edit tag">
-              <label>Tag name <input aria-label="Tag name" value={editingTag.name} onChange={(e) => setEditingTag({ ...editingTag, name: e.target.value })} /></label>
+              <label>Tag name <input aria-label="Tag name" value={editingTag.name} readOnly /></label>
+              <p>Scope: {editingTag.scope === "local" ? "Local to this Space" : "Global"}</p>
               <label>Tag color <input type="color" aria-label="Tag color" value={editingTag.color} onChange={(e) => setEditingTag({ ...editingTag, color: e.target.value })} /></label>
-              <label>Tag scope <select aria-label="Tag scope" value={editingTag.scope ?? "global"} onChange={(e) => setEditingTag({ ...editingTag, scope: e.target.value as "local" | "global", ownerSpaceId: e.target.value === "local" ? spaceId : null })}>
-                <option value="global">Global</option><option value="local" disabled={!spaceId}>Local to current Space</option>
-              </select></label>
-              <p className="text-xs">Changing scope is rejected if existing entries would no longer be valid or the name conflicts.</p>
-              <div className="flex gap-3"><button type="button" disabled={!editingTag.name.trim() || (editingTag.scope === "local" && !editingTag.ownerSpaceId)} onClick={async () => {
-                try { await api.tags.update(editingTag.id, { name: editingTag.name, color: editingTag.color, scope: editingTag.scope ?? "global", ownerSpaceId: editingTag.ownerSpaceId ?? null }); await refreshTags(); setEditingTag(null); }
+              <p className="text-xs">Name and scope edits are paused pending Unicode 15.1 database enforcement. Color and reusable settings remain editable.</p>
+              <div className="flex gap-3"><button type="button" onClick={async () => {
+                try { await api.tags.update(editingTag.id, { color: editingTag.color }); await refreshTags(); setEditingTag(null); }
                 catch (error) { alert(error instanceof Error ? error.message : "Could not update tag."); }
-              }}>Save tag</button><button type="button" onClick={() => setEditingTag(null)}>Cancel</button></div>
+              }}>Save color</button><button type="button" onClick={() => setEditingTag(null)}>Cancel</button></div>
             </div>
           )}
 

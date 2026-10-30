@@ -46,35 +46,49 @@ This audit does not claim that pre-existing functionality is broken. In particul
 
 - Web CI now runs lint, typecheck, build and the Playwright suite on GitHub-hosted runners; it uses intercepted browser API fixtures and a dummy database URL. A representative web GFM rendering fixture was added. Its CI result is pending; it does not demonstrate Android rendering parity.
 
-## Scope foundation increment
+## Local/Global tag-scope resume — current state
 
-An additive Room 1→2 migration and PostgreSQL SQL migration add reserved scope
-and owning-space columns; all old tags default to global independently of
-`reusable`, and existing records/links and case-variant legacy names are left
-intact. Android includes a real version-1 database migration test; web CI runs
-an isolated transactional PostgreSQL fixture. These tests are pending CI at
-this commit. Local scope is deliberately not exposed yet: creating local tags
-before scoped uniqueness, deletion and portable cross-platform backups are in
-place would risk data loss. PostgreSQL deployment requires applying the reviewed
-migration first; it is not run by CI against production.
+This increment adds Room v1→v3 and PostgreSQL columns/defaults, owner-aware
+read/filter/attachment behavior, management labels, outlined pill styling, and
+version-2 scope serialization. Legacy IDs, names, `reusable` values and links
+remain unchanged; no legacy row is automatically merged or deleted. Same-name
+Local rows in separate Spaces are represented and tested in disposable Room
+fixtures, but creation is not enabled.
 
-Outlined compact tag presentation now also covers additional dashboard,
-picker and settings surfaces on both platforms. This is not scope-aware UI.
+**Identity is the release blocker.** The policy remains Unicode 15.1 full default
+case-folding with whitespace collapse and NFC before/after folding. Android
+SQLite `lower()` and PostgreSQL locale casing do not guarantee that policy, and
+the experimental SQL prototype is too slow. Consequently, database guards now
+reject all new tag inserts and any name/scope/owner mutation on both platforms.
+Metadata edits (`color`, `reusable`) and explicit deletion still work. The
+PostgreSQL global exact-name constraint is retained; migration `0002` is a
+no-op barrier. No production migration was applied.
 
-## Scoped-backup increment (in progress)
+Version-2 exports preserve scope and owner. Imports reuse only an identical tag
+ID and definition already present; unknown IDs or Local owner remapping fail
+closed, transactionally on web and before writes on Android. This means ordinary
+cross-platform backups with different tag IDs cannot yet import tag-bearing
+records. The boundary is tested and reported; it is not full backup
+compatibility.
 
-Version-2 exports now carry `scope` and `ownerSpaceId` in tag records. Both
-importers validate local ownership and map owners through imported Spaces;
-web imports use a PostgreSQL transaction and Android imports use the existing
-Room transaction. Version-1 tags without scope default to global. Conflicting
-or ambiguous names are rejected rather than silently merged. In particular,
-backups containing legacy case-variant duplicate names cannot yet be imported;
-existing database duplicates remain untouched. Imported local tags are limited
-to their owner in editor/filter/settings surfaces, and cross-Space attachment
-is rejected. This is not complete scope support: explicit Local/Global creation,
-scope editing, database uniqueness, full v1 edge-case compatibility and
-cross-platform round-trip verification are still pending.
+Scope-aware suggestions/filtering show Globals everywhere and Local tags only
+in their owner Space; `reusable` controls suggestions independently. Settings
+shows every Local tag with its Space name. UI scope selection has no default,
+but create buttons remain disabled with the reason visible. Name/scope editing
+is read-only; color/reusable edits remain available. Settings reports approximate
+runtime-lowercase candidate groups with all IDs and explicitly warns that this is
+not the Unicode 15.1 collision report. Legacy rows stay untouched; a complete
+Unicode-aware conflict report is part of the blocker.
 
-Both PostgreSQL migrations must be applied before deploying this code; no
-production migration is run here. The second removes the old global name
-constraint and does not establish the required scoped uniqueness guarantee.
+The experimental workflow no longer runs for unrelated production tag-data
+changes; it remains scoped to its isolated experiment files and fixtures. API 30
+picker behavior/investigation remains untouched.
+
+## Next decision
+
+Choose one bounded path before enabling writes: (1) fund/approve a pinned,
+database-verifiable Unicode implementation on Android SQLite and PostgreSQL;
+(2) explicitly revise the product identity policy/repertoire; or (3) keep
+creation, identity edits and cross-platform tag remapping disabled while
+shipping the safe read/scope foundation. See `docs/tag-name-policy.md` for
+trade-offs. No further open-ended identity research is underway.

@@ -52,7 +52,6 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const [closing, setClosing] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [importingFile, setImportingFile] = useState(false);
-  const [creatingTag, setCreatingTag] = useState(false);
 
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -168,7 +167,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   };
 
   const handleClose = async () => {
-    if (closing || uploadingCover || importingFile || creatingTag) return;
+    if (closing || uploadingCover || importingFile) return;
     setClosing(true);
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
@@ -229,7 +228,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   };
 
   const handleDelete = async () => {
-    if (closing || uploadingCover || importingFile || creatingTag) return;
+    if (closing || uploadingCover || importingFile) return;
     if (!confirm("Delete this entry permanently?")) return;
     setClosing(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -375,7 +374,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     setPreviewOpen(false);
     previewButtonRef.current?.focus();
   };
-  const processing = uploadingCover || importingFile || creatingTag;
+  const processing = uploadingCover || importingFile;
   const displayedSaveState = processing && saveState !== "error" ? "saving" : saveState;
 
   return (
@@ -457,7 +456,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
         <div className="editor-paper">
           <div className="editor-meta">
             <input autoCapitalize="sentences" autoCorrect="on" value={title} disabled={closing} onChange={(event) => updateTitle(event.target.value)} placeholder="Entry title / manual name" aria-label="Entry title" className="editor-title" />
-            <div className="editor-tags"><TagPicker spaceId={entry.spaceId} selected={entryTags} onChange={handleTagsChange} onPendingChange={setCreatingTag} /></div>
+            <div className="editor-tags"><TagPicker spaceId={entry.spaceId} selected={entryTags} onChange={handleTagsChange} /></div>
           </div>
           <div className="editor-writing">
             {highlightedContent && <div ref={highlightRef} className="editor-highlight" aria-hidden="true">{highlightedContent}</div>}

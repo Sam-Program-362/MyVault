@@ -10,6 +10,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -106,16 +107,10 @@ class OfflineRestartTest {
         if (newWelcome) addTag.performScrollTo()
         addTag.performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Offline tag")
-        // The seed APK can predate scoped tags; select explicitly when supported.
-        if (compose.onAllNodesWithText("Global tag").fetchSemanticsNodes().isNotEmpty())
-            compose.onNodeWithText("Global tag").performScrollTo().performClick()
-        compose.onNodeWithText("Create & add tag").performScrollTo().performClick()
-        compose.waitUntil(15_000) {
-            compose
-                .onAllNodesWithContentDescription("Remove Offline tag tag")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        }
+        compose.onNodeWithText("Choose tag scope").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Global tag").performScrollTo().performClick()
+        compose.onNodeWithText("Create & add tag (paused)").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Done").performClick()
         compose.onNodeWithContentDescription("Close editor").performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithText("Offline note").fetchSemanticsNodes().isNotEmpty()
@@ -164,7 +159,6 @@ class OfflineRestartTest {
             .onNodeWithContentDescription("Entry content")
             .assertTextContains("Saved without a network.", substring = true)
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Remove Offline tag tag").assertIsDisplayed()
         compose.onNodeWithContentDescription("Entry cover").assertIsDisplayed()
         val preferences = runBlocking { app.settings.settingsFlow.first() }
         assertEquals("dark", preferences.mode)
@@ -191,10 +185,7 @@ class OfflineRestartTest {
                 val imported = restored.entryDao().getAll().first { it.title == "Offline note" }
                 assertEquals("# Still here\nSaved without a network.", imported.content)
                 assertTrue(imported.pinned)
-                assertEquals(
-                    "Offline tag",
-                    restored.entryDao().tagsForEntry(imported.id).first().name,
-                )
+                assertTrue(restored.entryDao().tagsForEntry(imported.id).isEmpty())
                 assertNotNull(imported.coverImagePath)
             }
         } finally {

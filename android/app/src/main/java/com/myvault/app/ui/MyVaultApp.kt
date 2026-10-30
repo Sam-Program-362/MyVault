@@ -1,5 +1,6 @@
 package com.myvault.app.ui
 
+import com.myvault.app.data.isVisibleInSpace
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -201,7 +202,7 @@ fun MyVaultApp(vault: VaultViewModel) {
                     }
                     if (showTags)
                         TagPickerDialog(
-                            tags.filter { it.scope != "local" || it.ownerSpaceId == entry.spaceId },
+                            tags.filter { it.isVisibleInSpace(entry.spaceId) },
                             selectedTags,
                             onDismiss = { showTags = false },
                             onSelect = { tag ->
@@ -377,7 +378,8 @@ fun MyVaultApp(vault: VaultViewModel) {
                     }
                     SettingsScreen(
                         settings,
-                        tags.filter { it.scope != "local" || it.ownerSpaceId == selectedSpaceId },
+                        tags,
+                        spaces = spaces,
                         onBack = { screen = settingsReturn },
                         onUpdate = vault::updateSettings,
                         onChooseWallpaper = { wallpaperPicker.launch(arrayOf("image/*")) },

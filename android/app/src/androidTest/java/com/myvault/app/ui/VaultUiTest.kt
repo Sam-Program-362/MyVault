@@ -93,65 +93,15 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Add tag…", substring = true).performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
-        compose.onNodeWithText("Create & add tag").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Choose tag scope").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Local tag").assertIsDisplayed()
+        compose.onNodeWithText("Global tag").assertIsDisplayed()
+        val createTagButton = compose.onNodeWithText("Create & add tag (paused)").performScrollTo()
+        createTagButton.assertIsNotEnabled()
         compose.onNodeWithText("Global tag").performScrollTo().performClick()
-        val createTagButton = compose.onNodeWithText("Create & add tag").performScrollTo()
-        var busyBeforeTagClick = false
-        compose.runOnIdle {
-            busyBeforeTagClick =
-                ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
-        }
-        createTagButton.performClick()
-        var createTagErrorSeen = false
-        try {
-            compose.waitUntil(15_000) {
-                if (
-                    compose
-                        .onAllNodesWithText("Couldn’t create tag.", substring = true)
-                        .fetchSemanticsNodes()
-                        .isNotEmpty()
-                )
-                    createTagErrorSeen = true
-                compose
-                    .onAllNodesWithContentDescription("Remove Journal tag")
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
-            }
-        } catch (failure: Throwable) {
-            // Report only boolean fixture state, never contents of an existing vault.
-            val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
-            val state = runBlocking {
-                val tag = app.database.tagDao().findByName("Journal")
-                val entry =
-                    app.database.entryDao().getAll().firstOrNull { it.title == "A saved note" }
-                val attached =
-                    entry != null &&
-                        tag != null &&
-                        app.database.entryDao().tagRefsForEntry(entry.id).any { it.tagId == tag.id }
-                "fixtureTagExists=${tag != null}, fixtureEntryExists=${entry != null}, attached=$attached"
-            }
-            val errorVisible =
-                compose
-                    .onAllNodesWithText("Couldn’t create tag.", substring = true)
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
-            val dialogVisible =
-                compose
-                    .onAllNodesWithText("Find or create a tag")
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
-            var busyAtFailure = false
-            compose.runOnIdle {
-                busyAtFailure =
-                    ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
-            }
-            throw AssertionError(
-                "Tag did not appear: $state, errorVisible=$errorVisible, " +
-                    "errorSeen=$createTagErrorSeen, dialogVisible=$dialogVisible, " +
-                    "busyBeforeClick=$busyBeforeTagClick, busyAtFailure=$busyAtFailure",
-                failure,
-            )
-        }
+        createTagButton.assertIsNotEnabled()
+        compose.onNodeWithText("Creation is paused", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Done").performClick()
         compose.onNodeWithContentDescription("Close editor").performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithText("A saved note").fetchSemanticsNodes().isNotEmpty()
@@ -168,7 +118,6 @@ class VaultUiTest {
             .onNodeWithContentDescription("Entry content")
             .assertTextContains("A small Markdown", substring = true)
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Remove Journal tag").assertIsDisplayed()
     }
 
     @Test

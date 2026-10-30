@@ -438,6 +438,11 @@ fun EntryEditorScreen(
                                         fontSize = 12.sp,
                                         modifier = Modifier.padding(start = 12.dp),
                                     )
+                                    Text(
+                                        if (tag.scope == "local") " · Local" else " · Global",
+                                        color = tagTextColor.copy(alpha = 0.7f),
+                                        fontSize = 10.sp,
+                                    )
                                     IconButton(
                                         onClick = { onRemoveTag(tag) },
                                         modifier = Modifier.size(48.dp),

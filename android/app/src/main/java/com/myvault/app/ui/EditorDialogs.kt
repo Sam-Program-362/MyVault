@@ -52,7 +52,7 @@ fun TagPickerDialog(
                 if (query.isBlank()) it.reusable else it.name.contains(query.trim(), ignoreCase = true)
             }
             .take(8)
-    val exact = scope.isNotBlank() && tags.any { it.scope == scope && it.name.equals(query.trim(), true) }
+    val possibleMatch = scope.isNotBlank() && tags.any { it.scope == scope && it.name.equals(query.trim(), true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add tag") },
@@ -104,7 +104,8 @@ fun TagPickerDialog(
                     HorizontalDivider()
                     Text("Create “${query.trim()}”", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     TagScopeChoices(scope, true) { scope = it }
-                    if (exact) Text("A tag with this name already exists in this scope.", fontSize = 12.sp)
+                    if (possibleMatch) Text("Possible match only; Unicode-equivalent names may differ.", fontSize = 12.sp)
+                    Text("Creation is paused until both databases can enforce the Unicode 15.1 name policy.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                     ColorChoices(color) { color = it }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
@@ -115,7 +116,7 @@ fun TagPickerDialog(
                         )
                         Text("Save for future entries", fontSize = 13.sp)
                     }
-                    TextButton(onClick = { onCreate(query, color, reusable, scope) }, enabled = scope.isNotBlank() && !exact) { Text("Create & add tag") }
+                    TextButton(onClick = { onCreate(query, color, reusable, scope) }, enabled = false) { Text("Create & add tag (paused)") }
                 }
             }
         },

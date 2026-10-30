@@ -1,59 +1,78 @@
-# Tag-name identity: proposed migration, not yet implemented
+# Tag-name identity blocker: Unicode 15.1
 
-This proposal is not enforced by the present application or databases; do not
-interpret the present scoped-name guards as Unicode-safe. Stock SQLite's
-`lower()` folds ASCII only, while Kotlin, JavaScript and PostgreSQL use
-separate Unicode versions and algorithms. A shared derived key provided only
-by clients is insufficient: direct or concurrent database writes could lie
-about it. In particular, a new unique index on that key would also fail or
-force loss of existing colliding rows. Neither is acceptable.
+The agreed Unicode 15.1 comparison rule is **not enforced by the application or
+by either database**. This branch adds scope metadata and a migration, but all
+new tag inserts and name/scope/owner changes now fail closed. Do not interpret
+scope visibility, application checks, or the legacy exact-name PostgreSQL
+constraint as Unicode-safe scoped uniqueness. Existing tag rows are not
+normalized or rewritten.
 
-## Proposed versioned rule
+Stock SQLite `lower()` folds ASCII only. PostgreSQL's locale and Unicode tables
+are not guaranteed to match the agreed rule. A key calculated only in Kotlin or
+JavaScript is client-only and can be bypassed by direct/concurrent DB writes; it
+is not sufficient. The isolated SQL prototype is far too slow for integration.
 
-For comparisons only, use Unicode 15.1 data, locale-independent default full
+## Agreed comparison rule
+
+For comparisons only: use Unicode 15.1 data, locale-independent default full
 case folding, canonical (NFC) normalization, and the Unicode 15.1 White_Space
 property. Convert each maximal run of White_Space characters to one U+0020,
 remove leading/trailing U+0020, normalize to NFC, full-case-fold, and normalize
 to NFC again. Reject an empty result for new names. Keep the original display
 name verbatim. Diacritics are significant: `café` differs from `cafe`; composed
 and decomposed `café` compare equal. `Straße` and `STRASSE` compare equal;
-Greek sigma and final sigma compare equal; Cyrillic case variants compare equal.
-Do not use locale-specific Turkic casing. Scope is `(global, null)` or
+Greek sigma and final sigma compare equal; Cyrillic case variants compare
+equal. Do not use locale-specific Turkic casing. Scope is `(global, null)` or
 `(local, owner Space ID)`. `reusable` does not participate in identity.
 
-## Safe migration strategy
+## Current safe behavior
 
-1. Build one pinned implementation and test vector corpus, used by Android,
-   web, and database enforcement. Verify the chosen SQLite integration can
-   compute and verify keys on *every connection*, including Room migrations,
-   direct SQL writes, background access and concurrent writes; a client-supplied
-   unvalidated key is not adequate. PostgreSQL must use the same pinned tables,
-   not database-locale `lower()`. Exact packaging for SQLite is still unresolved.
-2. In an isolated clone, calculate keys for existing names without changing tag
-   IDs, names, ownership, `reusable`, entry links, or Space records. Group by
-   scope and computed key; report every collision with all IDs and affected
-   entry counts. A Space ID must remain part of each Local namespace.
-3. Keep all colliding legacy rows and associations. Preserve display names;
-   allow edits that leave their scope/key unchanged, but reject creation or
-   movement into an occupied namespace. Surface collision IDs and associations
-   so the user can explicitly rename or otherwise resolve individual records;
-   never select a winner or automatically merge/delete tags.
-4. Add a tracked, transactional migration and guards only after the same
-   implementation is verifiably available to both DB engines. Concurrency
-   checks and entry attachment/ownership guards must remain serialized. Include
-   rollback tests, cross-platform imports, existing duplicates, exact and case
-   variants, normalization, whitespace, accented and non-Latin scripts.
-5. Verify on isolated PostgreSQL and Room v1→current upgrade fixtures before
-   requesting approval to deploy anything. Do not apply migration to production.
+- Room v1→v3 and PostgreSQL scope columns preserve legacy IDs, display names,
+  `reusable`, and every entry-tag relationship. Legacy tags default Global.
+- Database triggers reject all tag inserts and identity mutations; color and
+  reusable metadata edits remain available. Existing duplicate groups remain
+  untouched. No automatic merge, winner selection, rename, or deletion occurs.
+- Space-aware suggestions, filters, displays, and attachment validation honor
+  scope when such rows exist. `reusable` remains independent.
+- Version-2 exports include scope. Imports that would create or remap tag
+  identities fail before committing; cross-platform tag import is incomplete.
+- PostgreSQL retains the old exact-name constraint. It is intentionally not
+  dropped until a correct replacement is available.
 
-The shared fixture includes combining-mark reordering before case folding (Greek
-U+0345), supplementary-plane case variants, accent distinctions, locale-neutral
-Turkic I, non-Latin names, whitespace, scope, and reusable independence.
-Correct canonical ordering is essential: mapping each original code point to its
-folded value independently before normalization can turn canonically equivalent
-Greek strings into different keys. These vectors are reference cases, not yet
-Android, web or database conformance tests.
+## Decision required to unblock writes
 
-No schema migration or normalization implementation has been added by this
-proposal. The user-visible conflict-resolution interface and cross-engine
-conformance tests remain outstanding.
+1. **Recommended:** keep the fail-closed behavior until one pinned identity
+   implementation is verifiably callable and enforced from every Android SQLite
+   connection and every PostgreSQL write path, including migrations/imports and
+   direct SQL. This likely requires a packaged SQLite function plus matching
+   PostgreSQL function/extension or another database-verifiable design, with
+   performance and concurrency proofs before enabling writes.
+2. **Explicit policy change:** approve engine-native identity semantics or a
+   restricted name repertoire. This can be faster, but it changes the agreed
+   Unicode 15.1 behavior and must be an explicit product decision, never a
+   silent fallback.
+3. **Keep the current boundary:** ship scope metadata, safe reads/filtering and
+   identity-preserving management only; leave create/name/scope edits and
+   cross-platform tag import disabled.
+
+No further research is underway in this branch. The next step is a product
+choice between these bounded options, not another prototype cycle.
+
+## Why the first SQL prototype was rejected
+
+The experimental SQL view ran for tens of seconds per common write on API 24;
+its experiment-only 24-code-point cap does not make it suitable for production.
+Do not integrate it, use a client-only key, or use the intermittent Requery
+scalar-function workaround.
+
+## Migration safety and future acceptance tests
+
+Before enabling writes, pin the implementation and test the shared Unicode 15.1
+vectors (including combining-mark reordering, supplementary-plane case pairs,
+accent distinctions, locale-neutral Turkic I, non-Latin scripts, whitespace,
+scope and reusable independence) through the actual Android and PostgreSQL DB
+write APIs. In isolated legacy databases, report every identity collision with
+all IDs and linked-entry counts; preserve each row/link and require explicit
+resolution. Verify API 24/29-or-supported versions, desktop SQLite, PostgreSQL,
+concurrent writers, v1/v2 import, and Room/Drizzle migrations. These finite
+vectors are necessary evidence, not an exhaustive Unicode proof.

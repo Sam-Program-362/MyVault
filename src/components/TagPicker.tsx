@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { Check, Plus, X } from "lucide-react";
 import { useAppData } from "@/context/AppDataContext";
-import { api } from "@/lib/api";
 import type { Tag } from "@/lib/types";
+import { tagVisibleInSpace } from "@/lib/tag-visibility";
 
 const COLOR_CHOICES = [
   "#6366f1",
@@ -23,29 +23,27 @@ interface Props {
   selected: Tag[];
   spaceId: string;
   onChange: (tags: Tag[]) => void;
-  onPendingChange: (pending: boolean) => void;
 }
 
-export default function TagPicker({ selected, spaceId, onChange, onPendingChange }: Props) {
-  const { tags, refreshTags } = useAppData();
+export default function TagPicker({ selected, spaceId, onChange }: Props) {
+  const { tags } = useAppData();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [newColor, setNewColor] = useState(COLOR_CHOICES[0]);
   const [saveForFuture, setSaveForFuture] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [scope, setScope] = useState<"local" | "global" | "">("");
 
   const suggestions = useMemo(() => {
     const selectedIds = new Set(selected.map((t) => t.id));
     const q = query.trim().toLowerCase();
     return tags
-      .filter((t) => t.scope !== "local" || t.ownerSpaceId === spaceId)
+      .filter((tag) => tagVisibleInSpace(tag, spaceId))
       .filter((t) => !selectedIds.has(t.id))
       .filter((t) => (q ? t.name.toLowerCase().includes(q) : t.reusable))
       .slice(0, 8);
   }, [tags, query, selected, spaceId]);
 
-  const exactMatch = scope !== "" && tags.some((t) => (t.scope ?? "global") === scope && (scope === "global" || t.ownerSpaceId === spaceId) && t.name.toLowerCase() === query.trim().toLowerCase());
+  const possibleMatch = scope !== "" && tags.some((t) => (t.scope ?? "global") === scope && (scope === "global" || t.ownerSpaceId === spaceId) && t.name.toLowerCase() === query.trim().toLowerCase());
 
   const addExisting = (tag: Tag) => {
     onChange([...selected, tag]);
@@ -56,28 +54,8 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
     onChange(selected.filter((t) => t.id !== id));
   };
 
-  const createTag = async () => {
-    const name = query.trim();
-    if (!name || !scope || exactMatch || creating) return;
-    setCreating(true);
-    onPendingChange(true);
-    try {
-      const created = await api.tags.create({ name, scope, ownerSpaceId: scope === "local" ? spaceId : null, color: newColor, textColor: "#ffffff", reusable: saveForFuture });
-      // Attach the new tag before refreshing the shared tag list.
-      onChange([...selected, created]);
-      setQuery("");
-      setScope("");
-      await refreshTags();
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "Couldn’t create the tag.");
-    } finally {
-      setCreating(false);
-      onPendingChange(false);
-    }
-  };
-
   return (
-    <div className="relative" aria-busy={creating} inert={creating}>
+    <div className="relative" >
       <div className="tag-picker-row">
         {selected.map((tag) => (
           <span
@@ -86,6 +64,7 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
             style={{ borderColor: tag.color, backgroundColor: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
           >
             {tag.name}
+            <span className="text-[10px] opacity-60">{tag.scope === "local" ? "Local" : "Global"}</span>
             <button type="button" onClick={() => removeTag(tag.id)} aria-label={`Remove ${tag.name} tag`} className="opacity-80 hover:opacity-100">
               <X size={11} />
             </button>
@@ -96,10 +75,7 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && query.trim() && !exactMatch) {
-              e.preventDefault();
-              createTag();
-            }
+            if (e.key === "Enter") e.preventDefault();
           }}
           placeholder="Add tag…"
           aria-label="Add tag"
@@ -139,13 +115,14 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
           {query.trim() && (
             <div className="mt-3 border-t border-black/10 pt-3 dark:border-white/10">
               <p className="mb-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-                Create new tag “{query.trim()}”
+                New tag “{query.trim()}” (creation paused)
               </p>
               <fieldset className="mb-2 flex gap-3 text-xs"><legend>Tag scope (required)</legend>
                 <label><input type="radio" name="tag-scope" value="local" checked={scope === "local"} onChange={() => setScope("local")} /> Local to this Space</label>
                 <label><input type="radio" name="tag-scope" value="global" checked={scope === "global"} onChange={() => setScope("global")} /> Global</label>
               </fieldset>
-              {exactMatch && <p role="status" className="text-xs">A tag with this name already exists in this scope. Select it above.</p>}
+              {possibleMatch && <p role="status" className="text-xs">Possible match only; Unicode-equivalent names may differ. Select an existing tag when applicable.</p>}
+              <p role="status" className="text-xs text-amber-700 dark:text-amber-300">Creation is paused until both databases can enforce the Unicode 15.1 name policy.</p>
               <div className="flex flex-wrap gap-1.5">
                 {COLOR_CHOICES.map((c) => (
                   <button
@@ -173,11 +150,11 @@ export default function TagPicker({ selected, spaceId, onChange, onPendingChange
                 Save this tag (color &amp; style) for future entries
               </label>
               <button
-                onClick={createTag}
-                disabled={!scope || exactMatch}
+                onClick={() => {}}
+                disabled
                 className="accent-bg disabled:opacity-40 mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold text-white"
               >
-                <Plus size={13} /> Create &amp; add tag
+                <Plus size={13} /> Create &amp; add tag (paused)
               </button>
             </div>
           )}

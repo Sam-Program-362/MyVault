@@ -15,6 +15,7 @@ import {
 import { useAppData } from "@/context/AppDataContext";
 import { api } from "@/lib/api";
 import type { Entry } from "@/lib/types";
+import { tagVisibleInSpace } from "@/lib/tag-visibility";
 import Wallpaper from "@/components/Wallpaper";
 import SplashOverlay from "@/components/SplashOverlay";
 import EntryEditor from "@/components/EntryEditor";
@@ -161,6 +162,7 @@ export default function AppShell() {
               className="flex items-center gap-1 rounded-full bg-black/5 px-3 py-1.5 text-xs text-neutral-700 dark:bg-white/10 dark:text-neutral-200"
             >
               <TagIcon size={12} /> {tags.find((t) => t.id === tagFilter)?.name ?? "tag"}
+              <span className="opacity-70">{tags.find((t) => t.id === tagFilter)?.scope === "local" ? "Local" : "Global"}</span>
               <X size={12} />
             </button>
           )}
@@ -245,10 +247,10 @@ export default function AppShell() {
 
           {/* Main content */}
           <main className="flex-1 p-4 md:p-6">
-            {tags.filter((t) => t.reusable && (t.scope !== "local" || (!searchAllSpaces && t.ownerSpaceId === currentSpaceId))).length > 0 && (
+            {tags.filter((tag) => tag.reusable && tagVisibleInSpace(tag, currentSpaceId, searchAllSpaces)).length > 0 && (
               <div className="mb-4 flex flex-wrap gap-2">
                 {tags
-                  .filter((t) => t.reusable && (t.scope !== "local" || (!searchAllSpaces && t.ownerSpaceId === currentSpaceId)))
+                  .filter((tag) => tag.reusable && tagVisibleInSpace(tag, currentSpaceId, searchAllSpaces))
                   .map((tag) => (
                     <button
                       key={tag.id}
@@ -260,7 +262,7 @@ export default function AppShell() {
                         color: "inherit",
                       }}
                     >
-                      {tag.name}
+                      {tag.name} <span className="ml-1 opacity-60">{tag.scope === "local" ? "Local" : "Global"}</span>
                     </button>
                   ))}
               </div>
@@ -324,7 +326,7 @@ export default function AppShell() {
                             className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
                             style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                           >
-                            {tag.name}
+                            {tag.name} <span className="opacity-60">{tag.scope === "local" ? "Local" : "Global"}</span>
                           </span>
                         ))}
                         <span className="ml-auto text-[10px] text-neutral-400">
@@ -356,7 +358,7 @@ export default function AppShell() {
         />
       )}
 
-      {settingsOpen && <SettingsPanel spaceId={currentSpaceId} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

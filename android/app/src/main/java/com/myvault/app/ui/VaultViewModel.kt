@@ -238,24 +238,11 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         }
 
     fun createTag(name: String, color: String, reusable: Boolean, scope: String, spaceId: String?, attachToEditor: Boolean) {
-        val cleanName = name.trim()
-        if (cleanName.isEmpty() || scope !in listOf("global", "local") || (scope == "local" && spaceId == null)) {
+        if (name.isBlank() || scope !in listOf("global", "local") || (scope == "local" && spaceId == null)) {
             message("Enter a name and choose a valid tag scope.")
             return
         }
-        action("Couldn’t create tag.") {
-            db.withTransaction {
-                val tag = TagEntity(id = UUID.randomUUID().toString(), name = cleanName, color = color,
-                    textColor = "#FFFFFF", reusable = reusable, scope = scope,
-                    ownerSpaceId = if (scope == "local") spaceId else null)
-                tagsDao.upsert(tag)
-                if (attachToEditor) {
-                    val entry = currentWriter.value?.state?.value?.value ?: error("Entry is no longer open.")
-                    require(scope != "local" || entry.spaceId == spaceId) { "Tag belongs to another Space." }
-                    entriesDao.addTagRef(EntryTagCrossRef(entry.id, tag.id))
-                }
-            }
-        }
+        message("Tag creation is paused until Unicode 15.1 name identity can be enforced by Android SQLite and PostgreSQL. Existing tags remain available.")
     }
 
     fun removeTag(tag: TagEntity) =
@@ -264,11 +251,13 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             entriesDao.removeTagRef(entryId, tag.id)
         }
 
-    fun editTag(tag: TagEntity, name: String, color: String, scope: String, ownerSpaceId: String?) =
-        action("Couldn’t update tag. The name, Space, or existing entry associations conflict.") {
-            require(name.isNotBlank() && (scope == "global" && ownerSpaceId == null || scope == "local" && ownerSpaceId != null)) { "Invalid tag scope." }
-            tagsDao.update(tag.copy(name = name.trim(), color = color, scope = scope, ownerSpaceId = ownerSpaceId))
+    fun editTag(tag: TagEntity, name: String, color: String, scope: String, ownerSpaceId: String?) {
+        if (name.trim() != tag.name || scope != tag.scope || ownerSpaceId != tag.ownerSpaceId) {
+            message("Tag name and scope changes are paused until Unicode 15.1 uniqueness is enforced by Android SQLite and PostgreSQL.")
+            return
         }
+        action("Couldn’t update tag.") { tagsDao.update(tag.copy(color = color)) }
+    }
 
     fun setTagReusable(tag: TagEntity, reusable: Boolean) =
         action("Couldn’t update tag.") {

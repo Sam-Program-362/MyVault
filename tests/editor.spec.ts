@@ -28,7 +28,6 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
   let failedField: string | null = null;
   let fieldFailuresRemaining = 0;
   let uploadDelay = 0;
-  let tagCreateDelay = 0;
   let deleteFailuresRemaining = 0;
   let patchDelay = 80;
 
@@ -43,12 +42,7 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
     }
     if (pathname === "/api/spaces") return json(spaces);
     if (pathname === "/api/tags") {
-      if (method === "POST") {
-        if (tagCreateDelay) await new Promise((resolve) => setTimeout(resolve, tagCreateDelay));
-        const tag = { ...reusableTag, ...request.postDataJSON(), id: `tag-${tags.length + 1}` };
-        tags.push(tag);
-        return json(tag, 201);
-      }
+      if (method === "POST") return json({ error: "Unicode 15.1 tag identity is not yet enforceable on both databases." }, 409);
       return json(tags);
     }
     if (pathname === "/api/entries") {
@@ -105,7 +99,6 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
     failDrafts: (count: number) => { draftFailuresRemaining = count; },
     failField: (field: string, count: number) => { failedField = field; fieldFailuresRemaining = count; },
     delayUpload: (milliseconds: number) => { uploadDelay = milliseconds; },
-    delayTagCreation: (milliseconds: number) => { tagCreateDelay = milliseconds; },
     failDeletes: (count: number) => { deleteFailuresRemaining = count; },
     delayPatches: (milliseconds: number) => { patchDelay = milliseconds; },
   };
@@ -401,7 +394,7 @@ test.describe("desktop editor", () => {
     expect(vault.entries[0].coverImage).toMatch(/^data:image/);
   });
 
-  test("scoped suggestions stay in their Space and creation requires an explicit scope", async ({ page }) => {
+  test("scope-qualified suggestions stay in the entry Space and creation fails closed", async ({ page }) => {
     const vault = await mockVault(page);
     vault.tags.push({ ...reusableTag, id: "local-a", name: "Local A", scope: "local", ownerSpaceId: "space-1" } as typeof reusableTag);
     vault.tags.push({ ...reusableTag, id: "local-b", name: "Local B", scope: "local", ownerSpaceId: "space-2" } as typeof reusableTag);
@@ -411,29 +404,31 @@ test.describe("desktop editor", () => {
     await expect(menu.getByRole("button", { name: /Local A/ })).toBeVisible();
     await expect(menu.getByRole("button", { name: /Local B/ })).toHaveCount(0);
     await page.getByLabel("Add tag").fill("New local");
-    const create = page.getByRole("button", { name: "Create & add tag" });
+    const create = page.getByRole("button", { name: /Create & add tag/ });
+    await expect(page.getByLabel("Local to this Space")).not.toBeChecked();
+    await expect(page.getByLabel("Global", { exact: true })).not.toBeChecked();
     await expect(create).toBeDisabled();
     await page.getByLabel("Local to this Space").check();
-    await expect(create).toBeEnabled();
-    await create.click();
-    await expect(page.getByRole("button", { name: "Remove New local tag" })).toBeVisible();
-    expect(vault.tags.find((tag) => tag.name === "New local")).toMatchObject({ scope: "local", ownerSpaceId: "space-1" });
+    await expect(create).toBeDisabled();
+    await expect(menu.getByText(/Creation is paused until both databases/)).toBeVisible();
+    expect(vault.tags.some((tag) => tag.name === "New local")).toBe(false);
+    expect(vault.entries[0].tags).toEqual([]);
   });
 
-  test("waits for a new tag to be created and attached before closing", async ({ page }) => {
+  test("Global and applicable Local tags remain attachable; reusable is independent", async ({ page }) => {
     const vault = await mockVault(page);
-    vault.delayTagCreation(700);
+    vault.tags[0].reusable = false;
+    vault.tags.push({ ...reusableTag, id: "local-a", name: "Local A", scope: "local", ownerSpaceId: "space-1", reusable: true } as typeof reusableTag);
+    vault.tags.push({ ...reusableTag, id: "local-b", name: "Local B", scope: "local", ownerSpaceId: "space-2", reusable: true } as typeof reusableTag);
     await openNewEntry(page);
-    await page.getByLabel("Add tag").fill("Slow tag");
-    await expect(page.getByRole("button", { name: "Create & add tag" })).toBeDisabled();
-    await page.getByLabel("Global", { exact: true }).check();
-    await page.getByRole("button", { name: "Create & add tag" }).click();
-    await expect(page.getByRole("button", { name: "Close editor" })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "Remove Slow tag tag" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Close editor" })).toBeEnabled();
-    await page.getByRole("button", { name: "Close editor" }).click();
-    await expect(page.locator(".entry-editor")).toBeHidden();
-    expect(vault.entries[0].tags.map((tag) => tag.name)).toEqual(["Slow tag"]);
+    await page.getByLabel("Add tag").focus();
+    const menu = page.locator(".tag-picker-menu");
+    await expect(menu.getByRole("button", { name: /Ideas.*Global/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /Local A.*Local/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /Local B.*Local/ })).toHaveCount(0);
+    await menu.getByRole("button", { name: /Local A.*Local/ }).click();
+    await expect(page.getByRole("button", { name: "Remove Local A tag" })).toBeVisible();
+    expect(vault.tags.find((tag) => tag.id === "tag-1")?.reusable).toBe(false);
   });
 
   test("a failed delete does not discard an unsaved draft", async ({ page }) => {
