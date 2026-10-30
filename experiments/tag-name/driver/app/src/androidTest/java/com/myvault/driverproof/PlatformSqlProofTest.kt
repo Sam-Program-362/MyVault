@@ -117,6 +117,7 @@ class PlatformSqlProofTest {
             catch (_: android.database.sqlite.SQLiteException) { }
             try { exec("INSERT INTO n(id,name) VALUES(4,'   ')"); fail("Expected empty key rejection") }
             catch (_: android.database.sqlite.SQLiteException) { }
+            exec("INSERT INTO n(id,name) VALUES(43,'${"x".repeat(128)}')")
             try { exec("INSERT INTO n(id,name) VALUES(42,'${"x".repeat(129)}')"); fail("Expected the prototype length limit") }
             catch (e: android.database.sqlite.SQLiteException) { assertTrue(e.message.orEmpty().contains("128")) }
             val nulInsert = db.compileStatement("INSERT INTO n(id,name) VALUES(?,?)")
@@ -139,7 +140,7 @@ class PlatformSqlProofTest {
             catch (_: android.database.sqlite.SQLiteException) { }
             db.rawQuery("SELECT count(*) FROM pending_identity",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(0,c.getInt(0)) }
             db.rawQuery("SELECT count(*) FROM links",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(2,c.getInt(0)) }
-            db.rawQuery("SELECT count(*) FROM n",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(5,c.getInt(0)) }
+            db.rawQuery("SELECT count(*) FROM n",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(6,c.getInt(0)) }
         }
     }
 }

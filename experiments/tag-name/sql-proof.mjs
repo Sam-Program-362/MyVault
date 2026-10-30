@@ -103,13 +103,19 @@ assert.throws(()=>sqlite.exec("INSERT INTO n(id,name) VALUES(3,'CAFÉ')"),/colli
 await assert.rejects(pg.exec("INSERT INTO n(id,name) VALUES(3,'CAFÉ')"),/collision/);
 assert.throws(()=>sqlite.exec("INSERT INTO n(id,name) VALUES(4,'   ' )"),/empty/);
 await assert.rejects(pg.exec("INSERT INTO n(id,name) VALUES(4,'   ' )"),/empty/);
-const rejectEmbeddedNul = name => { if(name.includes('\0')) throw new Error('tag name contains U+0000; embedded NUL is not supported'); };
+const validateTagInput = name => {
+ if(name.includes('\0')) throw new Error('tag name contains U+0000; embedded NUL is not supported');
+ if([...name].length>128) throw new Error('tag name exceeds 128 Unicode code points');
+};
 const nulName='a\0b';
-assert.throws(()=>rejectEmbeddedNul(nulName),/U\+0000/);
+assert.throws(()=>validateTagInput(nulName),/U\+0000/);
 assert.throws(()=>sqlite.prepare('INSERT INTO n(id,name) VALUES(?,?)').run(40,nulName),/embedded NUL/);
 const pgBeforeNul=(await pg.query('SELECT count(*)::int AS c FROM n')).rows[0].c;
-assert.throws(()=>rejectEmbeddedNul(nulName),/U\+0000/);
+assert.throws(()=>validateTagInput(nulName),/U\+0000/);
 assert.equal((await pg.query('SELECT count(*)::int AS c FROM n')).rows[0].c,pgBeforeNul);
+assert.throws(()=>validateTagInput('x'.repeat(129)),/128 Unicode code points/);
+assert.throws(()=>sqlite.prepare('INSERT INTO n(id,name) VALUES(?,?)').run(42,'x'.repeat(129)),/128 code points/);
+await assert.rejects(pg.exec(`INSERT INTO n(id,name) VALUES(42,'${'x'.repeat(129)}')`),/128 code points/);
 console.log('PASS NUL rule: SQLite rejects the direct SQL write; shared persistence-boundary validation rejects before PostgreSQL text binding.');
 for (const sql of ["UPDATE n SET reusable=0 WHERE id=1", "INSERT INTO n(id,name,scope,owner,reusable) VALUES(5,'CAFÉ','local','space-a',0)", "INSERT INTO n(id,name,scope,owner,reusable) VALUES(6,'CAFÉ','local','space-b',1)"]) {sqlite.exec(sql); await pg.exec(sql);}
 assert.throws(()=>sqlite.exec("INSERT INTO n(id,name,scope,owner,reusable) VALUES(7,'CAFÉ','local','space-a',1)"),/collision/);
