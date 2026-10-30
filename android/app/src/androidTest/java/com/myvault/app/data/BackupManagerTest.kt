@@ -155,6 +155,41 @@ class BackupManagerTest {
     }
 
     @Test
+    fun legacyAmbiguousFixtureFailsPreciselyWithoutChangingExistingIdentitiesOrLinks() = runBlocking {
+        target.spaceDao().upsert(SpaceEntity(id = "existing-space", name = "Existing"))
+        target.tagDao().upsert(TagEntity(id = "existing-tag", name = "Saved", reusable = false))
+        target.entryDao().upsert(EntryEntity(id = "existing-entry", spaceId = "existing-space"))
+        target.entryDao().addTagRef(EntryTagCrossRef("existing-entry", "existing-tag"))
+        val file = File(tempDir, "legacy-v1.json")
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().context.assets
+            .open("legacy-v1-ambiguous.json").use { input -> file.outputStream().use { input.copyTo(it) } }
+        val error = try {
+            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), false)
+            null
+        } catch (e: IllegalArgumentException) { e }
+        assertNotNull(error)
+        assertTrue(error!!.message!!.contains("Ambiguous imported tags named", ignoreCase = true))
+        assertEquals(listOf("existing-space"), target.spaceDao().getAll().map { it.id })
+        assertEquals(listOf("existing-tag"), target.tagDao().getAll().map { it.id })
+        assertFalse(target.tagDao().getAll().single().reusable)
+        assertEquals(listOf("existing-tag"), target.entryDao().tagRefsForEntry("existing-entry").map { it.tagId })
+        assertEquals(listOf("existing-entry"), target.entryDao().getAll().map { it.id })
+    }
+
+    @Test
+    fun legacyMissingOptionalTagFieldsUseDefaults() = runBlocking {
+        val file = File(tempDir, "legacy-defaults.json")
+        file.writeText("""{"version":1,"tags":[{"id":"old","name":"Defaults"}]}""")
+        BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), false)
+        val tag = target.tagDao().getAll().single()
+        assertEquals("global", tag.scope)
+        assertEquals(null, tag.ownerSpaceId)
+        assertTrue(tag.reusable)
+        assertEquals("#6366F1", tag.color)
+        assertEquals("#FFFFFF", tag.textColor)
+    }
+
+    @Test
     fun externalImagePathsArePreservedAndReported() = runBlocking {
         source.spaceDao().upsert(SpaceEntity(id = "s", name = "Web"))
         source

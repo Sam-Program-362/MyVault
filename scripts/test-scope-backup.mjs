@@ -1,7 +1,7 @@
 // Run against the disposable CI PostgreSQL service, never a production database.
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import pg from 'pg';
 
 const base = process.env.MIGRATION_TEST_DATABASE_URL;
@@ -91,6 +91,56 @@ try {
   assert.equal(res.status, 200, await res.text());
   const legacy = (await client.query("SELECT scope, owner_space_id, reusable FROM tags WHERE name = 'Legacy'" )).rows[0];
   assert.deepEqual(legacy, { scope: 'global', owner_space_id: null, reusable: false });
+  const ambiguous = JSON.parse(await readFile(new URL('../tests/fixtures/legacy-v1-ambiguous.json', import.meta.url), 'utf8'));
+  const beforeAmbiguous = await client.query('SELECT (SELECT count(*) FROM spaces) AS spaces, (SELECT count(*) FROM tags) AS tags, (SELECT count(*) FROM entries) AS entries, (SELECT count(*) FROM entry_tags) AS links');
+  res = await post(ambiguous);
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /Ambiguous imported tags named/i);
+  assert.deepEqual((await client.query('SELECT (SELECT count(*) FROM spaces) AS spaces, (SELECT count(*) FROM tags) AS tags, (SELECT count(*) FROM entries) AS entries, (SELECT count(*) FROM entry_tags) AS links')).rows, beforeAmbiguous.rows);
+  // An ID-less legacy link must not be resolved by picking the last of two IDs.
+  ambiguous.entries[0].tags = [{ name: 'ideas' }];
+  res = await post(ambiguous);
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /Ambiguous legacy tag.*has no ID/i);
+  const beforeDefaults = (await client.query('SELECT count(*) FROM tags')).rows[0].count;
+  res = await post({ version: 1, spaces: [], tags: [{ id: 'default', name: 'Legacy defaults' }], entries: [] });
+  assert.equal(res.status, 200, await res.text());
+  const defaults = (await client.query("SELECT scope, owner_space_id, reusable, lower(color) AS color, lower(text_color) AS text_color FROM tags WHERE name = 'Legacy defaults' ")).rows[0];
+  assert.deepEqual(defaults, { scope: 'global', owner_space_id: null, reusable: true, color: '#6366f1', text_color: '#ffffff' });
+  assert.equal(Number((await client.query('SELECT count(*) FROM tags')).rows[0].count), Number(beforeDefaults) + 1);
+  if (process.env.ANDROID_BACKUP_FILE && process.env.WEB_BACKUP_FILE) {
+    // Exchange actual exporter output, not a reconstructed DTO fixture.
+    await client.query('DELETE FROM entry_tags; DELETE FROM entries; DELETE FROM tags; DELETE FROM spaces');
+    await client.query("INSERT INTO spaces(id,name) VALUES ('00000000-0000-0000-0000-0000000000a1','Cross A'),('00000000-0000-0000-0000-0000000000b1','Cross B')");
+    const androidBytes = await readFile(process.env.ANDROID_BACKUP_FILE, 'utf8');
+    const android = JSON.parse(androidBytes);
+    assert.equal(android.version, 2);
+    res = await fetch(url + '/api/import', { method: 'POST', headers: { 'content-type': 'application/json' }, body: androidBytes });
+    assert.equal(res.status, 200, await res.text());
+    res = await fetch(url + '/api/export');
+    assert.equal(res.status, 200);
+    const webBytes = await res.text();
+    const web = JSON.parse(webBytes);
+    assert.equal(web.version, 2);
+    assert.equal(web.entries.length, 2);
+    assert.equal(web.tags.length, 3);
+    for (const [suffix, destination, reusable] of [['a', '00000000-0000-0000-0000-0000000000a1', false], ['b', '00000000-0000-0000-0000-0000000000b1', true]]) {
+      const entry = web.entries.find((item) => item.title === `Entry ${suffix}`);
+      assert.equal(entry.spaceId, destination);
+      assert.notEqual(entry.id, `source-entry-${suffix}`);
+      assert.equal(entry.tags.length, 2);
+      const local = entry.tags.find((tag) => tag.name === 'Ideas');
+      assert.equal(local.scope, 'local');
+      assert.equal(local.ownerSpaceId, destination);
+      assert.equal(local.reusable, reusable);
+      const global = entry.tags.find((tag) => tag.name === 'Shared');
+      assert.equal(global.scope, 'global');
+      assert.equal(global.ownerSpaceId, null);
+      assert.equal(global.reusable, false);
+    }
+    await writeFile(process.env.WEB_BACKUP_FILE, webBytes);
+    console.log('Actual Android exporter → web importer/exporter validated; web file saved for Android import.');
+  }
   console.log('Scoped and legacy backup API tests passed.');
 } finally {
   if (server?.pid) { try { process.kill(-server.pid, 'SIGTERM'); } catch {} }

@@ -30,9 +30,19 @@ export async function POST(request: Request) {
       if (Array.isArray(body.spaces)) body.spaces = body.spaces.map((space, index) => ({ ...space, id: space?.id || `legacy-space-${index}` }));
       if (Array.isArray(body.entries)) body.entries = body.entries.map((entry, index) => ({ ...entry, id: entry?.id || `legacy-entry-${index}`, spaceId: entry?.spaceId || "" }));
       const all = [...(Array.isArray(body.tags) ? body.tags : []), ...(Array.isArray(body.entries) ? body.entries.flatMap((e) => Array.isArray(e.tags) ? e.tags : []) : [])];
-      const ids = new Map<string, string>();
-      for (const tag of all) if (tag && typeof tag.name === "string" && tag.id) ids.set(tag.name.toLowerCase(), tag.id);
-      const fix = (tag: ImportTag) => tag && typeof tag.name === "string" ? { ...tag, id: tag.id || ids.get(tag.name.toLowerCase()) || `legacy-name:${tag.name.toLowerCase()}` } : tag;
+      const ids = new Map<string, Set<string>>();
+      for (const tag of all) if (tag && typeof tag.name === "string" && tag.id) {
+        const key = tag.name.toLowerCase();
+        const matches = ids.get(key) ?? new Set<string>();
+        matches.add(tag.id);
+        ids.set(key, matches);
+      }
+      const fix = (tag: ImportTag) => {
+        if (!tag || typeof tag.name !== "string" || tag.id) return tag;
+        const matches = ids.get(tag.name.toLowerCase());
+        if (matches && matches.size > 1) fail(`Ambiguous legacy tag ${tag.name} has no ID; cannot identify its relationship.`);
+        return { ...tag, id: matches?.values().next().value || `legacy-name:${tag.name.toLowerCase()}` };
+      };
       if (Array.isArray(body.tags)) body.tags = body.tags.map(fix);
       if (Array.isArray(body.entries)) body.entries = body.entries.map((entry) => ({ ...entry, tags: Array.isArray(entry.tags) ? entry.tags.map(fix) : entry.tags }));
     }

@@ -120,6 +120,18 @@ PY
 capture_phase before "$baseline" || exit 1
 capture_phase after "$current" || exit 1
 
+# CI artifacts are not reachable from some sandbox networks. Emit small, synthetic
+# API 29 screenshots as check annotations as well, so the actual pixels can be
+# inspected without downloading the artifact. Full-resolution evidence is retained.
+if [[ ${MYVAULT_API_LEVEL:-} == 29 ]] && command -v ffmpeg >/dev/null 2>&1; then
+  for screen in welcome dashboard-cards editor settings; do
+    if ffmpeg -v error -y -i "$output/after/$screen.png" -vf scale=240:-2 -q:v 8 "$work/$screen.jpg"; then
+      encoded=$(base64 -w 0 "$work/$screen.jpg")
+      printf '::notice title=API29 synthetic screenshot %s::%s\n' "$screen" "$encoded"
+    fi
+  done
+fi
+
 # Use real Android input and the platform's real frame clock, not Compose's test clock.
 adb shell am force-stop "$app_id" || exit 1
 adb shell screenrecord --size 720x1560 --bit-rate 3000000 --time-limit 120 /sdcard/myvault-ci-motion.mp4 > "$work/screenrecord.log" 2>&1 &
