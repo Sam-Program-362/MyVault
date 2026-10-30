@@ -107,6 +107,9 @@ class OfflineRestartTest {
         if (newWelcome) addTag.performScrollTo()
         addTag.performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Offline tag")
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Choose tag scope").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText("Choose tag scope").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Global tag").performScrollTo().performClick()
         compose.onNodeWithText("Create & add tag (paused)").performScrollTo().assertIsNotEnabled()

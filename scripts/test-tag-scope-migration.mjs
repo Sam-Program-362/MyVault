@@ -19,12 +19,12 @@ try {
   await client.query('CREATE SCHEMA myvault_tag_scope_test');
   await client.query('SET LOCAL search_path TO myvault_tag_scope_test');
   await client.query('CREATE TABLE spaces (id uuid PRIMARY KEY)');
-  await client.query('CREATE TABLE tags (id uuid PRIMARY KEY, name text NOT NULL CONSTRAINT tags_name_unique UNIQUE, reusable boolean NOT NULL)');
+  await client.query("CREATE TABLE tags (id uuid PRIMARY KEY, name text NOT NULL CONSTRAINT tags_name_unique UNIQUE, reusable boolean NOT NULL, color text NOT NULL DEFAULT '#6366f1', text_color text NOT NULL DEFAULT '#ffffff')");
   await client.query('CREATE TABLE entries (id uuid PRIMARY KEY, space_id uuid NOT NULL REFERENCES spaces(id))');
   await client.query('CREATE TABLE entry_tags (entry_id uuid NOT NULL REFERENCES entries(id), tag_id uuid NOT NULL REFERENCES tags(id), PRIMARY KEY(entry_id, tag_id))');
   await client.query("INSERT INTO spaces VALUES ('00000000-0000-0000-0000-0000000000a1'), ('00000000-0000-0000-0000-0000000000b1')");
   await client.query("INSERT INTO entries VALUES ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000a1'), ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000b1')");
-  await client.query("INSERT INTO tags VALUES ('00000000-0000-0000-0000-000000000001', 'Ideas', false), ('00000000-0000-0000-0000-000000000002', 'ideas', true), ('00000000-0000-0000-0000-000000000003', 'Local legacy', false)");
+  await client.query("INSERT INTO tags(id, name, reusable) VALUES ('00000000-0000-0000-0000-000000000001', 'Ideas', false), ('00000000-0000-0000-0000-000000000002', 'ideas', true), ('00000000-0000-0000-0000-000000000003', 'Local legacy', false)");
   await client.query("INSERT INTO entry_tags VALUES ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-000000000001'), ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-000000000003')");
   await client.query(await migration('0001_tag_scope_foundation.sql'));
   await client.query("UPDATE tags SET scope='local', owner_space_id='00000000-0000-0000-0000-0000000000a1' WHERE id='00000000-0000-0000-0000-000000000003'");

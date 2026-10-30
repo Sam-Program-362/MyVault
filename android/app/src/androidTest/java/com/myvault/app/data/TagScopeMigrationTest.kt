@@ -40,6 +40,12 @@ class TagScopeMigrationTest {
             val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
                 .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).build()
             try {
+                val triggers = SQLiteDatabase.openDatabase(context.getDatabasePath(name).path, null, SQLiteDatabase.OPEN_READONLY)
+                try {
+                    triggers.rawQuery("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'tag_scope_insert'", null).use {
+                        assertTrue("v1-to-v3 migration must install the scope guards", it.moveToFirst())
+                    }
+                } finally { triggers.close() }
                 val tags = db.tagDao().getAll()
                 assertEquals(setOf("t", "t2"), tags.map { it.id }.toSet())
                 assertTrue(tags.all { it.scope == "global" && it.ownerSpaceId == null })
@@ -48,8 +54,8 @@ class TagScopeMigrationTest {
                 db.tagDao().update(tags.single { it.id == "t" }.copy(color = "#123456", reusable = true))
                 assertTrue(db.tagDao().getAll().single { it.id == "t" }.reusable)
 
-                assertRejected { db.tagDao().upsert(TagEntity(id = "new", name = "New")) }
-                assertRejected { db.tagDao().update(tags.single { it.id == "t" }.copy(name = "Renamed")) }
+                assertRejected("v1-to-v3 insert must be blocked") { db.tagDao().upsert(TagEntity(id = "new", name = "New")) }
+                assertRejected("v1-to-v3 name edit must be blocked") { db.tagDao().update(tags.single { it.id == "t" }.copy(name = "Renamed")) }
                 assertEquals(setOf("t", "t2"), db.tagDao().getAll().map { it.id }.toSet())
                 assertEquals("Body", db.entryDao().getById("e")?.content)
             } finally { db.close() }
@@ -87,9 +93,9 @@ class TagScopeMigrationTest {
                 assertTrue(tags.single { it.id == "local-b" }.reusable)
                 assertEquals(setOf("local-a", "global"), db.entryDao().tagRefsForEntry("ea").map { it.tagId }.toSet())
 
-                assertRejected { db.entryDao().setTags("ea", listOf("local-b")) }
+                assertRejected("cross-Space local tag association must be blocked") { db.entryDao().setTags("ea", listOf("local-b")) }
                 assertEquals(setOf("local-a", "global"), db.entryDao().tagRefsForEntry("ea").map { it.tagId }.toSet())
-                assertRejected { db.tagDao().update(tags.single { it.id == "local-a" }.copy(ownerSpaceId = "b")) }
+                assertRejected("Local owner change must be blocked") { db.tagDao().update(tags.single { it.id == "local-a" }.copy(ownerSpaceId = "b")) }
                 db.tagDao().update(tags.single { it.id == "local-a" }.copy(reusable = true))
                 assertTrue(db.tagDao().getAll().single { it.id == "local-a" }.reusable)
                 assertNull(db.tagDao().getAll().single { it.id == "global" }.ownerSpaceId)
@@ -102,9 +108,9 @@ class TagScopeMigrationTest {
         } finally { context.deleteDatabase(name) }
     }
 
-    private suspend fun assertRejected(block: suspend () -> Unit) {
+    private suspend fun assertRejected(reason: String, block: suspend () -> Unit) {
         var rejected = false
         try { block() } catch (_: Exception) { rejected = true }
-        assertTrue("Expected the scope guard to reject this write", rejected)
+        assertTrue(reason, rejected)
     }
 }

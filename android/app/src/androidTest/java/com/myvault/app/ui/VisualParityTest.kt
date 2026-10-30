@@ -202,7 +202,7 @@ class VisualParityTest {
         compose.onNodeWithContentDescription("Clear search").performClick()
         compose.onNodeWithContentDescription("All spaces").performClick()
         compose.onNodeWithText("Home note").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Filter by Ideas").performClick()
+        compose.onNodeWithContentDescription("Filter by Ideas, Global").performClick()
         compose.onNodeWithText("A thoughtful note").assertIsDisplayed()
         compose.onNodeWithText("Home note").assertDoesNotExist()
     }

@@ -93,6 +93,9 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Add tag…", substring = true).performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Choose tag scope").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText("Choose tag scope").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Local tag").assertIsDisplayed()
         compose.onNodeWithText("Global tag").assertIsDisplayed()
