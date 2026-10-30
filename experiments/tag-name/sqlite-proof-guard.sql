@@ -4,10 +4,11 @@ CREATE TABLE identity_cache(id INTEGER PRIMARY KEY,scope TEXT NOT NULL,owner TEX
 CREATE INDEX identity_cache_lookup ON identity_cache(scope,owner,identity);
 CREATE TABLE pending_identity(id INTEGER PRIMARY KEY,scope TEXT NOT NULL,owner TEXT,identity TEXT NOT NULL);
 INSERT INTO identity_cache(id,scope,owner,identity)
-SELECT n.id,n.scope,n.owner,keys.identity FROM n JOIN keys ON keys.id=n.id;
+SELECT n.id,n.scope,n.owner,(SELECT keys.identity FROM keys WHERE keys.id=n.id) FROM n;
 
 CREATE TRIGGER proof_ins AFTER INSERT ON n BEGIN
   SELECT CASE WHEN instr(NEW.name,char(0))>0 THEN RAISE(ABORT,'embedded NUL is not supported') END;
+  SELECT CASE WHEN length(NEW.name)>128 THEN RAISE(ABORT,'maximum tag name length is 128 code points') END;
   INSERT INTO pending_identity(id,scope,owner,identity)
     SELECT NEW.id,NEW.scope,NEW.owner,identity FROM keys WHERE id=NEW.id;
   SELECT CASE WHEN (SELECT identity FROM pending_identity WHERE id=NEW.id)=''
@@ -25,6 +26,7 @@ CREATE TRIGGER proof_upd AFTER UPDATE OF name,scope,owner ON n
 WHEN OLD.name IS NOT NEW.name OR OLD.scope IS NOT NEW.scope OR OLD.owner IS NOT NEW.owner
 BEGIN
   SELECT CASE WHEN instr(NEW.name,char(0))>0 THEN RAISE(ABORT,'embedded NUL is not supported') END;
+  SELECT CASE WHEN length(NEW.name)>128 THEN RAISE(ABORT,'maximum tag name length is 128 code points') END;
   INSERT INTO pending_identity(id,scope,owner,identity)
     SELECT NEW.id,NEW.scope,NEW.owner,identity FROM keys WHERE id=NEW.id;
   SELECT CASE WHEN (SELECT identity FROM pending_identity WHERE id=NEW.id)=''

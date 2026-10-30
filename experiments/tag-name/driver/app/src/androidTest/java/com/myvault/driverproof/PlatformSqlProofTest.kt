@@ -78,12 +78,37 @@ class PlatformSqlProofTest {
                 while (cursor.moveToNext()) { assertEquals("input $i: ${inputs[i]}",expected.getString(i),cursor.getString(0)); i++ }
             }
             Log.i("MVSqlProof", "END SQL: SELECT identity FROM keys ORDER BY id")
+            fun benchmark(label: String, values: List<String>) {
+                val samples = mutableListOf<Long>()
+                repeat(3) { trial ->
+                    exec("DELETE FROM n")
+                    db.beginTransaction()
+                    try {
+                        val statement = db.compileStatement("INSERT INTO n(id,name) VALUES(?,?)")
+                        values.forEachIndexed { i, name -> statement.bindLong(1, i.toLong()); statement.bindString(2, name); statement.executeInsert() }
+                        db.setTransactionSuccessful()
+                    } finally { db.endTransaction() }
+                    val started = System.nanoTime()
+                    db.rawQuery("SELECT identity FROM keys ORDER BY id", null).use { c -> while (c.moveToNext()) c.getString(0) }
+                    samples += (System.nanoTime() - started) / 1_000_000
+                }
+                val sorted = samples.sorted()
+                Log.i("MVSqlProof", "BENCH $label medianMs=${sorted[1]} samplesMs=$samples sqlite-rows=${values.size}")
+            }
+            benchmark("one-short-3cp", listOf("tag"))
+            benchmark("one-typical-18cp", listOf("Project café 2026"))
+            benchmark("one-long-128cp", listOf("x".repeat(128)))
+            benchmark("ten-typical", (0 until 10).map { "Project café $it" })
+            benchmark("hundred-typical", (0 until 100).map { "Project café $it" })
+            exec("DELETE FROM n")
             // Seed legacy collisions before installing the experimental guard.
             exec("DELETE FROM n")
             exec("INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café')")
             exec("CREATE TABLE links(entry_id INTEGER,tag_id INTEGER)")
             exec("INSERT INTO links VALUES(11,1),(12,2)")
             exec(read("sqlite-proof-guard.sql"))
+            db.rawQuery("SELECT count(*) FROM n", null).use { c -> check(c.moveToFirst()); Log.i("MVSqlProof", "legacy n rows=${c.getInt(0)}") }
+            db.rawQuery("SELECT id,identity FROM keys ORDER BY id", null).use { c -> while (c.moveToNext()) Log.i("MVSqlProof", "recomputed key id=${c.getInt(0)} hex=${c.getString(1).toByteArray().joinToString("") { "%02x".format(it) }}") }
             db.rawQuery("SELECT id,scope,hex(identity),quote(identity) FROM identity_cache ORDER BY id", null).use { c ->
                 while (c.moveToNext()) Log.i("MVSqlProof", "identity_cache id=${c.getInt(0)} scope=${c.getString(1)} hex=${c.getString(2)} identity=${c.getString(3)}")
             }
@@ -95,6 +120,8 @@ class PlatformSqlProofTest {
             catch (_: android.database.sqlite.SQLiteException) { }
             try { exec("INSERT INTO n(id,name) VALUES(4,'   ')"); fail("Expected empty key rejection") }
             catch (_: android.database.sqlite.SQLiteException) { }
+            try { exec("INSERT INTO n(id,name) VALUES(42,'${"x".repeat(129)}')"); fail("Expected the prototype length limit") }
+            catch (e: android.database.sqlite.SQLiteException) { assertTrue(e.message.orEmpty().contains("128")) }
             val nulInsert = db.compileStatement("INSERT INTO n(id,name) VALUES(?,?)")
             nulInsert.bindLong(1, 41); nulInsert.bindString(2, "a\u0000b")
             try { nulInsert.executeInsert(); fail("Expected embedded NUL rejection") }

@@ -75,6 +75,7 @@ BEGIN
  IF TG_OP='UPDATE' AND OLD.name=NEW.name AND OLD.scope=NEW.scope AND OLD.owner IS NOT DISTINCT FROM NEW.owner THEN RETURN NEW; END IF;
  SELECT identity INTO new_identity FROM keys WHERE id=NEW.id;
  IF new_identity IS NULL OR new_identity='' THEN RAISE EXCEPTION 'empty'; END IF;
+ IF char_length(NEW.name)>128 THEN RAISE EXCEPTION 'maximum tag name length is 128 code points'; END IF;
  IF TG_OP='UPDATE' THEN
    SELECT identity,scope,owner INTO old_identity,old_scope,old_owner FROM identity_cache WHERE id=OLD.id;
    IF new_identity=old_identity AND NEW.scope IS NOT DISTINCT FROM old_scope AND NEW.owner IS NOT DISTINCT FROM old_owner THEN
@@ -138,22 +139,25 @@ assert.equal((await pg.query('SELECT count(*)::int AS c FROM links')).rows[0].c,
 assert.equal(sqlite.prepare('SELECT count(*) AS c FROM n WHERE id IN (1,2,5,6)').get().c,4);
 assert.equal((await pg.query('SELECT count(*)::int AS c FROM n WHERE id IN (1,2,5,6)')).rows[0].c,4);
 console.log('PASS SQLite and PostgreSQL cache-backed guards: legacy IDs/links retained, duplicate groups reported/preserved, identity-preserving edit and explicit resolution, new insert/update conflicts, empty names, scope/reusable independence and rollback.');
-// Independent connections race for the same global identity. SQLite serializes
-// writers; the loser must see the committed winner and abort in the trigger.
-const gate=new SharedArrayBuffer(4);
-let ready=0;
-const workers=[['Straße',21],['STRASSE',22]].map(([name,id])=>new Worker(new URL('./sqlite-worker.mjs',import.meta.url), {workerData:{name,id,file:sqliteFile,gate}}));
-const results=workers.map(worker=>new Promise((resolve,reject)=>{
- worker.on('error',reject); worker.on('message',message=>{
-  if(message==='ready') {if(++ready===workers.length) {Atomics.store(new Int32Array(gate),0,1); Atomics.notify(new Int32Array(gate),0);}}
-  else resolve(message);
- });
-}));
-const raced=await Promise.all(results);
-assert.equal(raced.filter(r=>r.ok).length,1,JSON.stringify(raced));
-assert.match(raced.find(r=>!r.ok).message,/collision/);
-assert.equal(sqlite.prepare('SELECT count(*) AS c FROM n WHERE id IN (21,22)').get().c,1);
-console.log('PASS SQLite conflicting writes: two independent connections raced; one committed and one was rejected.');
+// Repeated independent-connection races: each round uses a fresh identity.
+// SQLite serializes writers; the loser must observe the committed winner.
+async function sqliteRace(round) {
+ const base=100+round*2, shared=`race-${round}-Straße`;
+ const gate=new SharedArrayBuffer(4); let ready=0;
+ const workers=[[shared,base],[`RACE-${round}-STRASSE`,base+1]].map(([name,id])=>new Worker(new URL('./sqlite-worker.mjs',import.meta.url), {workerData:{name,id,file:sqliteFile,gate}}));
+ const results=workers.map(worker=>new Promise((resolve,reject)=>{
+  worker.on('error',reject); worker.on('message',message=>{
+   if(message==='ready') {if(++ready===workers.length) {Atomics.store(new Int32Array(gate),0,1); Atomics.notify(new Int32Array(gate),0);}}
+   else resolve(message);
+  });
+ }));
+ const raced=await Promise.all(results);
+ assert.equal(raced.filter(r=>r.ok).length,1,`SQLite round ${round}: ${JSON.stringify(raced)}`);
+ assert.match(raced.find(r=>!r.ok).message,/collision/);
+ assert.equal(sqlite.prepare('SELECT count(*) AS c FROM n WHERE id IN (?,?)').get(base,base+1).c,1);
+}
+for(let round=0;round<10;round++) await sqliteRace(round);
+console.log('PASS SQLite 10 independent two-writer races: exactly one conflicting write committed in every round.');
 if (pgUrl) {
  const {Client}=await import('pg');
  async function contender(id,name) {
@@ -166,11 +170,13 @@ if (pgUrl) {
   } catch (error) { await c.query('ROLLBACK'); return {ok:false,message:error.message}; }
   finally {await c.end();}
  }
- const pgRace=await Promise.all([contender(31,'Straße'),contender(32,'STRASSE')]);
- assert.equal(pgRace.filter(r=>r.ok).length,1,JSON.stringify(pgRace));
- assert.match(pgRace.find(r=>!r.ok).message,/collision/);
- assert.equal((await pg.query('SELECT count(*)::int AS c FROM n WHERE id IN (31,32)')).rows[0].c,1);
- console.log('PASS PostgreSQL conflicting writes: two independent connections raced; one committed and one was rejected.');
-} else console.log('PostgreSQL concurrency not tested: embedded PGlite has one connection.');
-console.log('LIMITATIONS: collision reports use the identity cache; NUL validation is tested at the boundary because PostgreSQL text cannot store NUL; no disposable Room migration proof yet.');
+ for(let round=0;round<10;round++) {
+  const base=200+round*2, shared=`race-${round}-Straße`;
+  const pgRace=await Promise.all([contender(base,shared),contender(base+1,`RACE-${round}-STRASSE`)]);
+  assert.equal(pgRace.filter(r=>r.ok).length,1,`PostgreSQL round ${round}: ${JSON.stringify(pgRace)}`);
+  assert.match(pgRace.find(r=>!r.ok).message,/collision/);
+  assert.equal((await pg.query('SELECT count(*)::int AS c FROM n WHERE id=ANY($1::int[])',[[base,base+1]])).rows[0].c,1);
+ }
+ console.log('PASS PostgreSQL 16 10 independent two-writer races: exactly one conflicting write committed in every round.');
+} else console.log('PostgreSQL concurrency not tested: embedded PGlite has one connection; CI service PostgreSQL 16 runs repeated races.');
 sqlite.close(); await pg.close(); rmSync(tempDir,{recursive:true,force:true});
