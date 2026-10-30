@@ -83,22 +83,36 @@ class PlatformSqlProofTest {
             exec("INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café')")
             exec("CREATE TABLE links(entry_id INTEGER,tag_id INTEGER)")
             exec("INSERT INTO links VALUES(11,1),(12,2)")
-            exec("""CREATE TRIGGER proof_ins AFTER INSERT ON n BEGIN
-                SELECT CASE WHEN (SELECT identity FROM keys WHERE id=NEW.id) = '' THEN RAISE(ABORT,'empty') END;
-                SELECT CASE WHEN EXISTS (SELECT 1 FROM n x WHERE x.id<>NEW.id AND x.scope=NEW.scope
-                  AND x.owner IS NEW.owner AND (SELECT identity FROM keys WHERE id=x.id)=(SELECT identity FROM keys WHERE id=NEW.id))
-                  THEN RAISE(ABORT,'collision') END;
-            END""")
+            exec(read("sqlite-proof-guard.sql"))
+            db.rawQuery("SELECT group_concat(id,',') FROM identity_cache GROUP BY scope,owner,identity HAVING count(*)>1", null).use { c ->
+                assertTrue("Expected the pre-existing canonical duplicate report", c.moveToFirst())
+                assertEquals("1,2", c.getString(0))
+            }
             try { exec("INSERT INTO n(id,name) VALUES(3,'CAFÉ')"); fail("Expected collision") }
             catch (_: android.database.sqlite.SQLiteException) { }
             try { exec("INSERT INTO n(id,name) VALUES(4,'   ')"); fail("Expected empty key rejection") }
+            catch (_: android.database.sqlite.SQLiteException) { }
+            val nulInsert = db.compileStatement("INSERT INTO n(id,name) VALUES(?,?)")
+            nulInsert.bindLong(1, 41); nulInsert.bindString(2, "a\u0000b")
+            try { nulInsert.executeInsert(); fail("Expected embedded NUL rejection") }
             catch (_: android.database.sqlite.SQLiteException) { }
             exec("INSERT INTO n(id,name,scope,owner,reusable) VALUES(5,'CAFÉ','local','space-a',0)")
             exec("INSERT INTO n(id,name,scope,owner,reusable) VALUES(6,'CAFÉ','local','space-b',1)")
             try { exec("INSERT INTO n(id,name,scope,owner,reusable) VALUES(7,'CAFÉ','local','space-a',1)"); fail("Expected local collision") }
             catch (_: android.database.sqlite.SQLiteException) { }
+            try { exec("INSERT INTO n(id,name) VALUES(8,'CAFÉ')"); fail("Expected global collision") }
+            catch (_: android.database.sqlite.SQLiteException) { }
+            exec("UPDATE n SET reusable=0 WHERE id=1")
+            exec("UPDATE n SET name='café' WHERE id=1") // identity-preserving edit in old duplicate group
+            db.rawQuery("SELECT count(*) FROM identity_cache WHERE scope='global' AND owner IS NULL AND identity=(SELECT identity FROM identity_cache WHERE id=1)",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(2,c.getInt(0)) }
+            exec("UPDATE n SET name='resolved tag' WHERE id=2") // explicit resolution; no winner chosen
+            db.rawQuery("SELECT count(*) FROM identity_cache WHERE scope='global' AND owner IS NULL AND identity=(SELECT identity FROM identity_cache WHERE id=1)",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(1,c.getInt(0)) }
+            exec("INSERT INTO n(id,name,scope,owner) VALUES(10,'new local','local','space-a')")
+            try { exec("UPDATE n SET name='CAFÉ' WHERE id=10"); fail("Expected new conflict on update") }
+            catch (_: android.database.sqlite.SQLiteException) { }
+            db.rawQuery("SELECT count(*) FROM pending_identity",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(0,c.getInt(0)) }
             db.rawQuery("SELECT count(*) FROM links",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(2,c.getInt(0)) }
-            db.rawQuery("SELECT count(*) FROM n",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(4,c.getInt(0)) }
+            db.rawQuery("SELECT count(*) FROM n",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(5,c.getInt(0)) }
         }
     }
 }

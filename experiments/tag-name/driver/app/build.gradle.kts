@@ -23,7 +23,7 @@ dependencies {
 
 // Generated test assets are copied only into the standalone proof test APK.
 val copySqlProofAssets by tasks.registering(Copy::class) {
-    from("../..") { include("ucd-15.1.json", "expected-keys.json", "sqlite-proof-view.sql") }
+    from("../..") { include("ucd-15.1.json", "expected-keys.json", "sqlite-proof-view.sql", "sqlite-proof-guard.sql") }
     from("../../../../tests/fixtures") { include("tag-name-policy-vectors.json") }
     into(layout.buildDirectory.dir("generated/sql-proof-assets"))
 }

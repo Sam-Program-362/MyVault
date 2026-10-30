@@ -64,28 +64,70 @@ console.log(`PASS SQLite and PostgreSQL: ${fixture.pairs.length} comparison vect
 // This is a disposable test schema, not a migration or application code.
 sqlite.exec("DELETE FROM n; INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café'); CREATE TABLE links(entry_id INTEGER,tag_id INTEGER); INSERT INTO links VALUES(11,1),(12,2)");
 await pg.exec("DELETE FROM n; INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café'); CREATE TABLE links(entry_id INTEGER,tag_id INTEGER); INSERT INTO links VALUES(11,1),(12,2)");
-const sqliteCheck = `SELECT CASE WHEN (SELECT identity FROM keys WHERE id=NEW.id) = '' THEN RAISE(ABORT,'empty') END;
- SELECT CASE WHEN EXISTS (SELECT 1 FROM n x WHERE x.id<>NEW.id AND x.scope=NEW.scope AND x.owner IS NEW.owner AND (SELECT identity FROM keys WHERE id=x.id)=(SELECT identity FROM keys WHERE id=NEW.id)) THEN RAISE(ABORT,'collision') END;`;
-sqlite.exec(`CREATE TRIGGER proof_ins AFTER INSERT ON n BEGIN ${sqliteCheck} END;
-CREATE TRIGGER proof_upd AFTER UPDATE OF name,scope,owner ON n WHEN OLD.name<>NEW.name OR OLD.scope<>NEW.scope OR OLD.owner IS NOT NEW.owner BEGIN ${sqliteCheck} END;`);
-await pg.exec(`CREATE FUNCTION proof_guard() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+sqlite.exec(readFileSync(new URL('./sqlite-proof-guard.sql',import.meta.url),'utf8'));
+await pg.exec(`CREATE TABLE identity_cache(id INTEGER PRIMARY KEY,scope TEXT NOT NULL,owner TEXT,identity TEXT NOT NULL);
+CREATE INDEX identity_cache_lookup ON identity_cache(scope,owner,identity);
+INSERT INTO identity_cache SELECT n.id,n.scope,n.owner,keys.identity FROM n JOIN keys ON keys.id=n.id;
+CREATE FUNCTION proof_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE new_identity text; old_identity text; old_scope text; old_owner text;
+BEGIN
  PERFORM pg_advisory_xact_lock(1836674164);
- IF TG_OP = 'UPDATE' AND OLD.name=NEW.name AND OLD.scope=NEW.scope AND OLD.owner IS NOT DISTINCT FROM NEW.owner THEN RETURN NEW; END IF;
- IF (SELECT identity FROM keys WHERE id=NEW.id)='' THEN RAISE EXCEPTION 'empty'; END IF;
- IF EXISTS (SELECT 1 FROM keys a JOIN keys b ON a.identity=b.identity JOIN n x ON x.id=a.id JOIN n y ON y.id=b.id WHERE a.id=NEW.id AND b.id<>NEW.id AND x.scope=y.scope AND x.owner IS NOT DISTINCT FROM y.owner) THEN RAISE EXCEPTION 'collision'; END IF;
- RETURN NEW; END $$;
+ IF TG_OP='UPDATE' AND OLD.name=NEW.name AND OLD.scope=NEW.scope AND OLD.owner IS NOT DISTINCT FROM NEW.owner THEN RETURN NEW; END IF;
+ SELECT identity INTO new_identity FROM keys WHERE id=NEW.id;
+ IF new_identity IS NULL OR new_identity='' THEN RAISE EXCEPTION 'empty'; END IF;
+ IF TG_OP='UPDATE' THEN
+   SELECT identity,scope,owner INTO old_identity,old_scope,old_owner FROM identity_cache WHERE id=OLD.id;
+   IF new_identity=old_identity AND NEW.scope IS NOT DISTINCT FROM old_scope AND NEW.owner IS NOT DISTINCT FROM old_owner THEN
+     INSERT INTO identity_cache VALUES(NEW.id,NEW.scope,NEW.owner,new_identity)
+       ON CONFLICT(id) DO UPDATE SET scope=EXCLUDED.scope,owner=EXCLUDED.owner,identity=EXCLUDED.identity;
+     RETURN NEW;
+   END IF;
+ END IF;
+ IF EXISTS (SELECT 1 FROM identity_cache c WHERE c.id<>NEW.id AND c.scope=NEW.scope
+      AND c.owner IS NOT DISTINCT FROM NEW.owner AND c.identity=new_identity) THEN RAISE EXCEPTION 'collision'; END IF;
+ INSERT INTO identity_cache VALUES(NEW.id,NEW.scope,NEW.owner,new_identity)
+   ON CONFLICT(id) DO UPDATE SET scope=EXCLUDED.scope,owner=EXCLUDED.owner,identity=EXCLUDED.identity;
+ RETURN NEW;
+END $$;
 CREATE TRIGGER proof_guard AFTER INSERT OR UPDATE ON n FOR EACH ROW EXECUTE FUNCTION proof_guard();`);
+const sqliteLegacyGroups=sqlite.prepare(`SELECT scope,owner,identity,group_concat(id) AS ids,count(*) AS n FROM identity_cache GROUP BY scope,owner,identity HAVING count(*)>1`).all();
+const pgLegacyGroups=(await pg.query(`SELECT scope,owner,identity,string_agg(id::text,',' ORDER BY id) AS ids,count(*)::int AS n FROM identity_cache GROUP BY scope,owner,identity HAVING count(*)>1`)).rows;
+assert.equal(sqliteLegacyGroups.length,1,JSON.stringify(sqliteLegacyGroups));
+assert.equal(sqliteLegacyGroups[0].ids,'1,2');
+assert.equal(pgLegacyGroups.length,1,JSON.stringify(pgLegacyGroups));
+assert.equal(pgLegacyGroups[0].ids,'1,2');
+console.log('PASS legacy collision report: both engines identify IDs 1,2 without changing rows or links.');
 // Both triggers reject conflicts and empty keys, while leaving legacy data intact.
 assert.throws(()=>sqlite.exec("INSERT INTO n(id,name) VALUES(3,'CAFÉ')"),/collision/);
 await assert.rejects(pg.exec("INSERT INTO n(id,name) VALUES(3,'CAFÉ')"),/collision/);
 assert.throws(()=>sqlite.exec("INSERT INTO n(id,name) VALUES(4,'   ' )"),/empty/);
 await assert.rejects(pg.exec("INSERT INTO n(id,name) VALUES(4,'   ' )"),/empty/);
+const rejectEmbeddedNul = name => { if(name.includes('\0')) throw new Error('tag name contains U+0000; embedded NUL is not supported'); };
+const nulName='a\0b';
+assert.throws(()=>rejectEmbeddedNul(nulName),/U\+0000/);
+assert.throws(()=>sqlite.prepare('INSERT INTO n(id,name) VALUES(?,?)').run(40,nulName),/embedded NUL/);
+const pgBeforeNul=(await pg.query('SELECT count(*)::int AS c FROM n')).rows[0].c;
+assert.throws(()=>rejectEmbeddedNul(nulName),/U\+0000/);
+assert.equal((await pg.query('SELECT count(*)::int AS c FROM n')).rows[0].c,pgBeforeNul);
+console.log('PASS NUL rule: SQLite rejects the direct SQL write; shared persistence-boundary validation rejects before PostgreSQL text binding.');
 for (const sql of ["UPDATE n SET reusable=0 WHERE id=1", "INSERT INTO n(id,name,scope,owner,reusable) VALUES(5,'CAFÉ','local','space-a',0)", "INSERT INTO n(id,name,scope,owner,reusable) VALUES(6,'CAFÉ','local','space-b',1)"]) {sqlite.exec(sql); await pg.exec(sql);}
 assert.throws(()=>sqlite.exec("INSERT INTO n(id,name,scope,owner,reusable) VALUES(7,'CAFÉ','local','space-a',1)"),/collision/);
 await assert.rejects(pg.exec("INSERT INTO n(id,name,scope,owner,reusable) VALUES(7,'CAFÉ','local','space-a',1)"),/collision/);
-// Document a known limitation, not a passing production-compatibility test.
-assert.throws(()=>sqlite.exec("UPDATE n SET name='café' WHERE id=1"),/collision/);
-await assert.rejects(pg.exec("UPDATE n SET name='café' WHERE id=1"),/collision/);
+// An identity-preserving spelling edit inside the pre-existing duplicate group is safe.
+sqlite.exec("UPDATE n SET name='café' WHERE id=1");
+await pg.exec("UPDATE n SET name='café' WHERE id=1");
+assert.equal(sqlite.prepare("SELECT count(*) AS c FROM identity_cache WHERE scope='global' AND owner IS NULL AND identity=(SELECT identity FROM identity_cache WHERE id=1)").get().c,2);
+assert.equal((await pg.query("SELECT count(*)::int AS c FROM identity_cache WHERE scope='global' AND owner IS NULL AND identity=(SELECT identity FROM identity_cache WHERE id=1)")).rows[0].c,2);
+// Explicitly resolve one legacy collision without choosing a winner or altering its links.
+sqlite.exec("UPDATE n SET name='resolved tag' WHERE id=2");
+await pg.exec("UPDATE n SET name='resolved tag' WHERE id=2");
+assert.equal(sqlite.prepare("SELECT count(*) AS c FROM identity_cache WHERE scope='global' AND owner IS NULL AND identity=(SELECT identity FROM identity_cache WHERE id=1)").get().c,1);
+assert.equal((await pg.query("SELECT count(*)::int AS c FROM identity_cache WHERE scope='global' AND owner IS NULL AND identity=(SELECT identity FROM identity_cache WHERE id=1)")).rows[0].c,1);
+// An edit that would create a new conflict is rejected on each engine.
+sqlite.exec("INSERT INTO n(id,name,scope,owner) VALUES(10,'new local','local','space-a')");
+await pg.exec("INSERT INTO n(id,name,scope,owner) VALUES(10,'new local','local','space-a')");
+assert.throws(()=>sqlite.exec("UPDATE n SET name='CAFÉ',scope='local',owner='space-a' WHERE id=10"),/collision/);
+await assert.rejects(pg.exec("UPDATE n SET name='CAFÉ',scope='local',owner='space-a' WHERE id=10"),/collision/);
 // A failed write followed by an explicit rollback leaves no partial record.
 sqlite.exec('BEGIN'); sqlite.exec("INSERT INTO n(id,name) VALUES(8,'temporary')");
 assert.throws(()=>sqlite.exec("INSERT INTO n(id,name) VALUES(9,'café')"),/collision/); sqlite.exec('ROLLBACK');
@@ -93,9 +135,9 @@ await pg.exec('BEGIN'); await pg.exec("INSERT INTO n(id,name) VALUES(8,'temporar
 await assert.rejects(pg.exec("INSERT INTO n(id,name) VALUES(9,'café')"),/collision/); await pg.exec('ROLLBACK');
 assert.equal(sqlite.prepare('SELECT count(*) AS c FROM links').get().c,2);
 assert.equal((await pg.query('SELECT count(*)::int AS c FROM links')).rows[0].c,2);
-assert.equal(sqlite.prepare('SELECT count(*) AS c FROM n').get().c,4);
-assert.equal((await pg.query('SELECT count(*)::int AS c FROM n')).rows[0].c,4);
-console.log('PASS SQLite and PostgreSQL prototype triggers: legacy IDs/links retained, unchanged reusable update, conflicts and empty keys rejected, scope separation and rollback.');
+assert.equal(sqlite.prepare('SELECT count(*) AS c FROM n WHERE id IN (1,2,5,6)').get().c,4);
+assert.equal((await pg.query('SELECT count(*)::int AS c FROM n WHERE id IN (1,2,5,6)')).rows[0].c,4);
+console.log('PASS SQLite and PostgreSQL cache-backed guards: legacy IDs/links retained, duplicate groups reported/preserved, identity-preserving edit and explicit resolution, new insert/update conflicts, empty names, scope/reusable independence and rollback.');
 // Independent connections race for the same global identity. SQLite serializes
 // writers; the loser must see the committed winner and abort in the trigger.
 const gate=new SharedArrayBuffer(4);
@@ -130,5 +172,5 @@ if (pgUrl) {
  assert.equal((await pg.query('SELECT count(*)::int AS c FROM n WHERE id IN (31,32)')).rows[0].c,1);
  console.log('PASS PostgreSQL conflicting writes: two independent connections raced; one committed and one was rejected.');
 } else console.log('PostgreSQL concurrency not tested: embedded PGlite has one connection.');
-console.log('LIMITATIONS: change to canonically equivalent spelling of a legacy duplicate is rejected; no Room migration or Android SQL test.');
+console.log('LIMITATIONS: collision reports use the identity cache; NUL validation is tested at the boundary because PostgreSQL text cannot store NUL; no disposable Room migration proof yet.');
 sqlite.close(); await pg.close(); rmSync(tempDir,{recursive:true,force:true});
