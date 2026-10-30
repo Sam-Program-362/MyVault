@@ -35,6 +35,7 @@ jobs:
       - run: npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.13
       - name: Run SQL proof
         run: |
+          set -o pipefail
           node --experimental-sqlite experiments/tag-name/sql-proof.mjs | tee "$RUNNER_TEMP/sql-proof.log"
           while IFS= read -r line; do echo "::notice title=SQL proof::$line"; done < "$RUNNER_TEMP/sql-proof.log"
   android-driver-proof:
@@ -57,7 +58,9 @@ jobs:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
       - name: Build isolated proof APK
-        run: bash android/gradlew -p experiments/tag-name/driver --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee "$RUNNER_TEMP/driver-proof-build.log"
+        run: |
+          set -o pipefail
+          bash android/gradlew -p experiments/tag-name/driver --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee "$RUNNER_TEMP/driver-proof-build.log"
       - name: Surface build failure
         if: failure()
         run: |
