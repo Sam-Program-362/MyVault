@@ -7,9 +7,12 @@ import subprocess
 import tempfile
 
 api = os.environ["EVIDENCE_API"]
-root = Path("android/app/build/reports/native-window-evidence/after")
+phase = os.environ.get("EVIDENCE_PHASE", "after")
+root = Path(f"android/app/build/reports/native-window-evidence/{phase}")
 files = {name: root / f"{name}.png" for name in ("light-welcome", "light-dashboard-cards", "light-editor", "light-settings")} if api == "29" else {"picker": Path("/tmp/myvault-picker.png")}
 for name, source in files.items():
+    if api == "29" and phase == "before":
+        name = "before-" + name
     if not source.exists():
         continue
     width = 320 if api == "30" else 160

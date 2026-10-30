@@ -295,6 +295,12 @@ jobs:
         env:
           EVIDENCE_API: ${{ matrix.api }}
         run: python3 android/ci/annotate-screenshots.py
+      - name: Publish compact API 29 baseline evidence
+        if: ${{ always() && matrix.api == 29 }}
+        env:
+          EVIDENCE_API: '29'
+          EVIDENCE_PHASE: before
+        run: python3 android/ci/annotate-screenshots.py
       - name: Upload real-window before-and-after evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

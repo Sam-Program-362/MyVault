@@ -22,6 +22,8 @@ class DocumentPickerActionTest {
         var rowActionSent = false
         var focusAttempted = false
         var focusSucceeded = false
+        var keyDownSent = false
+        var keyUpSent = false
         var diagnostic = "No synthetic document row was found"
         while (SystemClock.uptimeMillis() < deadline) {
             val root = automation.rootInActiveWindow
@@ -71,16 +73,15 @@ class DocumentPickerActionTest {
                     }
                     focusSucceeded = focusTarget?.performAction(AccessibilityNodeInfo.ACTION_FOCUS) == true
                     if (focusSucceeded) {
-                        val down = automation.injectInputEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER), true)
-                        val up = automation.injectInputEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER), true)
-                        diagnostic += " focus=$focusSucceeded enterDown=$down enterUp=$up"
+                        keyDownSent = automation.injectInputEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER), true)
+                        keyUpSent = automation.injectInputEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER), true)
                     }
                 }
             }
             SystemClock.sleep(250)
         }
         fail(
-            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent, focusAttempted=$focusAttempted, focusSucceeded=$focusSucceeded). Accessibility chain: $diagnostic"
+            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent, focusAttempted=$focusAttempted, focusSucceeded=$focusSucceeded, keyDownSent=$keyDownSent, keyUpSent=$keyUpSent). Accessibility chain: $diagnostic"
         )
     }
 }

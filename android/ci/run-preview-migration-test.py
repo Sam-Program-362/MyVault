@@ -144,6 +144,12 @@ def main():
 try:
     main()
 except Exception as exc:
+    try:
+        log = adb("logcat", "-d", "-s", "DocumentsUI:D", "DownloadStorageProvider:D", "MediaProvider:D", "ActivityTaskManager:I", check=False).stdout
+        excerpt = log[-3500:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::warning title=DocumentsUI provider diagnostics::{excerpt}", flush=True)
+    except Exception as log_error:
+        trace.append(f"logcat capture failed: {log_error}")
     # Keep the actual picker screenshot for the separate evidence step.
     try:
         image = subprocess.run(["adb", "exec-out", "screencap", "-p"], check=True, capture_output=True, timeout=30).stdout
