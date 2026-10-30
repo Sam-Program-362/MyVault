@@ -18,7 +18,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RoomSqlMigrationProofTest {
     @Test(timeout = 300_000)
-    fun roomMigrationPreservesLegacyIdsAndLinksBeforeSqlPrototypeProof() = runBlocking {
+    fun roomMigrationPreservesLegacyIdsAndLinksBeforeSqlPrototypeProof() {
+        runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "room-sql-migration-proof.db"
         context.deleteDatabase(name)
@@ -114,5 +115,6 @@ class RoomSqlMigrationProofTest {
                 android.util.Log.i("MVRoomProof", "PASS disposable Room v1->v3 migration retained tag IDs and entry-tag links; mirror-table SQL guard preserved legacy duplicates")
             } finally { room.close() }
         } finally { context.deleteDatabase(name) }
+        }
     }
 }
