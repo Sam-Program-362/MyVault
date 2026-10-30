@@ -28,7 +28,7 @@ test -s "$RUNNER_TEMP/cross-android.json"
 cd ..
 ANDROID_BACKUP_FILE="$RUNNER_TEMP/cross-android.json" WEB_BACKUP_FILE="$RUNNER_TEMP/cross-web.json" node scripts/test-scope-backup.mjs
 adb push "$RUNNER_TEMP/cross-web.json" /data/local/tmp/myvault-cross-web.json
-adb shell run-as com.myvault.app.debug sh -c 'cat /data/local/tmp/myvault-cross-web.json > files/cross-web.json'
+adb shell "run-as com.myvault.app.debug sh -c 'cat /data/local/tmp/myvault-cross-web.json > files/cross-web.json'"
 cd android
 instrument import
 printf '::notice title=Cross-platform backup exchange::Actual Android-exported file imported into web with remapped Space IDs; actual web-exported file imported into Android with different remapped Space IDs.\n'
