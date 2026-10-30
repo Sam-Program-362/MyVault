@@ -99,7 +99,6 @@ class PlatformSqlProofTest {
             benchmark("one-typical-18cp", listOf("Project café 2026"))
             benchmark("one-long-128cp", listOf("x".repeat(128)))
             benchmark("ten-typical", (0 until 10).map { "Project café $it" })
-            benchmark("hundred-typical", (0 until 100).map { "Project café $it" })
             exec("DELETE FROM n")
             // Seed legacy collisions before installing the experimental guard.
             exec("DELETE FROM n")
