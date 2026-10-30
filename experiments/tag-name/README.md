@@ -45,7 +45,7 @@ runtime behavior is changed.
 Run on a disposable emulator, with Android SDK and Java 17 installed:
 
 ```sh
-bash android/gradlew -p experiments/tag-name/driver :app:connectedDebugAndroidTest
+bash experiments/tag-name/driver/run-device.sh
 ```
 
 `.github/workflows/tag-identity-proof.yml` runs this standalone experiment on
