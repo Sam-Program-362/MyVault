@@ -7,5 +7,8 @@ export async function tagsAllowedInSpace(ids: string[], spaceId: string): Promis
   const unique = [...new Set(ids)];
   if (!unique.length) return true;
   const found = await db.select().from(tags).where(inArray(tags.id, unique));
-  return found.length === unique.length && found.every((tag) => tag.scope === "global" || (tag.scope === "local" && tag.ownerSpaceId === spaceId));
+  return found.length === unique.length && found.every((tag) =>
+    (tag.scope === "global" && tag.ownerSpaceId === null) ||
+    (tag.scope === "local" && tag.ownerSpaceId === spaceId),
+  );
 }

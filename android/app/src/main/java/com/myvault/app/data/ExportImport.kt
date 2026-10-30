@@ -123,13 +123,38 @@ class ExportImportRepository(
         val payload = json.decodeFromString(ExportPayload.serializer(), rawJson)
         validateTagScopes(payload)
 
+        val existingSpaces = spaceDao.getAll()
+        val spaceByName = existingSpaces.groupBy { it.name.lowercase() }.toMutableMap()
+        val existingTags = tagDao.getAll().associateBy { it.id }
+        val allImportedTags = payload.tags + payload.entries.flatMap { it.tags }
+        val definitions = mutableMapOf<String, TagDto>()
+        for (tag in allImportedTags) {
+            val previous = definitions.putIfAbsent(tag.id, tag)
+            require(previous == null || previous.sameDefinition(tag)) { "Conflicting definitions for tag ${tag.id}." }
+        }
+        // Do not resolve unknown tag IDs by lowercasing names or create tags
+        // during import: neither path can guarantee the pinned Unicode identity.
+        for (tag in definitions.values) {
+            val existing = existingTags[tag.id]
+                ?: error("Import of new tag identities is paused until Unicode 15.1 database enforcement is available.")
+            require(existing.toDto().sameDefinition(tag)) {
+                "Imported tag ${tag.name} conflicts with the existing ID ${tag.id}; no tag was changed."
+            }
+            if (tag.scope == "local") {
+                val sourceOwner = payload.spaces.singleOrNull { it.id == tag.ownerSpaceId }
+                    ?: error("Local tag ${tag.name} has no unambiguous owner Space.")
+                val targetOwner = existingSpaces.singleOrNull { it.name.equals(sourceOwner.name, ignoreCase = true) }
+                    ?: error("Local tag ${tag.name} requires its original Space ID for a safe import.")
+                require(targetOwner.id == tag.ownerSpaceId) {
+                    "Local tag ${tag.name} cannot be remapped to a different Space ID safely."
+                }
+            }
+        }
+
         var tagsAdded = 0
         var spacesAdded = 0
         var entriesAdded = 0
-
         val spaceIdMap = HashMap<String, String>()
-        val existingSpaces = spaceDao.getAll()
-        val spaceByName = existingSpaces.groupBy { it.name.lowercase() }.toMutableMap()
         var nextOrder = (existingSpaces.maxOfOrNull { it.sortOrder } ?: -1) + 1
         for (space in payload.spaces) {
             val key = space.name.lowercase()
@@ -157,35 +182,7 @@ class ExportImportRepository(
             spaceIdMap[space.id] = targetId
         }
 
-        val tagIdMap = HashMap<String, String>()
-        val allImportedTags = payload.tags + payload.entries.flatMap { it.tags }
-        val definitions = mutableMapOf<String, TagDto>()
-        for (tag in allImportedTags) {
-            val old = definitions.putIfAbsent(tag.id, tag)
-            require(old == null || old.sameDefinition(tag)) { "Conflicting definitions for tag ${tag.id}." }
-        }
-        for (tag in definitions.values) {
-            val owner = if (tag.scope == "local") {
-                tag.ownerSpaceId?.let { spaceIdMap[it] } ?: error("Local tag ${tag.name} has no imported owner space.")
-            } else null
-            val matches = tagDao.getAll().filter {
-                it.name.equals(tag.name, ignoreCase = true) && it.scope == tag.scope && it.ownerSpaceId == owner
-            }
-            require(matches.size <= 1) { "Ambiguous existing tag ${tag.name}; import cannot safely choose one." }
-            val existing = matches.singleOrNull()
-            require(existing == null || (existing.color.equals(tag.color, true) &&
-                existing.textColor.equals(tag.textColor, true) && existing.reusable == tag.reusable)) {
-                "Tag ${tag.name} conflicts with an existing tag in the same scope."
-            }
-            val targetId = existing?.id ?: java.util.UUID.randomUUID().toString().also { id ->
-                tagDao.upsert(TagEntity(id = id, name = tag.name, color = tag.color,
-                    textColor = tag.textColor, reusable = tag.reusable, scope = tag.scope,
-                    ownerSpaceId = owner, createdAt = tag.createdAt.toEpochMillis()))
-                tagsAdded++
-            }
-            tagIdMap[tag.id] = targetId
-        }
-
+        val tagIdMap = definitions.keys.associateWith { it }
         var fallbackSpaceId: String? = null
         for (entry in payload.entries) {
             var targetSpaceId = spaceIdMap[entry.spaceId]
@@ -296,14 +293,9 @@ fun validateTagScopes(payload: ExportPayload) {
         val previous = definitions.putIfAbsent(tag.id, tag)
         require(previous == null || previous.sameDefinition(tag)) { "Conflicting definitions for tag ${tag.id}." }
     }
-    val scopeNames = mutableSetOf<Triple<String, String, String?>>()
-    for (tag in definitions.values) {
-        require(scopeNames.add(Triple(tag.name.lowercase(), tag.scope, tag.ownerSpaceId))) {
-            "Ambiguous imported tags named ${tag.name}."
-        }
-    }
     for (entry in payload.entries) {
         for (tag in entry.tags) {
+            require(definitions[tag.id]?.sameDefinition(tag) == true) { "Entry refers to an undeclared or conflicting tag ID ${tag.id}." }
             require(tag.scope != "local" || tag.ownerSpaceId == entry.spaceId) {
                 "Local tag ${tag.name} belongs to a different space."
             }

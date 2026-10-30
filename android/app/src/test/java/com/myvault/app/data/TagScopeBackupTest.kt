@@ -20,6 +20,12 @@ class TagScopeBackupTest {
         }
     }
 
+    @Test fun preservesLegacySameNamedTagDefinitionsById() {
+        val first = TagDto(id = "old-1", name = "Ideas", reusable = false)
+        val second = TagDto(id = "old-2", name = "ideas", reusable = true)
+        validateTagScopes(ExportPayload(version = 2, tags = listOf(first, second)))
+    }
+
     @Test fun rejectsConflictingDefinitionsAndFutureVersions() {
         val tag = TagDto(id = "t", name = "Ideas")
         assertThrows(IllegalArgumentException::class.java) {

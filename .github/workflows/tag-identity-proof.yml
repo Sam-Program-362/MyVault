@@ -5,7 +5,6 @@ on:
     paths:
       - 'experiments/tag-name/**'
       - 'tests/fixtures/tag-name-policy-vectors.json'
-      - 'android/app/src/main/java/com/myvault/app/data/{AppDatabase,Entities,Daos}.kt'
       - '.github/workflows/tag-identity-proof.yml'
 permissions:
   contents: read

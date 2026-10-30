@@ -39,9 +39,6 @@ interface TagDao {
     @Query("SELECT * FROM tags ORDER BY name ASC")
     suspend fun getAll(): List<TagEntity>
 
-    @Query("SELECT * FROM tags WHERE scope = 'global' AND lower(name) = lower(:name) LIMIT 1")
-    suspend fun findByName(name: String): TagEntity?
-
     @Upsert
     suspend fun upsert(tag: TagEntity)
 

@@ -37,7 +37,9 @@ export const spaces = pgTable("spaces", {
 // Reusable tags, each with its own saved color/style.
 export const tags = pgTable("tags", {
   id: uuid("id").primaryKey(),
-  name: text("name").notNull(),
+  // Keep the baseline exact-name constraint until Unicode 15.1 identity can
+  // be enforced identically by PostgreSQL and Android SQLite.
+  name: text("name").notNull().unique(),
   color: text("color").notNull().default("#6366f1"),
   textColor: text("text_color").notNull().default("#ffffff"),
   // Whether this tag should show up as a reusable suggestion for future

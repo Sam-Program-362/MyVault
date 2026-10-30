@@ -45,25 +45,19 @@ export async function PATCH(request: Request, { params }: Params) {
   }
   allowed.updatedAt = new Date();
 
-  const [updated] = await db
-    .update(entries)
-    .set(allowed)
-    .where(eq(entries.id, id))
-    .returning();
-
-  if (!updated) {
-    return NextResponse.json({ error: "Entry not found" }, { status: 404 });
-  }
-
-  if (Array.isArray(body.tagIds)) {
-    await db.delete(entryTags).where(eq(entryTags.entryId, id));
-    if (body.tagIds.length > 0) {
-      await db
-        .insert(entryTags)
-        .values(body.tagIds.map((tagId: string) => ({ entryId: id, tagId })));
+  const updated = await db.transaction(async (tx) => {
+    const [entry] = await tx.update(entries).set(allowed).where(eq(entries.id, id)).returning();
+    if (!entry) return null;
+    if (Array.isArray(body.tagIds)) {
+      await tx.delete(entryTags).where(eq(entryTags.entryId, id));
+      if (body.tagIds.length > 0) {
+        await tx.insert(entryTags).values(body.tagIds.map((tagId: string) => ({ entryId: id, tagId })));
+      }
     }
-  }
+    return entry;
+  });
 
+  if (!updated) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
   const entry = await getEntryWithTags(id);
   return NextResponse.json(entry);
 }

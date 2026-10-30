@@ -68,14 +68,9 @@ export async function POST(request: Request) {
       if (previous && (previous.name !== tag.name || previous.scope !== tag.scope || previous.ownerSpaceId !== tag.ownerSpaceId || previous.color !== tag.color || previous.textColor !== tag.textColor || previous.reusable !== tag.reusable)) fail(`Conflicting definitions for tag ${tag.name}.`);
       definitions.set(tag.id, tag);
     }
-    const scopeNames = new Set<string>();
-    for (const tag of definitions.values()) {
-      const key = JSON.stringify([tag.name.toLowerCase(), tag.scope, tag.ownerSpaceId]);
-      if (scopeNames.has(key)) fail(`Ambiguous imported tags named ${tag.name}.`);
-      scopeNames.add(key);
-    }
     for (const entry of inputEntries) for (const sourceTag of entry.tags ?? []) {
-      const tag = definitions.get(sourceTag.id)!;
+      const tag = definitions.get(sourceTag.id);
+      if (!tag) throw new InvalidBackup(`Entry refers to undeclared tag ID ${sourceTag.id}.`);
       if (tag.scope === "local" && tag.ownerSpaceId !== entry.spaceId) fail(`Tag ${tag.name} belongs to another Space.`);
     }
     const summary = await db.transaction(async (tx) => {
@@ -99,18 +94,15 @@ export async function POST(request: Request) {
       const currentTags = await tx.select().from(tags);
       const tagMap = new Map<string, string>();
       for (const tag of definitions.values()) {
+        const match = currentTags.find((candidate) => candidate.id === tag.id);
+        if (!match) throw new InvalidBackup("Import of new tag identities is paused until Unicode 15.1 database enforcement is available.");
         const owner = tag.scope === "local" ? spaceMap.get(tag.ownerSpaceId!) : null;
-        if (tag.scope === "local" && !owner) fail(`Missing owner for ${tag.name}.`);
-        const matches = currentTags.filter((t) => t.name.toLowerCase() === tag.name.toLowerCase() && t.scope === tag.scope && t.ownerSpaceId === owner);
-        if (matches.length > 1) fail(`Ambiguous existing tag ${tag.name}.`);
-        let match = matches[0];
-        if (match && (match.color.toLowerCase() !== tag.color.toLowerCase() || match.textColor.toLowerCase() !== tag.textColor.toLowerCase() || match.reusable !== tag.reusable)) fail(`Tag ${tag.name} conflicts with an existing tag in the same scope.`);
-        if (!match) {
-          [match] = await tx.insert(tags).values({ id: crypto.randomUUID(), name: tag.name, color: tag.color, textColor: tag.textColor, reusable: tag.reusable, scope: tag.scope, ownerSpaceId: owner }).returning();
-          currentTags.push(match);
-          result.tagsAdded++;
+        if (owner !== tag.ownerSpaceId || match.name !== tag.name || match.scope !== tag.scope ||
+            match.ownerSpaceId !== tag.ownerSpaceId || match.color !== tag.color ||
+            match.textColor !== tag.textColor || match.reusable !== tag.reusable) {
+          fail(`Imported tag ${tag.name} conflicts with existing ID ${tag.id}; no tag was changed.`);
         }
-        tagMap.set(tag.id, match.id);
+        tagMap.set(tag.id, tag.id);
       }
       let fallback: string | undefined;
       for (const entry of inputEntries) {

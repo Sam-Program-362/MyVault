@@ -1,4 +1,8 @@
--- Preserve all legacy tags and links. Scope-aware uniqueness must be enforced
--- by the application until an index strategy that preserves legacy duplicates
--- is in place. A single global name constraint cannot represent local scopes.
-ALTER TABLE "tags" DROP CONSTRAINT IF EXISTS "tags_name_unique";
+-- Deliberate no-op migration barrier.
+-- The baseline tags.name UNIQUE constraint remains in place until the exact
+-- Unicode 15.1 identity rule can be enforced by both database engines. Dropping
+-- it now would permit conflicts; retaining it means scoped duplicates cannot be
+-- created yet. Do not remove the constraint in a deployment migration.
+DO $$ BEGIN
+  RAISE NOTICE 'Scoped tag creation remains disabled pending Unicode 15.1 enforcement';
+END $$;
