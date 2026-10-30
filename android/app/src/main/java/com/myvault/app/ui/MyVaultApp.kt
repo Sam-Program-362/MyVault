@@ -396,9 +396,14 @@ fun MyVaultApp(vault: VaultViewModel) {
                             exportPicker.launch("$fileName-export.json")
                         },
                         onImport = {
-                            // Providers sometimes report backup files with a different MIME type.
-                            // Selection is unrestricted; BackupManager still parses and validates JSON.
-                            importPicker.launch(arrayOf("*/*"))
+                            importPicker.launch(
+                                arrayOf(
+                                    "application/json",
+                                    "text/json",
+                                    "text/plain",
+                                    "application/octet-stream",
+                                )
+                            )
                         },
                         visible = screen == "settings",
                         scopeSpaceId = selectedSpaceId,

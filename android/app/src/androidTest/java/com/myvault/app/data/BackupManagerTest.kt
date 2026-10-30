@@ -174,6 +174,16 @@ class BackupManagerTest {
         assertFalse(target.tagDao().getAll().single().reusable)
         assertEquals(listOf("existing-tag"), target.entryDao().tagRefsForEntry("existing-entry").map { it.tagId })
         assertEquals(listOf("existing-entry"), target.entryDao().getAll().map { it.id })
+        file.writeText(file.readText().replace("\"ideas\"", "\"Ideas\""))
+        val exactError = try {
+            BackupManager(app, target, app.settings, app.media).importFrom(Uri.fromFile(file), false)
+            null
+        } catch (e: IllegalArgumentException) { e }
+        assertTrue(exactError?.message?.contains("Ambiguous imported tags named", ignoreCase = true) == true)
+        assertEquals(listOf("existing-tag"), target.entryDao().tagRefsForEntry("existing-entry").map { it.tagId })
+        assertEquals(1, target.spaceDao().getAll().size)
+        assertEquals(1, target.tagDao().getAll().size)
+        assertEquals(1, target.entryDao().getAll().size)
     }
 
     @Test

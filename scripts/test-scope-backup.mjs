@@ -97,6 +97,13 @@ try {
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /Ambiguous imported tags named/i);
   assert.deepEqual((await client.query('SELECT (SELECT count(*) FROM spaces) AS spaces, (SELECT count(*) FROM tags) AS tags, (SELECT count(*) FROM entries) AS entries, (SELECT count(*) FROM entry_tags) AS links')).rows, beforeAmbiguous.rows);
+  const exactDuplicates = structuredClone(ambiguous);
+  exactDuplicates.tags[1].name = 'Ideas';
+  exactDuplicates.entries[0].tags[1].name = 'Ideas';
+  res = await post(exactDuplicates);
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /Ambiguous imported tags named/i);
+  assert.deepEqual((await client.query('SELECT (SELECT count(*) FROM spaces) AS spaces, (SELECT count(*) FROM tags) AS tags, (SELECT count(*) FROM entries) AS entries, (SELECT count(*) FROM entry_tags) AS links')).rows, beforeAmbiguous.rows);
   // An ID-less legacy link must not be resolved by picking the last of two IDs.
   ambiguous.entries[0].tags = [{ name: 'ideas' }];
   res = await post(ambiguous);

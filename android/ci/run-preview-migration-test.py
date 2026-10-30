@@ -142,6 +142,21 @@ def main():
 try:
     main()
 except Exception as exc:
+    # Emit the actual system-picker screenshot as a compact synthetic CI annotation.
+    # Full-resolution artifacts are also retained by the workflow.
+    try:
+        png = "/tmp/myvault-picker.png"
+        jpg = "/tmp/myvault-picker.jpg"
+        image = subprocess.run(["adb", "exec-out", "screencap", "-p"], check=True, capture_output=True, timeout=30).stdout
+        with open(png, "wb") as output:
+            output.write(image)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", png, "-vf", "scale=240:-2", "-q:v", "8", jpg], check=True, timeout=30)
+        import base64
+        with open(jpg, "rb") as image_file:
+            encoded = base64.b64encode(image_file.read()).decode("ascii")
+        print(f"::notice title=API30 picker screenshot::{encoded}", flush=True)
+    except Exception as capture_error:
+        trace.append(f"screenshot capture failed: {capture_error}")
     try:
         root = ET.fromstring(last_xml)
         visible = [

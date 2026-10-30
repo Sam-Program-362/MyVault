@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
+log="$RUNNER_TEMP/myvault-cross-platform.log"
+exec > >(tee "$log") 2>&1
+report_failure() {
+  status=$?
+  if (( status != 0 )); then
+    python3 - "$log" <<'PYLOG'
+import pathlib, sys
+text = pathlib.Path(sys.argv[1]).read_text(errors="replace")[-7000:]
+text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+print(f"::error title=Cross-platform backup diagnostic::{text}", flush=True)
+PYLOG
+  fi
+}
+trap report_failure EXIT
 [[ ${MYVAULT_DISPOSABLE_EMULATOR:-0} == 1 && $(adb get-serialno) == emulator-* ]] || { echo 'Disposable emulator required'; exit 1; }
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk

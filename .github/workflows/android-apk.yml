@@ -267,6 +267,8 @@ jobs:
           git archive 4264b40975a9fa0c2d53071b36823f20c751712f android | tar -x -C "$before"
           cd "$before/android"
           bash "$GITHUB_WORKSPACE/android/ci/run-gradle-check.sh" :app:assembleDebug
+      - name: Install screenshot evidence encoder
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
