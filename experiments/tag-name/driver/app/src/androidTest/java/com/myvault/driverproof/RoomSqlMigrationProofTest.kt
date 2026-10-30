@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.myvault.app.data.AppDatabase
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -50,7 +51,7 @@ class RoomSqlMigrationProofTest {
                 assertEquals(setOf("legacy-cafe-a", "legacy-cafe-b"), room.entryDao().tagRefsForEntry("entry-a").map { it.tagId }.toSet())
 
                 val db = room.openHelper.writableDatabase
-                fun read(asset: String) = context.assets.open(asset).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                fun read(asset: String) = InstrumentationRegistry.getInstrumentation().context.assets.open(asset).bufferedReader(Charsets.UTF_8).use { it.readText() }
                 fun execScript(script: String) {
                     val statement = StringBuilder()
                     var inTrigger = false
