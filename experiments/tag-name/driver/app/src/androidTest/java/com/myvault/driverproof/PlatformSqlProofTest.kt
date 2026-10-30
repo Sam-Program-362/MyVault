@@ -6,6 +6,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -32,7 +34,7 @@ class PlatformSqlProofTest {
         inputs.addAll(listOf("", " \u00a0\t", "Café"))
         SQLiteDatabase.create(null).use { db ->
             db.execSQL("CREATE TABLE ucd(cp INTEGER PRIMARY KEY,nfd TEXT,fold TEXT,cc INTEGER NOT NULL)")
-            db.execSQL("CREATE TABLE n(id INTEGER PRIMARY KEY,name TEXT NOT NULL)")
+            db.execSQL("CREATE TABLE n(id INTEGER PRIMARY KEY,name TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'global',owner TEXT,reusable INTEGER NOT NULL DEFAULT 1)")
             db.beginTransaction()
             try {
                 val insert = db.compileStatement("INSERT INTO ucd VALUES(?,?,?,?)")
@@ -43,7 +45,7 @@ class PlatformSqlProofTest {
                     if (row.isNull(2)) insert.bindNull(3) else insert.bindString(3,row.getString(2))
                     insert.bindLong(4,row.getLong(3)); insert.executeInsert()
                 }
-                val names = db.compileStatement("INSERT INTO n VALUES(?,?)")
+                val names = db.compileStatement("INSERT INTO n(id,name) VALUES(?,?)")
                 inputs.forEachIndexed { id, value -> names.bindLong(1,id.toLong()); names.bindString(2,value); names.executeInsert() }
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
@@ -53,6 +55,27 @@ class PlatformSqlProofTest {
                 var i=0
                 while (cursor.moveToNext()) { assertEquals("input $i: ${inputs[i]}",expected.getString(i),cursor.getString(0)); i++ }
             }
+            // Seed legacy collisions before installing the experimental guard.
+            db.execSQL("DELETE FROM n")
+            db.execSQL("INSERT INTO n(id,name) VALUES(1,'Café'),(2,'Café')")
+            db.execSQL("CREATE TABLE links(entry_id INTEGER,tag_id INTEGER)")
+            db.execSQL("INSERT INTO links VALUES(11,1),(12,2)")
+            db.execSQL("""CREATE TRIGGER proof_ins AFTER INSERT ON n BEGIN
+                SELECT CASE WHEN (SELECT identity FROM keys WHERE id=NEW.id) = '' THEN RAISE(ABORT,'empty') END;
+                SELECT CASE WHEN EXISTS (SELECT 1 FROM keys a JOIN keys b ON a.identity=b.identity
+                  JOIN n x ON x.id=a.id JOIN n y ON y.id=b.id WHERE a.id=NEW.id AND b.id<>NEW.id
+                  AND x.scope=y.scope AND x.owner IS y.owner) THEN RAISE(ABORT,'collision') END;
+            END""")
+            try { db.execSQL("INSERT INTO n(id,name) VALUES(3,'CAFÉ')"); fail("Expected collision") }
+            catch (_: android.database.sqlite.SQLiteException) { }
+            try { db.execSQL("INSERT INTO n(id,name) VALUES(4,'   ')"); fail("Expected empty key rejection") }
+            catch (_: android.database.sqlite.SQLiteException) { }
+            db.execSQL("INSERT INTO n(id,name,scope,owner,reusable) VALUES(5,'CAFÉ','local','space-a',0)")
+            db.execSQL("INSERT INTO n(id,name,scope,owner,reusable) VALUES(6,'CAFÉ','local','space-b',1)")
+            try { db.execSQL("INSERT INTO n(id,name,scope,owner,reusable) VALUES(7,'CAFÉ','local','space-a',1)"); fail("Expected local collision") }
+            catch (_: android.database.sqlite.SQLiteException) { }
+            db.rawQuery("SELECT count(*) FROM links",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(2,c.getInt(0)) }
+            db.rawQuery("SELECT count(*) FROM n",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(4,c.getInt(0)) }
         }
     }
 }
