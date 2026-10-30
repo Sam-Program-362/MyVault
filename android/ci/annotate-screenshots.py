@@ -8,7 +8,7 @@ import tempfile
 
 api = os.environ["EVIDENCE_API"]
 root = Path("android/app/build/reports/native-window-evidence/after")
-files = {name: root / f"{name}.png" for name in ("welcome", "dashboard-cards", "editor", "settings")} if api == "29" else {"picker": Path("/tmp/myvault-picker.png")}
+files = {name: root / f"{name}.png" for name in ("light-welcome", "light-dashboard-cards", "light-editor", "light-settings")} if api == "29" else {"picker": Path("/tmp/myvault-picker.png")}
 for name, source in files.items():
     if not source.exists():
         continue

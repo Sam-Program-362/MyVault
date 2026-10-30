@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -38,8 +39,16 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("New space").performClick()
         compose.onNodeWithText("Space name").performTextInput(space)
         compose.onNodeWithText("Create & enter").performScrollTo().performClick()
-        compose.waitUntil(15_000) {
-            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+        try {
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (failure: Throwable) {
+            val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
+            val spaces = runBlocking { app.database.spaceDao().getAll().map { it.name } }
+            val busy = ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
+            val tree = compose.onRoot(useUnmergedTree = true).printToString(maxDepth = 12)
+            throw AssertionError("New entry did not appear after creating $space; persisted=$spaces busy=$busy\n$tree", failure)
         }
         compose.onNodeWithContentDescription("New entry").performClick()
         compose.waitUntil(15_000) {

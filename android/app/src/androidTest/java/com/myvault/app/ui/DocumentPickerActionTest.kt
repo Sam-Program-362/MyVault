@@ -70,7 +70,11 @@ class DocumentPickerActionTest {
                         candidate.isEnabled && candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_FOCUS }
                     }
                     focusSucceeded = focusTarget?.performAction(AccessibilityNodeInfo.ACTION_FOCUS) == true
-                    if (focusSucceeded) instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
+                    if (focusSucceeded) {
+                        val down = automation.injectInputEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER), true)
+                        val up = automation.injectInputEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER), true)
+                        diagnostic += " focus=$focusSucceeded enterDown=$down enterUp=$up"
+                    }
                 }
             }
             SystemClock.sleep(250)
