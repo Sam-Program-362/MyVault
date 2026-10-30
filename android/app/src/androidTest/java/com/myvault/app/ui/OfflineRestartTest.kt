@@ -88,7 +88,17 @@ class OfflineRestartTest {
         if (newWelcome) compose.onNodeWithText("Create & enter").performScrollTo().performClick()
         else compose.onNodeWithText("Create").performClick()
         compose.waitUntil(15_000) {
-            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithText("Offline space").fetchSemanticsNodes().isNotEmpty()
+        }
+        // When another test has already populated the emulator, the existing Spaces
+        // screen uses the standard SpaceDialog rather than the first-run enter flow.
+        // Select the fixture Space explicitly before creating its entry.
+        if (compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithText("Offline space").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+            }
         }
         compose.onNodeWithContentDescription("New entry").performClick()
         compose.waitUntil(15_000) {

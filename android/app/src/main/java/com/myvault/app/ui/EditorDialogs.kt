@@ -49,7 +49,7 @@ fun TagPickerDialog(
         tags
             .filter { tag -> selected.none { it.id == tag.id } }
             .filter {
-                if (query.isBlank()) it.reusable else it.name.contains(query.trim(), ignoreCase = true)
+                query.isBlank() || it.name.contains(query.trim(), ignoreCase = true)
             }
             .take(8)
     val possibleMatch = scope.isNotBlank() && tags.any { it.scope == scope && it.name.equals(query.trim(), true) }

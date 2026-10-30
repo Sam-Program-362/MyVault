@@ -39,11 +39,21 @@ interface TagDao {
     @Query("SELECT * FROM tags ORDER BY name ASC")
     suspend fun getAll(): List<TagEntity>
 
-    @Upsert
-    suspend fun upsert(tag: TagEntity)
-
     @Update
     suspend fun update(tag: TagEntity)
+
+    @Update
+    suspend fun updateIfPresent(tag: TagEntity): Int
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertNew(tag: TagEntity)
+
+    // Room's generated @Upsert path can bypass the migration guard on older SQLite
+    // versions. Explicit update-then-insert keeps identity creation fail-closed.
+    @Transaction
+    suspend fun upsert(tag: TagEntity) {
+        if (updateIfPresent(tag) == 0) insertNew(tag)
+    }
 
     @Query("DELETE FROM tags WHERE id = :id")
     suspend fun delete(id: String)

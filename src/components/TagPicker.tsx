@@ -39,7 +39,7 @@ export default function TagPicker({ selected, spaceId, onChange }: Props) {
     return tags
       .filter((tag) => tagVisibleInSpace(tag, spaceId))
       .filter((t) => !selectedIds.has(t.id))
-      .filter((t) => (q ? t.name.toLowerCase().includes(q) : t.reusable))
+      .filter((t) => (q ? t.name.toLowerCase().includes(q) : true))
       .slice(0, 8);
   }, [tags, query, selected, spaceId]);
 
