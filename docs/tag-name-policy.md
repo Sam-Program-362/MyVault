@@ -46,6 +46,14 @@ Do not use locale-specific Turkic casing. Scope is `(global, null)` or
 5. Verify on isolated PostgreSQL and Room v1→current upgrade fixtures before
    requesting approval to deploy anything. Do not apply migration to production.
 
+The shared fixture includes combining-mark reordering before case folding (Greek
+U+0345), supplementary-plane case variants, accent distinctions, locale-neutral
+Turkic I, non-Latin names, whitespace, scope, and reusable independence.
+Correct canonical ordering is essential: mapping each original code point to its
+folded value independently before normalization can turn canonically equivalent
+Greek strings into different keys. These vectors are reference cases, not yet
+Android, web or database conformance tests.
+
 No schema migration or normalization implementation has been added by this
 proposal. The user-visible conflict-resolution interface and cross-engine
 conformance tests remain outstanding.

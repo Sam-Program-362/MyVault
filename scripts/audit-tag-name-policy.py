@@ -18,6 +18,12 @@ def reference(value):
     collapsed = " ".join(part for part in collapsed.split(" ") if part)
     return unicodedata.normalize("NFC", unicodedata.normalize("NFC", collapsed).casefold())
 
+for case in fixture["scopedCases"]:
+    a, b = case["tags"]
+    collision = (a["scope"], a["owner"], reference(a["name"])) == (b["scope"], b["owner"], reference(b["name"]))
+    assert collision == case["conflict"], f"Reference scope mismatch: {case!r}"
+print(f"Proposal fixture: {len(fixture['scopedCases'])} scoped cases agree with the reference; reusable is not part of identity.")
+
 connection = sqlite3.connect(":memory:")
 mismatches = []
 for pair in fixture["pairs"]:

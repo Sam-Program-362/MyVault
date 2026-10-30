@@ -2,16 +2,155 @@
   "status": "proposed; production comparison is not implemented",
   "rule": "Unicode 15.1 White_Space trim and collapse; NFC, default full case fold, NFC; accents significant",
   "pairs": [
-    {"left": "Café", "right": "Café", "equal": true},
-    {"left": "CAFÉ", "right": "café", "equal": true},
-    {"left": "cafe", "right": "café", "equal": false},
-    {"left": "Straße", "right": "STRASSE", "equal": true},
-    {"left": "ΟΣ", "right": "ος", "equal": true},
-    {"left": "МОСКВА", "right": "москва", "equal": true},
-    {"left": "東京", "right": "東京", "equal": true},
-    {"left": "東京", "right": "京都", "equal": false},
-    {"left": "  My\t  Tag\n", "right": "my tag", "equal": true},
-    {"left": "one two", "right": "one two", "equal": true},
-    {"left": "İ", "right": "i", "equal": false}
+    {
+      "left": "Café",
+      "right": "Café",
+      "equal": true
+    },
+    {
+      "left": "CAFÉ",
+      "right": "café",
+      "equal": true
+    },
+    {
+      "left": "cafe",
+      "right": "café",
+      "equal": false
+    },
+    {
+      "left": "Straße",
+      "right": "STRASSE",
+      "equal": true
+    },
+    {
+      "left": "ΟΣ",
+      "right": "ος",
+      "equal": true
+    },
+    {
+      "left": "МОСКВА",
+      "right": "москва",
+      "equal": true
+    },
+    {
+      "left": "東京",
+      "right": "東京",
+      "equal": true
+    },
+    {
+      "left": "東京",
+      "right": "京都",
+      "equal": false
+    },
+    {
+      "left": "  My\t  Tag\n",
+      "right": "my tag",
+      "equal": true
+    },
+    {
+      "left": "one two",
+      "right": "one two",
+      "equal": true
+    },
+    {
+      "left": "İ",
+      "right": "i",
+      "equal": false
+    },
+    {
+      "left": "ᾲ",
+      "right": "ᾲ",
+      "equal": true
+    },
+    {
+      "left": "𐐀",
+      "right": "𐐨",
+      "equal": true
+    },
+    {
+      "left": "i̇",
+      "right": "İ",
+      "equal": true
+    },
+    {
+      "left": "a‍b",
+      "right": "ab",
+      "equal": false
+    },
+    {
+      "left": "अ",
+      "right": "आ",
+      "equal": false
+    }
+  ],
+  "scopedCases": [
+    {
+      "tags": [
+        {
+          "name": " CAFÉ ",
+          "scope": "global",
+          "owner": null,
+          "reusable": false
+        },
+        {
+          "name": "café",
+          "scope": "global",
+          "owner": null,
+          "reusable": true
+        }
+      ],
+      "conflict": true
+    },
+    {
+      "tags": [
+        {
+          "name": "Ideas",
+          "scope": "local",
+          "owner": "space-a",
+          "reusable": false
+        },
+        {
+          "name": "IDEAS",
+          "scope": "local",
+          "owner": "space-b",
+          "reusable": true
+        }
+      ],
+      "conflict": false
+    },
+    {
+      "tags": [
+        {
+          "name": "Ideas",
+          "scope": "local",
+          "owner": "space-a",
+          "reusable": false
+        },
+        {
+          "name": "IDEAS",
+          "scope": "local",
+          "owner": "space-a",
+          "reusable": true
+        }
+      ],
+      "conflict": true
+    },
+    {
+      "tags": [
+        {
+          "name": "Ideas",
+          "scope": "global",
+          "owner": null,
+          "reusable": false
+        },
+        {
+          "name": "IDEAS",
+          "scope": "local",
+          "owner": "space-a",
+          "reusable": true
+        }
+      ],
+      "conflict": false
+    }
   ]
 }
