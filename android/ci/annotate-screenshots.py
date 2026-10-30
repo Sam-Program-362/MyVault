@@ -12,8 +12,9 @@ files = {name: root / f"{name}.png" for name in ("welcome", "dashboard-cards", "
 for name, source in files.items():
     if not source.exists():
         continue
+    width = 320 if api == "30" else 160
     with tempfile.NamedTemporaryFile(suffix=".jpg") as output:
-        result = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(source), "-vf", "scale=160:-2", "-q:v", "18", output.name], check=False)
+        result = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(source), "-vf", f"scale={width}:-2", "-q:v", "18", output.name], check=False)
         if result.returncode:
             continue
         value = base64.b64encode(Path(output.name).read_bytes()).decode("ascii")

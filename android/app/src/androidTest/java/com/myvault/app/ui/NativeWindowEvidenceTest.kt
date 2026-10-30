@@ -76,6 +76,10 @@ class NativeWindowEvidenceTest {
         }
         fun screenshot(name: String) {
             compose.waitForIdle()
+            // Semantics can become idle before SurfaceFlinger presents the new frame.
+            // Capture after the real display has had time to show the settled screen.
+            android.os.SystemClock.sleep(600)
+            compose.waitForIdle()
             val bitmap =
                 requireNotNull(
                     InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
