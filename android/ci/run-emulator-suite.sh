@@ -25,6 +25,13 @@ run_check 'Motion and cutout' env MYVAULT_REQUIRE_CUTOUT=1 bash ci/run-motion-in
 if [[ $MYVAULT_API_LEVEL == 30 ]]; then
   run_check 'Synthetic screenshots and launcher' bash ci/capture-synthetic-ui.sh
 fi
-run_check 'Real-window comparison and recording' bash ci/run-native-window-evidence.sh
-run_check 'Offline upgrade, restart and migration' bash ci/run-offline-restart-test.sh
+# Each scenario starts with the old APK, which cannot open the current version's
+# Room database. Reset ONLY this suite's synthetic debug fixture on the explicitly
+# authorized disposable emulator. Never clear between old-APK seed and upgrade.
+run_with_fresh_debug_fixture() {
+  adb shell pm clear com.myvault.app.debug || return 1
+  "$@"
+}
+run_check 'Real-window comparison and recording' run_with_fresh_debug_fixture bash ci/run-native-window-evidence.sh
+run_check 'Offline upgrade, restart and migration' run_with_fresh_debug_fixture bash ci/run-offline-restart-test.sh
 exit "$status"

@@ -28,7 +28,6 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
   let failedField: string | null = null;
   let fieldFailuresRemaining = 0;
   let uploadDelay = 0;
-  let tagCreateDelay = 0;
   let deleteFailuresRemaining = 0;
   let patchDelay = 80;
 
@@ -43,12 +42,7 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
     }
     if (pathname === "/api/spaces") return json(spaces);
     if (pathname === "/api/tags") {
-      if (method === "POST") {
-        if (tagCreateDelay) await new Promise((resolve) => setTimeout(resolve, tagCreateDelay));
-        const tag = { ...reusableTag, ...request.postDataJSON(), id: `tag-${tags.length + 1}` };
-        tags.push(tag);
-        return json(tag, 201);
-      }
+      if (method === "POST") return json({ error: "Unicode 15.1 tag identity is not yet enforceable on both databases." }, 409);
       return json(tags);
     }
     if (pathname === "/api/entries") {
@@ -101,11 +95,10 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
     return json({ error: `Unexpected ${method} ${pathname}` }, 404);
   });
   return {
-    entries, patches, settings,
+    entries, patches, settings, tags,
     failDrafts: (count: number) => { draftFailuresRemaining = count; },
     failField: (field: string, count: number) => { failedField = field; fieldFailuresRemaining = count; },
     delayUpload: (milliseconds: number) => { uploadDelay = milliseconds; },
-    delayTagCreation: (milliseconds: number) => { tagCreateDelay = milliseconds; },
     failDeletes: (count: number) => { deleteFailuresRemaining = count; },
     delayPatches: (milliseconds: number) => { patchDelay = milliseconds; },
   };
@@ -135,6 +128,24 @@ test.describe("phone writing experience", () => {
       expect(box!.x + box!.width).toBeLessThanOrEqual(320);
       expect(box!.height).toBeGreaterThanOrEqual(44);
     }
+  });
+
+  test("Undo and Redo controls are reachable with touch-sized targets", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    const title = page.getByLabel("Entry title");
+    await title.fill("Mobile draft");
+    const undo = page.getByRole("button", { name: "Undo" });
+    const redo = page.getByRole("button", { name: "Redo" });
+    await undo.scrollIntoViewIfNeeded();
+    const undoBox = await undo.boundingBox();
+    expect(undoBox!.x).toBeGreaterThanOrEqual(0);
+    expect(undoBox!.x + undoBox!.width).toBeLessThanOrEqual(390);
+    expect(undoBox!.height).toBeGreaterThanOrEqual(44);
+    await undo.click();
+    await expect(title).toHaveValue("Untitled entry");
+    await redo.click();
+    await expect(title).toHaveValue("Mobile draft");
   });
 
   test("uses the whole page and opens a right-hand preview without losing the draft", async ({ page }) => {
@@ -291,6 +302,136 @@ test.describe("desktop editor", () => {
     await expect(preview).toBeHidden();
   });
 
+  test("renders representative GFM content in preview", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    await page.getByLabel("Entry content").fill([
+      "# Heading", "", "- Parent", "  - Child", "- [x] Done", "", "> Quote", "",
+      "| Name | Value |", "| --- | --- |", "| One | Two |", "",
+      "```js", "const answer = 42;", "```", "", "[Safe link](https://example.com)",
+      "", "![Example image](https://example.com/image.png)",
+    ].join("\n"));
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    const preview = page.getByRole("complementary", { name: "Markdown preview" });
+    await expect(preview.getByRole("heading", { name: "Heading" })).toBeVisible();
+    await expect(preview.locator("li ul li")).toHaveText("Child");
+    await expect(preview.getByRole("checkbox")).toBeChecked();
+    await expect(preview.locator("blockquote")).toContainText("Quote");
+    await expect(preview.getByRole("cell", { name: "Two" })).toBeVisible();
+    await expect(preview.locator("pre code")).toContainText("const answer = 42;");
+    await expect(preview.getByRole("link", { name: "Safe link" })).toHaveAttribute("href", "https://example.com");
+    await expect(preview.getByRole("img", { name: "Example image" })).toHaveAttribute("src", "https://example.com/image.png");
+  });
+
+  test("undo and redo cross title and body with keyboard and visible controls", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    const title = page.getByLabel("Entry title");
+    const content = page.getByLabel("Entry content");
+    const undo = page.getByRole("button", { name: "Undo" });
+    const redo = page.getByRole("button", { name: "Redo" });
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeDisabled();
+
+    await title.fill("Title draft");
+    await content.fill("Body draft");
+    await expect(undo).toBeEnabled();
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("Body draft");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Z");
+    await expect(title).toHaveValue("Untitled entry");
+    await page.keyboard.press("Control+Y");
+    await expect(title).toHaveValue("Title draft");
+    await undo.click();
+    await expect(title).toHaveValue("Untitled entry");
+    await redo.click();
+    await expect(title).toHaveValue("Title draft");
+
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.locator(".entry-editor")).toBeHidden();
+
+    await openNewEntry(page);
+    await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
+  test("typing coalesces, selection returns on undo, and imported text is one step", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    const content = page.getByLabel("Entry content");
+    await content.focus();
+    await page.keyboard.type("hello");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("hello");
+
+    await content.fill("abcdef");
+    await page.waitForTimeout(800); // Separate this selection replacement from prior typing coalescence.
+    await content.evaluate((element: HTMLTextAreaElement) => {
+      element.setSelectionRange(2, 4);
+      element.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    await page.keyboard.type("XY");
+    await expect(content).toHaveValue("abXYef");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("abcdef");
+    await expect.poll(() => content.evaluate((element: HTMLTextAreaElement) => [element.selectionStart, element.selectionEnd])).toEqual([2, 4]);
+
+    await content.fill("");
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Import text or Markdown file" }).click();
+    await (await chooser).setFiles({ name: "imported.md", mimeType: "text/markdown", buffer: Buffer.from("# Imported\nText") });
+    await expect(content).toHaveValue("# Imported\nText");
+    await expect(page.getByLabel("Entry title")).toHaveValue("imported");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await expect(page.getByLabel("Entry title")).toHaveValue("Untitled entry");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("# Imported\nText");
+    await expect(page.getByLabel("Entry title")).toHaveValue("imported");
+  });
+
+  test("autosave during undo and redo retains the newest draft and retries failures", async ({ page }) => {
+    const vault = await mockVault(page);
+    vault.delayPatches(250);
+    await openNewEntry(page);
+    const content = page.getByLabel("Entry content");
+    const firstPatch = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/api/entries/"));
+    await content.fill("saved after redo");
+    await firstPatch;
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("saved after redo");
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.locator(".entry-editor")).toBeHidden();
+    expect(vault.entries[0].content).toBe("saved after redo");
+  });
+
+  test("save failure keeps the undo history and latest draft available for retry", async ({ page }) => {
+    const vault = await mockVault(page);
+    vault.failDrafts(2);
+    await openNewEntry(page);
+    const failedPatch = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/api/entries/"));
+    await page.getByLabel("Entry content").fill("retry this undoable draft");
+    await failedPatch;
+    await expect(page.getByRole("status")).toHaveText("Couldn’t save");
+    await page.keyboard.press("Control+Z");
+    await expect(page.getByLabel("Entry content")).toHaveValue("");
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.getByRole("status")).toHaveText("Couldn’t save");
+    await expect(page.getByRole("button", { name: "Redo" })).toBeEnabled();
+    await page.getByRole("button", { name: "Redo" }).click();
+    await expect(page.getByLabel("Entry content")).toHaveValue("retry this undoable draft");
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.locator(".entry-editor")).toBeHidden();
+    expect(vault.entries[0].content).toBe("retry this undoable draft");
+  });
+
   test("find and replace stays editable and treats special characters literally", async ({ page }) => {
     const vault = await mockVault(page);
     await openNewEntry(page);
@@ -328,8 +469,11 @@ test.describe("desktop editor", () => {
     await page.getByRole("button", { name: "Pin entry" }).click();
     await expect(page.getByRole("button", { name: "Unpin entry" })).toBeVisible();
     await page.getByLabel("Add tag").focus();
-    await page.locator(".tag-picker-menu").getByRole("button", { name: "Ideas" }).click();
+    await page.locator(".tag-picker-menu").getByRole("button", { name: /Ideas.*Global/ }).click();
     await expect(page.getByRole("button", { name: "Remove Ideas tag" })).toBeVisible();
+    const pill = page.getByRole("button", { name: "Remove Ideas tag" }).locator("..");
+    await expect(pill).toHaveCSS("border-top-width", "1px");
+    await expect(pill).toHaveCSS("border-top-color", "rgb(139, 92, 246)");
 
     await page.locator('input[accept="image/*"]').setInputFiles({
       name: "cover.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL6WQAAAABJRU5ErkJggg==", "base64"),
@@ -377,18 +521,41 @@ test.describe("desktop editor", () => {
     expect(vault.entries[0].coverImage).toMatch(/^data:image/);
   });
 
-  test("waits for a new tag to be created and attached before closing", async ({ page }) => {
+  test("scope-qualified suggestions stay in the entry Space and creation fails closed", async ({ page }) => {
     const vault = await mockVault(page);
-    vault.delayTagCreation(700);
+    vault.tags.push({ ...reusableTag, id: "local-a", name: "Local A", scope: "local", ownerSpaceId: "space-1" } as typeof reusableTag);
+    vault.tags.push({ ...reusableTag, id: "local-b", name: "Local B", scope: "local", ownerSpaceId: "space-2" } as typeof reusableTag);
     await openNewEntry(page);
-    await page.getByLabel("Add tag").fill("Slow tag");
-    await page.getByRole("button", { name: "Create & add tag" }).click();
-    await expect(page.getByRole("button", { name: "Close editor" })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "Remove Slow tag tag" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Close editor" })).toBeEnabled();
-    await page.getByRole("button", { name: "Close editor" }).click();
-    await expect(page.locator(".entry-editor")).toBeHidden();
-    expect(vault.entries[0].tags.map((tag) => tag.name)).toEqual(["Slow tag"]);
+    await page.getByLabel("Add tag").focus();
+    const menu = page.locator(".tag-picker-menu");
+    await expect(menu.getByRole("button", { name: /Local A/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /Local B/ })).toHaveCount(0);
+    await page.getByLabel("Add tag").fill("New local");
+    const create = page.getByRole("button", { name: /Create & add tag/ });
+    await expect(page.getByLabel("Local to this Space")).not.toBeChecked();
+    await expect(page.getByLabel("Global", { exact: true })).not.toBeChecked();
+    await expect(create).toBeDisabled();
+    await page.getByLabel("Local to this Space").check();
+    await expect(create).toBeDisabled();
+    await expect(menu.getByText(/Creation is paused until both databases/)).toBeVisible();
+    expect(vault.tags.some((tag) => tag.name === "New local")).toBe(false);
+    expect(vault.entries[0].tags).toEqual([]);
+  });
+
+  test("Global and applicable Local tags remain attachable; reusable is independent", async ({ page }) => {
+    const vault = await mockVault(page);
+    vault.tags[0].reusable = false;
+    vault.tags.push({ ...reusableTag, id: "local-a", name: "Local A", scope: "local", ownerSpaceId: "space-1", reusable: true } as typeof reusableTag);
+    vault.tags.push({ ...reusableTag, id: "local-b", name: "Local B", scope: "local", ownerSpaceId: "space-2", reusable: true } as typeof reusableTag);
+    await openNewEntry(page);
+    await page.getByLabel("Add tag").focus();
+    const menu = page.locator(".tag-picker-menu");
+    await expect(menu.getByRole("button", { name: /Ideas.*Global/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /Local A.*Local/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /Local B.*Local/ })).toHaveCount(0);
+    await menu.getByRole("button", { name: /Local A.*Local/ }).click();
+    await expect(page.getByRole("button", { name: "Remove Local A tag" })).toBeVisible();
+    expect(vault.tags.find((tag) => tag.id === "tag-1")?.reusable).toBe(false);
   });
 
   test("a failed delete does not discard an unsaved draft", async ({ page }) => {

@@ -101,8 +101,22 @@ print(f'::error title=Real-window {sys.argv[2]} capture failed::{text}')
 PY
     return 1
   fi
+  # Repeat the same actual Activity navigation after switching to light mode.
+  # Force-stop between captures without clearing preferences or Room.
+  adb shell am force-stop "$app_id" || return 1
+  adb shell am instrument -w -r -e class com.myvault.app.ui.NativeWindowEvidenceTest \
+    -e myvault.evidence "$phase" -e myvault.evidenceMode light "$runner" 2>&1 | tee "$work/$phase-light.log"
+  status=${PIPESTATUS[0]}
+  if ((status != 0)) || ! grep -Eq '^OK \([0-9]+ tests?\)' "$work/$phase-light.log" || grep -q 'FAILURES!!!' "$work/$phase-light.log"; then
+    python3 - "$work/$phase-light.log" "$phase" <<'PYLOG'
+import pathlib, sys
+text = pathlib.Path(sys.argv[1]).read_text(errors="replace")[-8000:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+print(f"::error title=Real-window {sys.argv[2]} light capture failed::{text}")
+PYLOG
+    return 1
+  fi
   mkdir -p "$output/$phase"
-  for name in welcome space-dialog dashboard-empty dashboard-cards dashboard-list dashboard-list-expanded editor editor-keyboard settings; do
+  for name in welcome space-dialog dashboard-empty dashboard-cards dashboard-list dashboard-list-expanded editor preview editor-keyboard settings light-welcome light-space-dialog light-dashboard-empty light-dashboard-cards light-dashboard-list light-dashboard-list-expanded light-editor light-preview light-editor-keyboard light-settings; do
     if ! adb exec-out run-as "$app_id" cat "files/native-window-evidence/$phase/$name.png" > "$output/$phase/$name.png" || [[ ! -s "$output/$phase/$name.png" ]]; then
       echo "::error::Missing actual-activity $phase/$name screenshot." >&2
       return 1

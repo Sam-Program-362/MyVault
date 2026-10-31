@@ -70,6 +70,7 @@ class BackupManager(
                     result.toString()
                 }
             val original = codec.decodeFromString<ExportPayload>(text)
+            validateTagScopes(original)
             val createdFiles = mutableListOf<File>()
             var transactionStarted = false
             try {

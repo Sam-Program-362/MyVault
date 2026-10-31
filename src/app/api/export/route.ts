@@ -22,7 +22,7 @@ export async function GET() {
   }
 
   const payload = {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     settings: settingsRow ?? null,
     spaces: spaceRows,

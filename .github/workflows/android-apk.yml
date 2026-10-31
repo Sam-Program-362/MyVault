@@ -202,7 +202,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [30, 34]
+        api: [29, 30, 34]
     steps:
       - name: Check out sources
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -267,6 +267,8 @@ jobs:
           git archive 4264b40975a9fa0c2d53071b36823f20c751712f android | tar -x -C "$before"
           cd "$before/android"
           bash "$GITHUB_WORKSPACE/android/ci/run-gradle-check.sh" :app:assembleDebug
+      - name: Install screenshot evidence encoder
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -286,6 +288,19 @@ jobs:
           # This action executes each input line separately with sh -c; keep it complete.
           script: |
             MYVAULT_DISPOSABLE_EMULATOR=1 MYVAULT_API_LEVEL='${{ matrix.api }}' MYVAULT_BASELINE_APK="$RUNNER_TEMP/myvault-native-before/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_PREVIOUS_APK="$RUNNER_TEMP/myvault-previous/android/app/build/outputs/apk/debug/app-debug.apk" MYVAULT_CONFLICT_APK="$RUNNER_TEMP/myvault-incompatible-debug.apk" MYVAULT_PREVIEW_APK="$RUNNER_TEMP/myvault-preview.apk" bash ci/run-emulator-suite.sh
+      # Artifact storage may be inaccessible from the coding sandbox. Expose compact
+      # synthetic screenshots in bounded annotation chunks from a separate step.
+      - name: Publish compact visual evidence
+        if: ${{ always() && (matrix.api == 29 || matrix.api == 30) }}
+        env:
+          EVIDENCE_API: ${{ matrix.api }}
+        run: python3 android/ci/annotate-screenshots.py
+      - name: Publish compact API 29 baseline evidence
+        if: ${{ always() && matrix.api == 29 }}
+        env:
+          EVIDENCE_API: '29'
+          EVIDENCE_PHASE: before
+        run: python3 android/ci/annotate-screenshots.py
       - name: Upload real-window before-and-after evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

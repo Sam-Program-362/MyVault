@@ -3,39 +3,18 @@ import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { tags } from "@/db/schema";
 
+const IDENTITY_BLOCKER = "Tag creation is paused until the Unicode 15.1 name identity can be enforced by both Android SQLite and PostgreSQL. Existing tags remain available.";
+
 export async function GET() {
-  const rows = await db.select().from(tags).orderBy(asc(tags.name));
-  return NextResponse.json(rows);
+  return NextResponse.json(await db.select().from(tags).orderBy(asc(tags.name)));
 }
 
 export async function POST(request: Request) {
   const body = await request.json();
-
-  if (!body.name || typeof body.name !== "string") {
-    return NextResponse.json({ error: "Tag name is required" }, { status: 400 });
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name || !["local", "global"].includes(body.scope) ||
+      (body.scope === "local" ? typeof body.ownerSpaceId !== "string" || !body.ownerSpaceId : body.ownerSpaceId != null)) {
+    return NextResponse.json({ error: "Enter a name and explicitly choose a valid tag scope." }, { status: 400 });
   }
-
-  const name = body.name.trim();
-  if (!name) {
-    return NextResponse.json({ error: "Tag name is required" }, { status: 400 });
-  }
-
-  const existing = await db.select().from(tags);
-  const match = existing.find((t) => t.name.toLowerCase() === name.toLowerCase());
-  if (match) {
-    return NextResponse.json(match);
-  }
-
-  const [created] = await db
-    .insert(tags)
-    .values({
-      id: crypto.randomUUID(),
-      name,
-      color: body.color || "#6366f1",
-      textColor: body.textColor || "#ffffff",
-      reusable: body.reusable === undefined ? true : Boolean(body.reusable),
-    })
-    .returning();
-
-  return NextResponse.json(created, { status: 201 });
+  return NextResponse.json({ error: IDENTITY_BLOCKER }, { status: 409 });
 }

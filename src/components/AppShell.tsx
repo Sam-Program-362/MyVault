@@ -15,6 +15,7 @@ import {
 import { useAppData } from "@/context/AppDataContext";
 import { api } from "@/lib/api";
 import type { Entry } from "@/lib/types";
+import { tagVisibleInSpace } from "@/lib/tag-visibility";
 import Wallpaper from "@/components/Wallpaper";
 import SplashOverlay from "@/components/SplashOverlay";
 import EntryEditor from "@/components/EntryEditor";
@@ -145,7 +146,7 @@ export default function AppShell() {
             />
           </div>
           <button
-            onClick={() => setSearchAllSpaces((v) => !v)}
+            onClick={() => { setTagFilter(null); setSearchAllSpaces((v) => !v); }}
             className={`app-all-spaces ui-radius border px-3 py-2 text-xs font-medium transition ${
               searchAllSpaces
                 ? "accent-bg border-transparent text-white"
@@ -161,6 +162,7 @@ export default function AppShell() {
               className="flex items-center gap-1 rounded-full bg-black/5 px-3 py-1.5 text-xs text-neutral-700 dark:bg-white/10 dark:text-neutral-200"
             >
               <TagIcon size={12} /> {tags.find((t) => t.id === tagFilter)?.name ?? "tag"}
+              <span className="opacity-70">{tags.find((t) => t.id === tagFilter)?.scope === "local" ? "Local" : "Global"}</span>
               <X size={12} />
             </button>
           )}
@@ -193,7 +195,7 @@ export default function AppShell() {
                   />
                 ) : (
                   <button
-                    onClick={() => setCurrentSpaceId(space.id)}
+                    onClick={() => { setTagFilter(null); setCurrentSpaceId(space.id); }}
                     onDoubleClick={() => setEditingSpace({ id: space.id, name: space.name })}
                     className={`ui-radius flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium transition ${
                       currentSpaceId === space.id
@@ -245,21 +247,22 @@ export default function AppShell() {
 
           {/* Main content */}
           <main className="flex-1 p-4 md:p-6">
-            {tags.filter((t) => t.reusable).length > 0 && (
+            {tags.filter((tag) => tag.reusable && tagVisibleInSpace(tag, currentSpaceId, searchAllSpaces)).length > 0 && (
               <div className="mb-4 flex flex-wrap gap-2">
                 {tags
-                  .filter((t) => t.reusable)
+                  .filter((tag) => tag.reusable && tagVisibleInSpace(tag, currentSpaceId, searchAllSpaces))
                   .map((tag) => (
                     <button
                       key={tag.id}
                       onClick={() => setTagFilter(tagFilter === tag.id ? null : tag.id)}
-                      className="rounded-full px-3 py-1 text-xs font-medium transition"
+                      className="rounded-full border px-3 py-1 text-xs font-medium transition"
                       style={{
-                        background: tagFilter === tag.id ? tag.color : `${tag.color}22`,
-                        color: tagFilter === tag.id ? tag.textColor : tag.color,
+                        borderColor: tag.color,
+                        background: `color-mix(in srgb, ${tag.color} ${tagFilter === tag.id ? 18 : 8}%, transparent)`,
+                        color: "inherit",
                       }}
                     >
-                      {tag.name}
+                      {tag.name} <span className="ml-1 opacity-60">{tag.scope === "local" ? "Local" : "Global"}</span>
                     </button>
                   ))}
               </div>
@@ -320,10 +323,10 @@ export default function AppShell() {
                         {entry.tags.slice(0, 3).map((tag) => (
                           <span
                             key={tag.id}
-                            className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                            style={{ background: `${tag.color}22`, color: tag.color }}
+                            className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                            style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                           >
-                            {tag.name}
+                            {tag.name} <span className="opacity-60">{tag.scope === "local" ? "Local" : "Global"}</span>
                           </span>
                         ))}
                         <span className="ml-auto text-[10px] text-neutral-400">
@@ -341,6 +344,7 @@ export default function AppShell() {
 
       {selectedEntryId && (
         <EntryEditor
+          key={selectedEntryId}
           entryId={selectedEntryId}
           onClose={() => {
             setSelectedEntryId(null);

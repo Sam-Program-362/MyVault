@@ -28,7 +28,7 @@ export const api = {
   },
   tags: {
     list: () => request<Tag[]>("/api/tags"),
-    create: (data: { name: string; color?: string; textColor?: string; reusable?: boolean }) =>
+    create: (data: { name: string; scope: "local" | "global"; ownerSpaceId: string | null; color?: string; textColor?: string; reusable?: boolean }) =>
       request<Tag>("/api/tags", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, patch: Partial<Tag>) =>
       request<Tag>(`/api/tags/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),

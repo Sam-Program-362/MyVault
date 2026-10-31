@@ -142,7 +142,10 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteSpace(space: SpaceEntity, onDeleted: () -> Unit) =
         action("Couldn’t delete space.") {
-            spacesDao.delete(space.id)
+            db.withTransaction {
+                tagsDao.deleteForSpace(space.id)
+                spacesDao.delete(space.id)
+            }
             onDeleted()
             message("Space deleted.")
         }
@@ -229,36 +232,17 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addTag(tag: TagEntity) =
         action("Couldn’t add tag.") {
-            val entryId = currentWriter.value?.state?.value?.value?.id ?: return@action
-            entriesDao.addTagRef(EntryTagCrossRef(entryId, tag.id))
+            val entry = currentWriter.value?.state?.value?.value ?: return@action
+            require(tag.scope != "local" || tag.ownerSpaceId == entry.spaceId) { "This tag belongs to another Space." }
+            entriesDao.addTagRef(EntryTagCrossRef(entry.id, tag.id))
         }
 
-    fun createTag(name: String, color: String, reusable: Boolean, attachToEditor: Boolean) {
-        val cleanName = name.trim()
-        if (cleanName.isEmpty()) {
-            message("Enter a tag name.")
+    fun createTag(name: String, color: String, reusable: Boolean, scope: String, spaceId: String?, attachToEditor: Boolean) {
+        if (name.isBlank() || scope !in listOf("global", "local") || (scope == "local" && spaceId == null)) {
+            message("Enter a name and choose a valid tag scope.")
             return
         }
-        action("Couldn’t create tag.") {
-            db.withTransaction {
-                val tag =
-                    tagsDao.findByName(cleanName)
-                        ?: TagEntity(
-                                id = UUID.randomUUID().toString(),
-                                name = cleanName,
-                                color = color,
-                                textColor = "#FFFFFF",
-                                reusable = reusable,
-                            )
-                            .also { tagsDao.upsert(it) }
-                if (attachToEditor) {
-                    val id =
-                        currentWriter.value?.state?.value?.value?.id
-                            ?: error("Entry is no longer open.")
-                    entriesDao.addTagRef(EntryTagCrossRef(id, tag.id))
-                }
-            }
-        }
+        message("Tag creation is paused until Unicode 15.1 name identity can be enforced by Android SQLite and PostgreSQL. Existing tags remain available.")
     }
 
     fun removeTag(tag: TagEntity) =
@@ -266,6 +250,14 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
             val entryId = currentWriter.value?.state?.value?.value?.id ?: return@action
             entriesDao.removeTagRef(entryId, tag.id)
         }
+
+    fun editTag(tag: TagEntity, name: String, color: String, scope: String, ownerSpaceId: String?) {
+        if (name.trim() != tag.name || scope != tag.scope || ownerSpaceId != tag.ownerSpaceId) {
+            message("Tag name and scope changes are paused until Unicode 15.1 uniqueness is enforced by Android SQLite and PostgreSQL.")
+            return
+        }
+        action("Couldn’t update tag.") { tagsDao.update(tag.copy(color = color)) }
+    }
 
     fun setTagReusable(tag: TagEntity, reusable: Boolean) =
         action("Couldn’t update tag.") {
