@@ -1,5 +1,6 @@
 package com.myvault.app.ui
 
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -126,6 +127,7 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
     }
 
+    @OptIn(ExperimentalTestApi::class)
     @Test
     fun undoRedoControlsAndKeyboardShortcutsCoverTitleAndBody() {
         val space = "Undo space ${System.currentTimeMillis()}"
@@ -152,11 +154,25 @@ class VaultUiTest {
         title.assertTextEquals("")
         compose.onNodeWithContentDescription("Redo").performClick()
         title.assertTextEquals("Title draft")
-        title.performKeyInput { withKeyDown(Key.CtrlLeft) { withKeyDown(Key.ShiftLeft) { pressKey(Key.Z) } } }
+        title.performKeyInput {
+            keyDown(Key.CtrlLeft)
+            keyDown(Key.ShiftLeft)
+            pressKey(Key.Z)
+            keyUp(Key.ShiftLeft)
+            keyUp(Key.CtrlLeft)
+        }
         body.assertTextEquals("Body draft")
-        body.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Z) } }
+        body.performKeyInput {
+            keyDown(Key.CtrlLeft)
+            pressKey(Key.Z)
+            keyUp(Key.CtrlLeft)
+        }
         body.assertTextEquals("")
-        title.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Y) } }
+        title.performKeyInput {
+            keyDown(Key.CtrlLeft)
+            pressKey(Key.Y)
+            keyUp(Key.CtrlLeft)
+        }
         body.assertTextEquals("Body draft")
         compose.onNodeWithContentDescription("Close editor").performClick()
     }

@@ -346,6 +346,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
           "content",
           { field: "content", start: text.length, end: text.length },
         );
+        requestAnimationFrame(() => textareaRef.current?.focus());
       } else {
         setPendingImport(text);
         setPendingImportName(file.name);

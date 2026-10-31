@@ -143,7 +143,7 @@ test.describe("phone writing experience", () => {
     expect(undoBox!.x + undoBox!.width).toBeLessThanOrEqual(390);
     expect(undoBox!.height).toBeGreaterThanOrEqual(44);
     await undo.click();
-    await expect(title).toHaveValue("");
+    await expect(title).toHaveValue("Untitled entry");
     await redo.click();
     await expect(title).toHaveValue("Mobile draft");
   });
@@ -343,11 +343,11 @@ test.describe("desktop editor", () => {
     await page.keyboard.press("Control+Z");
     await expect(content).toHaveValue("");
     await page.keyboard.press("Control+Z");
-    await expect(title).toHaveValue("");
+    await expect(title).toHaveValue("Untitled entry");
     await page.keyboard.press("Control+Y");
     await expect(title).toHaveValue("Title draft");
     await undo.click();
-    await expect(title).toHaveValue("");
+    await expect(title).toHaveValue("Untitled entry");
     await redo.click();
     await expect(title).toHaveValue("Title draft");
 
@@ -389,7 +389,7 @@ test.describe("desktop editor", () => {
     await expect(page.getByLabel("Entry title")).toHaveValue("imported");
     await page.keyboard.press("Control+Z");
     await expect(content).toHaveValue("");
-    await expect(page.getByLabel("Entry title")).toHaveValue("");
+    await expect(page.getByLabel("Entry title")).toHaveValue("Untitled entry");
     await page.keyboard.press("Control+Shift+Z");
     await expect(content).toHaveValue("# Imported\nText");
     await expect(page.getByLabel("Entry title")).toHaveValue("imported");
