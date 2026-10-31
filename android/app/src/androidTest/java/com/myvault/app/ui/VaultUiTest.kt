@@ -4,6 +4,8 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.printToString
@@ -121,6 +124,41 @@ class VaultUiTest {
             .onNodeWithContentDescription("Entry content")
             .assertTextContains("A small Markdown", substring = true)
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
+    }
+
+    @Test
+    fun undoRedoControlsAndKeyboardShortcutsCoverTitleAndBody() {
+        val space = "Undo space ${System.currentTimeMillis()}"
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription("New space").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("New space").performClick()
+        compose.onNodeWithText("Space name").performTextInput(space)
+        compose.onNodeWithText("Create & enter").performScrollTo().performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("New entry").performClick()
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription("Entry title").fetchSemanticsNodes().isNotEmpty()
+        }
+        val title = compose.onNodeWithContentDescription("Entry title")
+        val body = compose.onNodeWithContentDescription("Entry content")
+        title.performTextInput("Title draft")
+        body.performTextInput("Body draft")
+        compose.onNodeWithContentDescription("Undo").assertIsDisplayed().performClick()
+        body.assertTextEquals("")
+        compose.onNodeWithContentDescription("Undo").performClick()
+        title.assertTextEquals("")
+        compose.onNodeWithContentDescription("Redo").performClick()
+        title.assertTextEquals("Title draft")
+        title.performKeyInput { withKeyDown(Key.CtrlLeft) { withKeyDown(Key.ShiftLeft) { pressKey(Key.Z) } } }
+        body.assertTextEquals("Body draft")
+        body.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Z) } }
+        body.assertTextEquals("")
+        title.performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.Y) } }
+        body.assertTextEquals("Body draft")
+        compose.onNodeWithContentDescription("Close editor").performClick()
     }
 
     @Test

@@ -344,6 +344,7 @@ export default function AppShell() {
 
       {selectedEntryId && (
         <EntryEditor
+          key={selectedEntryId}
           entryId={selectedEntryId}
           onClose={() => {
             setSelectedEntryId(null);

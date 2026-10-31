@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
   AlertCircle,
   Check,
@@ -14,12 +14,15 @@ import {
   Replace,
   Search,
   Trash2,
+  Undo2,
+  Redo2,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Entry, Tag } from "@/lib/types";
 import TagPicker from "@/components/TagPicker";
 import Markdown from "@/components/Markdown";
+import { coalescibleInputKey, EditorHistory, type EditorField, type EditorSelection, type EditorSnapshot } from "@/lib/editor-history";
 
 function searchRegex(query: string, wholeWord: boolean, flags: string) {
   if (!query) return null;
@@ -61,8 +64,15 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const [pendingImport, setPendingImport] = useState<string | null>(null);
   const [pendingImportName, setPendingImportName] = useState("");
 
+  const titleRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<EditorHistory | null>(null);
+  const selectionRef = useRef<EditorSelection>({ field: "content", start: 0, end: 0 });
+  const [historyRestore, setHistoryRestore] = useState<{ selection: EditorSelection; token: number } | null>(null);
+  const historyRestoreToken = useRef(0);
+  const handledRestoreToken = useRef(0);
+  const [historyAvailability, setHistoryAvailability] = useState({ canUndo: false, canRedo: false });
   const coverInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const previewButtonRef = useRef<HTMLButtonElement>(null);
@@ -75,6 +85,10 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const pendingSaves = useRef(0);
   const failedPatches = useRef<EntryPatch>({});
   const onSavedRef = useRef(onSaved);
+  const syncHistoryAvailability = () => {
+    const history = historyRef.current;
+    setHistoryAvailability({ canUndo: history?.canUndo ?? false, canRedo: history?.canRedo ?? false });
+  };
 
   useEffect(() => {
     onSavedRef.current = onSaved;
@@ -82,8 +96,14 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
   useEffect(() => {
     let active = true;
+    historyRef.current = null;
+    selectionRef.current = { field: "content", start: 0, end: 0 };
     api.entries.get(entryId).then((data) => {
       if (!active) return;
+      const initialSelection = { field: "content" as const, start: 0, end: 0 };
+      historyRef.current = new EditorHistory({ title: data.title, content: data.content, selection: initialSelection });
+      setHistoryAvailability({ canUndo: false, canRedo: false });
+      selectionRef.current = initialSelection;
       setEntry(data);
       setTitle(data.title);
       setContent(data.content);
@@ -154,16 +174,78 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     }, 700);
   };
 
-  const updateTitle = (nextTitle: string) => {
-    setTitle(nextTitle);
-    draftRef.current = { ...draftRef.current, title: nextTitle };
-    scheduleDraftSave(draftRef.current);
+  const applyDraft = (
+    nextDraft: Draft,
+    field: EditorField,
+    selection: EditorSelection,
+    coalesceKey: string | null = null,
+  ) => {
+    const history = historyRef.current;
+    history?.updateSelection(selectionRef.current);
+    history?.record({ ...nextDraft, selection }, { field, coalesceKey });
+    syncHistoryAvailability();
+    selectionRef.current = selection;
+    setTitle(nextDraft.title);
+    setContent(nextDraft.content);
+    draftRef.current = nextDraft;
+    scheduleDraftSave(nextDraft);
   };
 
-  const updateContent = (nextContent: string) => {
-    setContent(nextContent);
-    draftRef.current = { ...draftRef.current, content: nextContent };
+  const rememberSelection = (field: EditorField, element: HTMLInputElement | HTMLTextAreaElement) => {
+    const selection = {
+      field,
+      start: element.selectionStart ?? 0,
+      end: element.selectionEnd ?? element.selectionStart ?? 0,
+    };
+    selectionRef.current = selection;
+    historyRef.current?.updateSelection(selection);
+  };
+
+  const restoreHistorySnapshot = (snapshot: EditorSnapshot | null) => {
+    if (!snapshot) return;
+    setTitle(snapshot.title);
+    setContent(snapshot.content);
+    draftRef.current = { title: snapshot.title, content: snapshot.content };
+    selectionRef.current = snapshot.selection;
     scheduleDraftSave(draftRef.current);
+    historyRestoreToken.current += 1;
+    setHistoryRestore({ selection: { ...snapshot.selection }, token: historyRestoreToken.current });
+    syncHistoryAvailability();
+  };
+
+  const undo = () => restoreHistorySnapshot(historyRef.current?.undo() ?? null);
+  const redo = () => restoreHistorySnapshot(historyRef.current?.redo() ?? null);
+
+  useLayoutEffect(() => {
+    if (!historyRestore || handledRestoreToken.current === historyRestore.token) return;
+    handledRestoreToken.current = historyRestore.token;
+    const { selection } = historyRestore;
+    const element = selection.field === "title" ? titleRef.current : textareaRef.current;
+    if (element) {
+      element.focus();
+      const end = Math.min(selection.end, element.value.length);
+      element.setSelectionRange(Math.min(selection.start, end), end);
+      selectionRef.current = { ...selection, start: Math.min(selection.start, end), end };
+      historyRef.current?.updateSelection(selectionRef.current);
+    }
+  }, [historyRestore, title, content]);
+
+  const handleHistoryKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if ((target instanceof HTMLInputElement && target !== titleRef.current) ||
+        (target instanceof HTMLTextAreaElement && target !== textareaRef.current)) return;
+    if (event.nativeEvent.isComposing || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    if (key === "z" && event.shiftKey) {
+      event.preventDefault();
+      redo();
+    } else if (key === "z") {
+      event.preventDefault();
+      undo();
+    } else if (key === "y") {
+      event.preventDefault();
+      redo();
+    }
   };
 
   const handleClose = async () => {
@@ -256,10 +338,14 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     try {
       const text = await file.text();
       if (!content.trim()) {
-        updateContent(text);
-        if (!title.trim() || title === "Untitled entry") {
-          updateTitle(file.name.replace(/\.[^.]+$/, ""));
-        }
+        const importedTitle = !title.trim() || title === "Untitled entry"
+          ? file.name.replace(/\.[^.]+$/, "")
+          : title;
+        applyDraft(
+          { title: importedTitle, content: text },
+          "content",
+          { field: "content", start: text.length, end: text.length },
+        );
       } else {
         setPendingImport(text);
         setPendingImportName(file.name);
@@ -273,15 +359,31 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
   const resolveImport = (mode: "replace" | "insert" | "cancel") => {
     if (mode === "replace" && pendingImport !== null) {
-      updateContent(pendingImport);
+      applyDraft(
+        { ...draftRef.current, content: pendingImport },
+        "content",
+        { field: "content", start: pendingImport.length, end: pendingImport.length },
+      );
     } else if (mode === "insert" && pendingImport !== null) {
       const el = textareaRef.current;
+      const currentContent = draftRef.current.content;
       if (el) {
-        const start = el.selectionStart ?? content.length;
-        const end = el.selectionEnd ?? content.length;
-        updateContent(content.slice(0, start) + pendingImport + content.slice(end));
+        const start = el.selectionStart ?? currentContent.length;
+        const end = el.selectionEnd ?? currentContent.length;
+        const nextContent = currentContent.slice(0, start) + pendingImport + currentContent.slice(end);
+        const cursor = start + pendingImport.length;
+        applyDraft(
+          { ...draftRef.current, content: nextContent },
+          "content",
+          { field: "content", start: cursor, end: cursor },
+        );
       } else {
-        updateContent(`${content}\n\n${pendingImport}`);
+        const nextContent = `${currentContent}\n\n${pendingImport}`;
+        applyDraft(
+          { ...draftRef.current, content: nextContent },
+          "content",
+          { field: "content", start: nextContent.length, end: nextContent.length },
+        );
       }
     }
     setPendingImport(null);
@@ -328,6 +430,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     if (match) {
       el.focus();
       el.setSelectionRange(match.index, match.index + match[0].length);
+      rememberSelection("content", el);
       const lineHeight = parseFloat(window.getComputedStyle(el).lineHeight) || 24;
       const linesBefore = text.slice(0, match.index).split("\n").length;
       el.scrollTop = Math.max(0, (linesBefore - 3) * lineHeight);
@@ -345,8 +448,13 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     if (selected && match?.[0] === selected) {
       const start = el.selectionStart;
       const next = content.slice(0, start) + replaceQuery + content.slice(el.selectionEnd);
-      updateContent(next);
-      requestAnimationFrame(() => selectNextMatch(next, start + replaceQuery.length));
+      const cursor = start + replaceQuery.length;
+      applyDraft(
+        { ...draftRef.current, content: next },
+        "content",
+        { field: "content", start: cursor, end: cursor },
+      );
+      requestAnimationFrame(() => selectNextMatch(next, cursor));
     } else {
       findNext();
     }
@@ -354,7 +462,13 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
   const replaceAll = () => {
     const re = searchRegex(findQuery, wholeWord, "gi");
-    if (re) updateContent(content.replace(re, () => replaceQuery));
+    if (!re) return;
+    const next = content.replace(re, () => replaceQuery);
+    applyDraft(
+      { ...draftRef.current, content: next },
+      "content",
+      { field: "content", start: next.length, end: next.length },
+    );
   };
 
   if (!entry) {
@@ -378,7 +492,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const displayedSaveState = processing && saveState !== "error" ? "saving" : saveState;
 
   return (
-    <div className="entry-editor" aria-label="Entry editor">
+    <div className="entry-editor" aria-label="Entry editor" onKeyDown={handleHistoryKeyDown}>
       <header className="editor-toolbar">
         <div className="editor-toolbar-start">
           <button type="button" onClick={handleClose} disabled={closing || processing} className="editor-icon-button" aria-label="Close editor" title="Close editor">
@@ -455,7 +569,33 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
         <div className="editor-paper">
           <div className="editor-meta">
-            <input autoCapitalize="sentences" autoCorrect="on" value={title} disabled={closing} onChange={(event) => updateTitle(event.target.value)} placeholder="Entry title / manual name" aria-label="Entry title" className="editor-title" />
+            <div className="editor-history-controls" role="group" aria-label="Editing history">
+              <button type="button" className="editor-icon-button" aria-label="Undo" title="Undo" disabled={!historyAvailability.canUndo} onClick={undo}><Undo2 size={17} /></button>
+              <button type="button" className="editor-icon-button" aria-label="Redo" title="Redo" disabled={!historyAvailability.canRedo} onClick={redo}><Redo2 size={17} /></button>
+            </div>
+            <input
+              ref={titleRef}
+              autoCapitalize="sentences"
+              autoCorrect="on"
+              value={title}
+              disabled={closing}
+              onFocus={(event) => rememberSelection("title", event.currentTarget)}
+              onSelect={(event) => rememberSelection("title", event.currentTarget)}
+              onChange={(event) => {
+                const element = event.currentTarget;
+                const selection = { field: "title" as const, start: element.selectionStart ?? 0, end: element.selectionEnd ?? element.selectionStart ?? 0 };
+                const inputType = (event.nativeEvent as InputEvent).inputType;
+                applyDraft(
+                  { ...draftRef.current, title: element.value },
+                  "title",
+                  selection,
+                  coalescibleInputKey("title", inputType),
+                );
+              }}
+              placeholder="Entry title / manual name"
+              aria-label="Entry title"
+              className="editor-title"
+            />
             <div className="editor-tags"><TagPicker spaceId={entry.spaceId} selected={entryTags} onChange={handleTagsChange} /></div>
           </div>
           <div className="editor-writing">
@@ -466,7 +606,19 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
               autoCorrect="on"
               value={content}
               disabled={closing}
-              onChange={(event) => updateContent(event.target.value)}
+              onFocus={(event) => rememberSelection("content", event.currentTarget)}
+              onSelect={(event) => rememberSelection("content", event.currentTarget)}
+              onChange={(event) => {
+                const element = event.currentTarget;
+                const selection = { field: "content" as const, start: element.selectionStart, end: element.selectionEnd };
+                const inputType = (event.nativeEvent as InputEvent).inputType;
+                applyDraft(
+                  { ...draftRef.current, content: element.value },
+                  "content",
+                  selection,
+                  coalescibleInputKey("content", inputType),
+                );
+              }}
               onScroll={(event) => {
                 if (highlightRef.current) {
                   highlightRef.current.scrollTop = event.currentTarget.scrollTop;

@@ -130,6 +130,24 @@ test.describe("phone writing experience", () => {
     }
   });
 
+  test("Undo and Redo controls are reachable with touch-sized targets", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    const title = page.getByLabel("Entry title");
+    await title.fill("Mobile draft");
+    const undo = page.getByRole("button", { name: "Undo" });
+    const redo = page.getByRole("button", { name: "Redo" });
+    await undo.scrollIntoViewIfNeeded();
+    const undoBox = await undo.boundingBox();
+    expect(undoBox!.x).toBeGreaterThanOrEqual(0);
+    expect(undoBox!.x + undoBox!.width).toBeLessThanOrEqual(390);
+    expect(undoBox!.height).toBeGreaterThanOrEqual(44);
+    await undo.click();
+    await expect(title).toHaveValue("");
+    await redo.click();
+    await expect(title).toHaveValue("Mobile draft");
+  });
+
   test("uses the whole page and opens a right-hand preview without losing the draft", async ({ page }) => {
     const vault = await mockVault(page);
     await openNewEntry(page);
@@ -303,6 +321,115 @@ test.describe("desktop editor", () => {
     await expect(preview.locator("pre code")).toContainText("const answer = 42;");
     await expect(preview.getByRole("link", { name: "Safe link" })).toHaveAttribute("href", "https://example.com");
     await expect(preview.getByRole("img", { name: "Example image" })).toHaveAttribute("src", "https://example.com/image.png");
+  });
+
+  test("undo and redo cross title and body with keyboard and visible controls", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    const title = page.getByLabel("Entry title");
+    const content = page.getByLabel("Entry content");
+    const undo = page.getByRole("button", { name: "Undo" });
+    const redo = page.getByRole("button", { name: "Redo" });
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeDisabled();
+
+    await title.fill("Title draft");
+    await content.fill("Body draft");
+    await expect(undo).toBeEnabled();
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("Body draft");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Z");
+    await expect(title).toHaveValue("");
+    await page.keyboard.press("Control+Y");
+    await expect(title).toHaveValue("Title draft");
+    await undo.click();
+    await expect(title).toHaveValue("");
+    await redo.click();
+    await expect(title).toHaveValue("Title draft");
+
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.locator(".entry-editor")).toBeHidden();
+
+    await openNewEntry(page);
+    await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
+  test("typing coalesces, selection returns on undo, and imported text is one step", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    const content = page.getByLabel("Entry content");
+    await content.focus();
+    await page.keyboard.type("hello");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("hello");
+
+    await content.fill("abcdef");
+    await page.waitForTimeout(800); // Separate this selection replacement from prior typing coalescence.
+    await content.evaluate((element: HTMLTextAreaElement) => {
+      element.setSelectionRange(2, 4);
+      element.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    await page.keyboard.type("XY");
+    await expect(content).toHaveValue("abXYef");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("abcdef");
+    await expect.poll(() => content.evaluate((element: HTMLTextAreaElement) => [element.selectionStart, element.selectionEnd])).toEqual([2, 4]);
+
+    await content.fill("");
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Import text or Markdown file" }).click();
+    await (await chooser).setFiles({ name: "imported.md", mimeType: "text/markdown", buffer: Buffer.from("# Imported\nText") });
+    await expect(content).toHaveValue("# Imported\nText");
+    await expect(page.getByLabel("Entry title")).toHaveValue("imported");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await expect(page.getByLabel("Entry title")).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("# Imported\nText");
+    await expect(page.getByLabel("Entry title")).toHaveValue("imported");
+  });
+
+  test("autosave during undo and redo retains the newest draft and retries failures", async ({ page }) => {
+    const vault = await mockVault(page);
+    vault.delayPatches(250);
+    await openNewEntry(page);
+    const content = page.getByLabel("Entry content");
+    const firstPatch = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/api/entries/"));
+    await content.fill("saved after redo");
+    await firstPatch;
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("saved after redo");
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.locator(".entry-editor")).toBeHidden();
+    expect(vault.entries[0].content).toBe("saved after redo");
+  });
+
+  test("save failure keeps the undo history and latest draft available for retry", async ({ page }) => {
+    const vault = await mockVault(page);
+    vault.failDrafts(2);
+    await openNewEntry(page);
+    const failedPatch = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/api/entries/"));
+    await page.getByLabel("Entry content").fill("retry this undoable draft");
+    await failedPatch;
+    await expect(page.getByRole("status")).toHaveText("Couldn’t save");
+    await page.keyboard.press("Control+Z");
+    await expect(page.getByLabel("Entry content")).toHaveValue("");
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.getByRole("status")).toHaveText("Couldn’t save");
+    await expect(page.getByRole("button", { name: "Redo" })).toBeEnabled();
+    await page.getByRole("button", { name: "Redo" }).click();
+    await expect(page.getByLabel("Entry content")).toHaveValue("retry this undoable draft");
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.locator(".entry-editor")).toBeHidden();
+    expect(vault.entries[0].content).toBe("retry this undoable draft");
   });
 
   test("find and replace stays editable and treats special characters literally", async ({ page }) => {

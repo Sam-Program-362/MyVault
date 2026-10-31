@@ -42,6 +42,8 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Redo
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -56,6 +58,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -64,9 +67,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
@@ -170,34 +183,89 @@ fun EntryEditorScreen(
     var findQuery by rememberSaveable(entryId) { mutableStateOf("") }
     var replaceQuery by rememberSaveable(entryId) { mutableStateOf("") }
     var wholeWord by rememberSaveable(entryId) { mutableStateOf(false) }
-    var editorValue by remember(entryId) { mutableStateOf(TextFieldValue(content)) }
-    var editorTitle by remember(entryId) { mutableStateOf(title) }
-    val focusRequester = remember { FocusRequester() }
+    val initialSnapshot = remember(entryId) {
+        EditorUndoSnapshot(TextFieldValue(title), TextFieldValue(content), EditorField.Content)
+    }
+    val history = remember(entryId) { EditorUndoHistory(initialSnapshot) }
+    var editorValue by remember(entryId) { mutableStateOf(initialSnapshot.content) }
+    var editorTitle by remember(entryId) { mutableStateOf(initialSnapshot.title) }
+    var activeField by remember(entryId) { mutableStateOf(EditorField.Content) }
+    var restoreFocus by remember(entryId) { mutableStateOf<EditorField?>(null) }
+    var restoreSequence by remember(entryId) { mutableIntStateOf(0) }
+    val titleFocusRequester = remember(entryId) { FocusRequester() }
+    val bodyFocusRequester = remember(entryId) { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val matches =
         remember(editorValue.text, findQuery, wholeWord) {
             editorMatches(editorValue.text, findQuery, wholeWord)
         }
+    fun currentSnapshot() = EditorUndoSnapshot(editorTitle, editorValue, activeField)
 
-    // Room/StateFlow updates can arrive after the user has typed another character. Treat those
-    // as acknowledgements, not as fresh input. Only an explicit host update replaces local text.
+    // Ordinary Room acknowledgements never feed back into the editor/history. Explicit host
+    // updates are imports and therefore one deliberate undo step.
     LaunchedEffect(entryId, externalUpdate?.sequence) {
         if (externalUpdate != null && externalUpdate.entryId == entryId) {
-            editorTitle = externalUpdate.title
-            editorValue =
-                TextFieldValue(
-                    externalUpdate.content,
-                    TextRange(externalUpdate.cursor.coerceIn(0, externalUpdate.content.length)),
-                )
+            editorTitle = TextFieldValue(externalUpdate.title, TextRange(externalUpdate.title.length))
+            editorValue = TextFieldValue(
+                externalUpdate.content,
+                TextRange(externalUpdate.cursor.coerceIn(0, externalUpdate.content.length)),
+            )
+            activeField = EditorField.Content
+            history.record(currentSnapshot(), EditorField.Content, forceNewOperation = true)
         }
+    }
+    LaunchedEffect(restoreSequence) {
+        val field = restoreFocus ?: return@LaunchedEffect
+        if (field == EditorField.Title) titleFocusRequester.requestFocus()
+        else bodyFocusRequester.requestFocus()
+        restoreFocus = null
     }
     BackHandler(enabled = previewOpen) { previewOpen = false }
     BackHandler(enabled = findOpen && !previewOpen) { findOpen = false }
 
+    fun applyHistorySnapshot(snapshot: EditorUndoSnapshot) {
+        val previous = currentSnapshot()
+        editorTitle = snapshot.title
+        editorValue = snapshot.content
+        activeField = snapshot.activeField
+        if (previous.title.text != snapshot.title.text) onTitleChange(snapshot.title.text)
+        if (previous.content.text != snapshot.content.text) onContentChange(snapshot.content.text)
+        restoreFocus = snapshot.activeField
+        restoreSequence++
+    }
+
+    fun undo() { history.undo()?.let(::applyHistorySnapshot) }
+    fun redo() { history.redo()?.let(::applyHistorySnapshot) }
+
+    fun handleHistoryKeyEvent(event: KeyEvent): Boolean {
+        if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed || event.isAltPressed) return false
+        return when (event.key) {
+            Key.Z -> { if (event.isShiftPressed) redo() else undo(); true }
+            Key.Y -> { redo(); true }
+            else -> false
+        }
+    }
+
+    fun updateTitle(next: TextFieldValue) {
+        val changed = next.text != editorTitle.text
+        editorTitle = next
+        activeField = EditorField.Title
+        val snapshot = currentSnapshot()
+        if (changed) {
+            history.record(snapshot, EditorField.Title)
+            onTitleChange(next.text)
+        } else history.updateSelection(snapshot)
+    }
+
     fun updateBody(next: TextFieldValue) {
         val changed = next.text != editorValue.text
         editorValue = next
-        if (changed) onContentChange(next.text)
+        activeField = EditorField.Content
+        val snapshot = currentSnapshot()
+        if (changed) {
+            history.record(snapshot, EditorField.Content)
+            onContentChange(next.text)
+        } else history.updateSelection(snapshot)
     }
 
     fun togglePreview() {
@@ -210,7 +278,9 @@ fun EntryEditorScreen(
         val next = matches.firstOrNull { it.first >= selectionEnd } ?: matches.firstOrNull()
         if (next != null) {
             editorValue = editorValue.copy(selection = TextRange(next.first, next.last + 1))
-            focusRequester.requestFocus()
+            activeField = EditorField.Content
+            history.updateSelection(currentSnapshot())
+            bodyFocusRequester.requestFocus()
         }
     }
 
@@ -306,6 +376,14 @@ fun EntryEditorScreen(
                 }
             }
             HorizontalDivider(color = palette.line)
+            Row(
+                Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EditorIcon(Icons.Default.Undo, "Undo", palette, enabled = history.canUndo, onClick = ::undo)
+                EditorIcon(Icons.Default.Redo, "Redo", palette, enabled = history.canRedo, onClick = ::redo)
+            }
 
             if (findOpen) {
                 FindBar(
@@ -381,12 +459,7 @@ fun EntryEditorScreen(
                 Column(Modifier.fillMaxWidth()) {
                     BasicTextField(
                         value = editorTitle,
-                        onValueChange = { next ->
-                            if (next != editorTitle) {
-                                editorTitle = next
-                                onTitleChange(next)
-                            }
-                        },
+                        onValueChange = ::updateTitle,
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrect = true),
                         textStyle =
@@ -400,10 +473,18 @@ fun EntryEditorScreen(
                         modifier =
                             Modifier.fillMaxWidth()
                                 .padding(horizontal = 20.dp, vertical = 10.dp)
+                                .onPreviewKeyEvent(::handleHistoryKeyEvent)
+                                .focusRequester(titleFocusRequester)
+                                .onFocusChanged {
+                                    if (it.isFocused) {
+                                        activeField = EditorField.Title
+                                        history.updateSelection(currentSnapshot())
+                                    }
+                                }
                                 .semantics { contentDescription = "Entry title" },
                         decorationBox = { inner ->
                             Box {
-                                if (editorTitle.isEmpty())
+                                if (editorTitle.text.isEmpty())
                                     Text(
                                         "Entry title",
                                         color = palette.placeholder,
@@ -483,7 +564,14 @@ fun EntryEditorScreen(
                             Modifier.fillMaxWidth()
                                 .height(bodyHeight)
                                 .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 24.dp)
-                                .focusRequester(focusRequester)
+                                .onPreviewKeyEvent(::handleHistoryKeyEvent)
+                                .focusRequester(bodyFocusRequester)
+                                .onFocusChanged {
+                                    if (it.isFocused) {
+                                        activeField = EditorField.Content
+                                        history.updateSelection(currentSnapshot())
+                                    }
+                                }
                                 .semantics { contentDescription = "Entry content" },
                         decorationBox = { inner ->
                             Box(Modifier.fillMaxSize()) {
@@ -547,7 +635,7 @@ fun EntryEditorScreen(
                         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)
                     ) {
                         Text(
-                            editorTitle.ifBlank { "Untitled entry" },
+                            editorTitle.text.ifBlank { "Untitled entry" },
                             color = palette.foreground,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
@@ -630,6 +718,7 @@ private fun EditorIcon(
     active: Boolean = false,
     activeColor: Color = palette.foreground,
     toggle: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val background by
@@ -646,6 +735,7 @@ private fun EditorIcon(
         )
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         modifier =
             Modifier.size(48.dp).semantics {
                 if (toggle) stateDescription = if (active) "Selected" else "Not selected"

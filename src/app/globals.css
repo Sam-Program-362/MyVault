@@ -484,6 +484,20 @@ mark {
   padding: 1rem clamp(1.25rem, 4vw, 3.5rem) 0;
 }
 
+.editor-history-controls {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+  margin: -0.25rem 0 0.25rem;
+}
+
+.editor-history-controls .editor-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .editor-title {
   display: block;
   width: 100%;
