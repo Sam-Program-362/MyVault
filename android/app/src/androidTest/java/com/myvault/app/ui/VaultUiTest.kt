@@ -7,7 +7,12 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.isDisplayed
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -151,9 +156,9 @@ class VaultUiTest {
         title.performTextInput("Title draft")
         body.performTextInput("Body draft")
         compose.onNodeWithContentDescription("Undo").assertIsDisplayed().performClick()
-        body.assertTextEquals("")
+        body.assertEditableText("")
         compose.onNodeWithContentDescription("Undo").performClick()
-        title.assertTextEquals("")
+        title.assertEditableText("")
         compose.onNodeWithContentDescription("Redo").performClick()
         title.assertTextEquals("Title draft")
         title.performKeyInput {
@@ -169,7 +174,7 @@ class VaultUiTest {
             pressKey(Key.Z)
             keyUp(Key.CtrlLeft)
         }
-        body.assertTextEquals("")
+        body.assertEditableText("")
         title.performKeyInput {
             keyDown(Key.CtrlLeft)
             pressKey(Key.Y)
@@ -203,3 +208,6 @@ class VaultUiTest {
         }
     }
 }
+
+private fun SemanticsNodeInteraction.assertEditableText(expected: String) =
+    assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(expected)))
