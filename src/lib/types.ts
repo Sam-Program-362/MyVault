@@ -33,6 +33,8 @@ export interface Tag {
   color: string;
   textColor: string;
   reusable: boolean;
+  scope?: "global" | "local";
+  ownerSpaceId?: string | null;
   createdAt: string;
 }
 
@@ -49,7 +51,7 @@ export interface Entry {
 }
 
 export interface ExportPayload {
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   settings: AppSettings;
   spaces: Space[];

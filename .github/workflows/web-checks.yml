@@ -1,0 +1,67 @@
+name: Web checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'drizzle/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'playwright.config.ts'
+      - 'tsconfig.json'
+      - 'next.config.ts'
+      - 'eslint.config.mjs'
+      - 'postcss.config.mjs'
+      - '.github/workflows/web-checks.yml'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: migration_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d migration_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      # The browser tests intercept API requests. Never point CI at production data.
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/app_db
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: node scripts/test-tag-scope-migration.mjs
+        env:
+          MIGRATION_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/migration_test
+      - run: node scripts/test-scope-backup.mjs
+        env:
+          MIGRATION_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/migration_test
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Upload browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: web-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14

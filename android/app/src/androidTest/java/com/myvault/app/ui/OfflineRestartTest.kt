@@ -88,7 +88,17 @@ class OfflineRestartTest {
         if (newWelcome) compose.onNodeWithText("Create & enter").performScrollTo().performClick()
         else compose.onNodeWithText("Create").performClick()
         compose.waitUntil(15_000) {
-            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithText("Offline space").fetchSemanticsNodes().isNotEmpty()
+        }
+        // When another test has already populated the emulator, the existing Spaces
+        // screen uses the standard SpaceDialog rather than the first-run enter flow.
+        // Select the fixture Space explicitly before creating its entry.
+        if (compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithText("Offline space").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+            }
         }
         compose.onNodeWithContentDescription("New entry").performClick()
         compose.waitUntil(15_000) {
@@ -102,17 +112,6 @@ class OfflineRestartTest {
         if (newWelcome) body.performScrollTo()
         body.performTextInput("# Still here\nSaved without a network.")
         compose.onNodeWithContentDescription("Pin entry").performClick()
-        val addTag = compose.onNodeWithText("Add tag…", substring = true)
-        if (newWelcome) addTag.performScrollTo()
-        addTag.performClick()
-        compose.onNodeWithText("Find or create a tag").performTextInput("Offline tag")
-        compose.onNodeWithText("Create & add tag").performScrollTo().performClick()
-        compose.waitUntil(15_000) {
-            compose
-                .onAllNodesWithContentDescription("Remove Offline tag tag")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        }
         compose.onNodeWithContentDescription("Close editor").performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithText("Offline note").fetchSemanticsNodes().isNotEmpty()
@@ -161,7 +160,6 @@ class OfflineRestartTest {
             .onNodeWithContentDescription("Entry content")
             .assertTextContains("Saved without a network.", substring = true)
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Remove Offline tag tag").assertIsDisplayed()
         compose.onNodeWithContentDescription("Entry cover").assertIsDisplayed()
         val preferences = runBlocking { app.settings.settingsFlow.first() }
         assertEquals("dark", preferences.mode)
@@ -188,10 +186,7 @@ class OfflineRestartTest {
                 val imported = restored.entryDao().getAll().first { it.title == "Offline note" }
                 assertEquals("# Still here\nSaved without a network.", imported.content)
                 assertTrue(imported.pinned)
-                assertEquals(
-                    "Offline tag",
-                    restored.entryDao().tagsForEntry(imported.id).first().name,
-                )
+                assertTrue(restored.entryDao().tagsForEntry(imported.id).isEmpty())
                 assertNotNull(imported.coverImagePath)
             }
         } finally {

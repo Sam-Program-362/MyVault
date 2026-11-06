@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { spaces } from "@/db/schema";
+import { spaces, tags } from "@/db/schema";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -31,6 +31,9 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   const { id } = await params;
-  await db.delete(spaces).where(eq(spaces.id, id));
+  await db.transaction(async (tx) => {
+    await tx.delete(tags).where(eq(tags.ownerSpaceId, id));
+    await tx.delete(spaces).where(eq(spaces.id, id));
+  });
   return NextResponse.json({ ok: true });
 }

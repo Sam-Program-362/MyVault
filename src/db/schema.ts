@@ -1,5 +1,9 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
+  customType,
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -37,12 +41,17 @@ export const spaces = pgTable("spaces", {
 // Reusable tags, each with its own saved color/style.
 export const tags = pgTable("tags", {
   id: uuid("id").primaryKey(),
+  // Keep the baseline exact-name constraint until Unicode 15.1 identity can
+  // be enforced identically by PostgreSQL and Android SQLite.
   name: text("name").notNull().unique(),
   color: text("color").notNull().default("#6366f1"),
   textColor: text("text_color").notNull().default("#ffffff"),
   // Whether this tag should show up as a reusable suggestion for future
   // entries, or was only meant for this one-off use.
   reusable: boolean("reusable").notNull().default(true),
+  // Reserved for scoped tags; legacy tags are global regardless of reusable.
+  scope: text("scope").notNull().default("global"),
+  ownerSpaceId: uuid("owner_space_id").references(() => spaces.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -74,3 +83,27 @@ export const entryTags = pgTable(
   },
   (table) => [primaryKey({ columns: [table.entryId, table.tagId] })],
 );
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+  toDriver: (value) => value,
+  fromDriver: (value) => Buffer.from(value),
+});
+
+/** Durable inline and cover media. `stagingToken` hides backup-import blobs until the entry transaction commits. */
+export const mediaAssets = pgTable("media_assets", {
+  id: uuid("id").primaryKey(),
+  mimeType: text("mime_type").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  sha256: text("sha256").notNull(),
+  imageBytes: bytea("image_bytes").notNull(),
+  stagingToken: uuid("staging_token"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  check("media_assets_mime_type_check", sql`${table.mimeType} in ('image/png', 'image/jpeg', 'image/gif', 'image/webp')`),
+  check("media_assets_byte_size_check", sql`${table.byteSize} between 1 and 2097152`),
+  check("media_assets_sha256_check", sql`${table.sha256} ~ '^[0-9a-f]{64}$'`),
+  check("media_assets_byte_length_check", sql`octet_length(${table.imageBytes}) = ${table.byteSize}`),
+  index("media_assets_staging_token_idx").on(table.stagingToken).where(sql`${table.stagingToken} is not null`),
+  index("media_assets_created_at_idx").on(table.createdAt),
+]);

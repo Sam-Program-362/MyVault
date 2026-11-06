@@ -34,10 +34,13 @@ class NativeWindowEvidenceTest {
     fun captureActualActivityAndMeasureWindowInsets() {
         val phase = InstrumentationRegistry.getArguments().getString("myvault.evidence") ?: return
         require(phase == "before" || phase == "after")
+        val mode = InstrumentationRegistry.getArguments().getString("myvault.evidenceMode") ?: "dark"
+        require(mode == "dark" || mode == "light")
+        val prefix = if (mode == "light") "light-" else ""
         val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
         // Upsert only these uniquely named CI fixtures. Never clear Room or delete app data.
         runBlocking {
-            app.settings.update { it.copy(mode = "dark", appName = "MyVault") }
+            app.settings.update { it.copy(mode = mode, appName = "MyVault") }
             app.settings.updateEntryLayout("cards")
             app.database
                 .spaceDao()
@@ -59,7 +62,7 @@ class NativeWindowEvidenceTest {
                 )
         }
         val dir = File(app.filesDir, "native-window-evidence/$phase").apply { mkdirs() }
-        val log = File(dir, "window-metrics.txt")
+        val log = File(dir, "${prefix}window-metrics.txt")
         log.writeText("MyVault real MainActivity, phase=$phase; synthetic Room fixtures.\n")
         fun waitText(text: String) {
             compose.waitUntil(15_000) {
@@ -76,11 +79,15 @@ class NativeWindowEvidenceTest {
         }
         fun screenshot(name: String) {
             compose.waitForIdle()
+            // Semantics can become idle before SurfaceFlinger presents the new frame.
+            // Capture after the real display has had time to show the settled screen.
+            android.os.SystemClock.sleep(600)
+            compose.waitForIdle()
             val bitmap =
                 requireNotNull(
                     InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
                 )
-            File(dir, "$name.png").outputStream().use {
+            File(dir, "$prefix$name.png").outputStream().use {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
             }
             bitmap.recycle()
@@ -146,6 +153,11 @@ class NativeWindowEvidenceTest {
         compose.onNodeWithText("Evidence entry").performClick()
         waitDescription("Entry content")
         screenshot("editor")
+        compose.onNodeWithContentDescription("Preview").performClick()
+        waitDescription("Close preview")
+        screenshot("preview")
+        compose.onNodeWithContentDescription("Close preview").performClick()
+        waitDescription("Entry content")
         compose.onNodeWithContentDescription("Entry content").performClick()
         compose.waitUntil(15_000) {
             val insets = ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
