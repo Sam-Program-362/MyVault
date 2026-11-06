@@ -14,6 +14,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,19 +39,20 @@ fun TagPickerDialog(
     selected: List<TagEntity>,
     onDismiss: () -> Unit,
     onSelect: (TagEntity) -> Unit,
-    onCreate: (String, String, Boolean) -> Unit,
+    onCreate: (String, String, Boolean, String) -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var color by rememberSaveable { mutableStateOf(paletteColors.first()) }
     var reusable by rememberSaveable { mutableStateOf(true) }
+    var scope by rememberSaveable { mutableStateOf("") }
     val available =
         tags
             .filter { tag -> selected.none { it.id == tag.id } }
             .filter {
-                if (query.isBlank()) it.reusable else it.name.contains(query.trim(), ignoreCase = true)
+                query.isBlank() || it.name.contains(query.trim(), ignoreCase = true)
             }
             .take(8)
-    val exact = tags.any { it.name.equals(query.trim(), true) }
+    val possibleMatch = scope.isNotBlank() && tags.any { it.scope == scope && it.name.equals(query.trim(), true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add tag") },
@@ -77,14 +79,19 @@ fun TagPickerDialog(
                         Modifier.fillMaxWidth().clickable { onSelect(tag) }.padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Surface(color = parseColor(tag.color), shape = MaterialTheme.shapes.small) {
+                        Surface(
+                            color = parseColor(tag.color).copy(alpha = 0.08f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, parseColor(tag.color)),
+                        ) {
                             Text(
                                 tag.name,
-                                color = parseColor(tag.textColor, Color.White),
+                                color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                 fontSize = 13.sp,
                             )
                         }
+                        Text("  ${if (tag.scope == "local") "Local" else "Global"}", fontSize = 12.sp)
                         if (!tag.reusable)
                             Text(
                                 "  One-off",
@@ -93,9 +100,12 @@ fun TagPickerDialog(
                             )
                     }
                 }
-                if (query.isNotBlank() && !exact) {
+                if (query.isNotBlank()) {
                     HorizontalDivider()
                     Text("Create “${query.trim()}”", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    TagScopeChoices(scope, true) { scope = it }
+                    if (possibleMatch) Text("Possible match only; Unicode-equivalent names may differ.", fontSize = 12.sp)
+                    Text("Creation is paused until both databases can enforce the Unicode 15.1 name policy.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                     ColorChoices(color) { color = it }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
@@ -106,10 +116,23 @@ fun TagPickerDialog(
                         )
                         Text("Save for future entries", fontSize = 13.sp)
                     }
-                    TextButton(onClick = { onCreate(query, color, reusable) }) { Text("Create & add tag") }
+                    TextButton(onClick = { onCreate(query, color, reusable, scope) }, enabled = false) { Text("Create & add tag (paused)") }
                 }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
+}
+
+@Composable
+fun TagScopeChoices(scope: String, allowLocal: Boolean, onChange: (String) -> Unit) {
+    Text("Choose tag scope", fontSize = 13.sp)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(enabled = allowLocal) { onChange("local") }) {
+        RadioButton(selected = scope == "local", onClick = { onChange("local") }, enabled = allowLocal)
+        Text(if (allowLocal) "Local tag" else "Local tag (choose a Space first)", fontSize = 13.sp)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onChange("global") }) {
+        RadioButton(selected = scope == "global", onClick = { onChange("global") })
+        Text("Global tag", fontSize = 13.sp)
+    }
 }

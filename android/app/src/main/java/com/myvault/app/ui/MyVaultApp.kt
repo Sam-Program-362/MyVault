@@ -1,5 +1,6 @@
 package com.myvault.app.ui
 
+import com.myvault.app.data.isVisibleInSpace
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,6 +53,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import com.myvault.app.ui.editor.EditorContentUpdate
 import com.myvault.app.ui.editor.EntryEditorScreen
+import kotlinx.coroutines.launch
 
 @Composable
 fun MyVaultApp(vault: VaultViewModel) {
@@ -76,6 +79,7 @@ fun MyVaultApp(vault: VaultViewModel) {
     var externalUpdate by remember { mutableStateOf<EditorContentUpdate?>(null) }
     var updateSequence by remember { mutableStateOf(0L) }
     val snackbar = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
 
     fun applyImportedText(content: String, title: String?, cursor: Int) {
         val current = vault.currentDraft() ?: return
@@ -185,6 +189,8 @@ fun MyVaultApp(vault: VaultViewModel) {
                             onClose = { closeEditor() },
                             onTogglePin = { vault.updateDraft { it.copy(pinned = !it.pinned) } },
                             onChooseCover = { coverPicker.launch(arrayOf("image/*")) },
+                            onStoreInlineImage = vault::storeInlineImage,
+                            onImageError = { error -> snackbarScope.launch { snackbar.showSnackbar(error, duration = SnackbarDuration.Long) } },
                             onRemoveCover = {
                                 vault.updateDraft { it.copy(coverImagePath = null) }
                             },
@@ -201,16 +207,16 @@ fun MyVaultApp(vault: VaultViewModel) {
                     }
                     if (showTags)
                         TagPickerDialog(
-                            tags,
+                            tags.filter { it.isVisibleInSpace(entry.spaceId) },
                             selectedTags,
                             onDismiss = { showTags = false },
                             onSelect = { tag ->
                                 showTags = false
                                 vault.addTag(tag)
                             },
-                            onCreate = { name, color, reusable ->
+                            onCreate = { name, color, reusable, scope ->
                                 showTags = false
-                                vault.createTag(name, color, reusable, true)
+                                vault.createTag(name, color, reusable, scope, entry.spaceId, true)
                             },
                         )
                     if (confirmDelete)
@@ -378,11 +384,12 @@ fun MyVaultApp(vault: VaultViewModel) {
                     SettingsScreen(
                         settings,
                         tags,
+                        spaces = spaces,
                         onBack = { screen = settingsReturn },
                         onUpdate = vault::updateSettings,
                         onChooseWallpaper = { wallpaperPicker.launch(arrayOf("image/*")) },
-                        onCreateTag = { name, color, reusable ->
-                            vault.createTag(name, color, reusable, false)
+                        onCreateTag = { name, color, reusable, scope ->
+                            vault.createTag(name, color, reusable, scope, selectedSpaceId, false)
                         },
                         onSetReusable = vault::setTagReusable,
                         onDeleteTag = vault::deleteTag,
@@ -406,6 +413,8 @@ fun MyVaultApp(vault: VaultViewModel) {
                             )
                         },
                         visible = screen == "settings",
+                        scopeSpaceId = selectedSpaceId,
+                        onEditTag = vault::editTag,
                     )
                 }
                 SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(16.dp))

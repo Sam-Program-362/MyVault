@@ -210,6 +210,22 @@ mark {
   color: var(--accent);
   text-decoration: underline;
 }
+.md-body img {
+  max-width: 100%;
+  max-height: 36rem;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.65rem;
+  margin: 0.75em 0;
+}
+.md-image-fallback {
+  display: inline-block;
+  color: var(--editor-muted, #74736d);
+  border: 1px dashed color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 0.4rem;
+  padding: 0.2em 0.5em;
+  font-size: 0.9em;
+}
 .md-body hr {
   border: none;
   border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
@@ -484,6 +500,20 @@ mark {
   padding: 1rem clamp(1.25rem, 4vw, 3.5rem) 0;
 }
 
+.editor-history-controls {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+  margin: -0.25rem 0 0.25rem;
+}
+
+.editor-history-controls .editor-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .editor-title {
   display: block;
   width: 100%;
@@ -738,6 +768,29 @@ mark {
   }
 }
 
+@media (max-width: 430px) {
+  .editor-toolbar {
+    flex-wrap: wrap;
+    min-height: 0;
+    row-gap: 0;
+    padding-top: max(4px, env(safe-area-inset-top, 0px));
+    padding-bottom: 4px;
+  }
+
+  .editor-toolbar-start {
+    flex: 0 0 100%;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .editor-toolbar-actions {
+    flex: 0 0 100%;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+}
+
 @media (max-width: 400px) {
   .editor-save-status span {
     position: absolute;
@@ -760,12 +813,8 @@ mark {
     gap: 0;
   }
 
-  /* Keep the save indicator available without overlapping adjacent touch targets. */
   .editor-save-status {
-    position: absolute;
-    z-index: 1;
-    top: 0;
-    left: 32px;
+    position: static;
     pointer-events: none;
   }
 

@@ -83,7 +83,7 @@ class MotionTest {
                     onBack = { visible.value = false },
                     onUpdate = {},
                     onChooseWallpaper = {},
-                    onCreateTag = { _, _, _ -> },
+                    onCreateTag = { _, _, _, _ -> },
                     onSetReusable = { _, _ -> },
                     onDeleteTag = {},
                     onExport = {},

@@ -35,6 +35,49 @@ class EditorDraftWriterTest {
     }
 
     @Test
+    fun undoDuringDelayedAutosavePersistsTheLatestRevisionAfterTheOldAcknowledgement() = runBlocking {
+        data class Draft(val title: String, val content: String)
+        val saveStarted = CompletableDeferred<Unit>()
+        val releaseSave = CompletableDeferred<Unit>()
+        val writes = mutableListOf<Draft>()
+        val writer = EditorDraftWriter(Draft("", "")) { value ->
+            if (value.content == "edited") {
+                saveStarted.complete(Unit)
+                releaseSave.await()
+            }
+            writes += value
+        }
+        writer.update { it.copy(content = "edited") }
+        val autosave = async { writer.flush() }
+        saveStarted.await()
+        // This is the editor's undo snapshot while the older request is still in flight.
+        writer.update { it.copy(content = "") }
+        releaseSave.complete(Unit)
+
+        assertTrue(autosave.await())
+        assertEquals(listOf("edited", ""), writes.map { it.content })
+        assertEquals("", writer.state.value.value.content)
+        assertEquals(writer.state.value.revision, writer.state.value.savedRevision)
+    }
+
+    @Test
+    fun undoAfterSaveFailureKeepsHistoryDraftAvailableForRetry() = runBlocking {
+        var attempts = 0
+        val writes = mutableListOf<String>()
+        val writer = EditorDraftWriter("original") { value ->
+            attempts++
+            if (attempts == 1) error("temporary failure")
+            writes += value
+        }
+        writer.update { "edited" }
+        assertFalse(writer.flush())
+        writer.update { "original" }
+        assertTrue(writer.flush())
+        assertEquals(listOf("original"), writes)
+        assertEquals("original", writer.state.value.value)
+    }
+
+    @Test
     fun failedSaveKeepsTheLatestDraftForRetry() = runBlocking {
         var attempts = 0
         val writes = mutableListOf<String>()
