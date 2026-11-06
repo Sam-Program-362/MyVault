@@ -44,6 +44,8 @@ class EditorRaceTest {
                     onClose = {},
                     onTogglePin = {},
                     onChooseCover = {},
+                    onStoreInlineImage = { "file:///test-image.png" },
+                    onImageError = {},
                     onRemoveCover = {},
                     onAddTag = {},
                     onRemoveTag = {},

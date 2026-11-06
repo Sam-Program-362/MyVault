@@ -354,7 +354,9 @@ class VisualParityTest {
                         onClose = {},
                         onTogglePin = {},
                         onChooseCover = {},
-                        onRemoveCover = {},
+                        onStoreInlineImage = { "file:///test-image.png" },
+                        onImageError = {},
+                        onRemoveCover = {}
                         onAddTag = {},
                         onRemoveTag = {},
                         onImport = {},
@@ -393,7 +395,9 @@ class VisualParityTest {
                     onClose = {},
                     onTogglePin = {},
                     onChooseCover = {},
-                    onRemoveCover = {},
+                    onStoreInlineImage = { "file:///test-image.png" },
+                    onImageError = {},
+                    onRemoveCover = {}
                     onAddTag = {},
                     onRemoveTag = {},
                     onImport = {},
