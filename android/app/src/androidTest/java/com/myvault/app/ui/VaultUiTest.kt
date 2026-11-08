@@ -1,6 +1,7 @@
 package com.myvault.app.ui
 
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -31,6 +32,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.myvault.app.MainActivity
 import com.myvault.app.MyVaultApplication
+import com.myvault.app.data.EntryEntity
+import com.myvault.app.data.SpaceEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -137,17 +140,17 @@ class VaultUiTest {
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun undoRedoControlsAndKeyboardShortcutsCoverTitleAndBody() {
-        val space = "Undo space ${System.currentTimeMillis()}"
-        compose.waitUntil(15_000) {
-            compose.onAllNodesWithContentDescription("New space").fetchSemanticsNodes().isNotEmpty()
+        // Seed the editor directly so this test isolates undo/redo from the separately covered
+        // space-creation navigation and its asynchronous animation/Room transition.
+        val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
+        val suffix = System.currentTimeMillis()
+        val space = SpaceEntity(id = "undo-space-$suffix", name = "Undo space $suffix")
+        val entry = EntryEntity(id = "undo-entry-$suffix", spaceId = space.id, title = "")
+        runBlocking {
+            app.database.spaceDao().upsert(space)
+            app.database.entryDao().upsert(entry)
         }
-        compose.onNodeWithContentDescription("New space").performClick()
-        compose.onNodeWithText("Space name").performTextInput(space)
-        compose.onNodeWithText("Create & enter").performScrollTo().performClick()
-        compose.waitUntil(15_000) {
-            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithContentDescription("New entry").performClick()
+        ViewModelProvider(compose.activity)[VaultViewModel::class.java].openEntry(entry.id)
         compose.waitUntil(15_000) {
             compose.onAllNodesWithContentDescription("Entry title").fetchSemanticsNodes().isNotEmpty()
         }
@@ -155,11 +158,13 @@ class VaultUiTest {
         val body = compose.onNodeWithContentDescription("Entry content")
         title.performTextInput("Title draft")
         body.performTextInput("Body draft")
-        compose.onNodeWithContentDescription("Undo").assertIsDisplayed().performClick()
+        val undo = compose.onNodeWithContentDescription("Undo")
+        undo.assertIsDisplayed().assertIsEnabled().performClick()
         body.assertEditableText("")
-        compose.onNodeWithContentDescription("Undo").performClick()
+        undo.assertIsEnabled().performClick()
         title.assertEditableText("")
-        compose.onNodeWithContentDescription("Redo").performClick()
+        val redo = compose.onNodeWithContentDescription("Redo")
+        redo.assertIsEnabled().performClick()
         title.assertTextEquals("Title draft")
         title.performKeyInput {
             keyDown(Key.CtrlLeft)
