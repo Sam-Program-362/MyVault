@@ -7,7 +7,8 @@ report_failure() {
   if (( status != 0 )); then
     python3 - "$log" <<'PYLOG'
 import pathlib, sys
-text = pathlib.Path(sys.argv[1]).read_text(errors="replace")[-7000:]
+lines = pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines()
+text = "\n".join(lines[-24:])[-2200:]
 text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 print(f"::error title=Scope backup diagnostic::{text}", flush=True)
 PYLOG

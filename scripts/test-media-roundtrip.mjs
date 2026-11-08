@@ -141,6 +141,7 @@ try {
   const freshRow = await freshDbConnection.query('SELECT image_bytes FROM media_assets WHERE id=$1', [stored.id]);
   assert.deepEqual(freshRow.rows[0].image_bytes, png, 'an independent PostgreSQL connection reads the same bytes');
   await freshDbConnection.end();
+  console.log('PASS: valid upload persisted exact bytes and MIME; independent HTTP and PostgreSQL connections read them back.');
 
   const corrupt = Buffer.from(png); corrupt[42] ^= 1;
   assert.equal((await postImage(source, corrupt)).status, 400, 'bad PNG CRC is rejected');
@@ -177,6 +178,7 @@ try {
   };
   assert.match(portableBackup.entries[0].content, /^before !\[pixel\]\(data:image\/png;base64,/);
   assert.match(portableBackup.entries[0].content, /after; !\[remote\]\(https:\/\/example\.org\/external\.png\)/);
+  console.log('PASS: entry export retained the managed reference, and the portable fixture preserved surrounding Markdown and external URLs.');
 
   await stopApi();
   const destination = await startApi(scopedUrl(destinationUrl, destinationSchema), 3219);
@@ -193,6 +195,7 @@ try {
   assert.equal(destinationImage.status, 200);
   assert.equal(destinationImage.headers.get('content-type'), 'image/png');
   assert.deepEqual(Buffer.from(await destinationImage.arrayBuffer()), png, 'two-database backup import preserves the exact image bytes');
+  console.log('PASS: portable backup imported into a separate disposable database and rewrote the image to destination media with identical bytes.');
 
   const stagedToken = '99999999-9999-4999-8999-999999999999';
   const stagedPng = makePng([1, 2, 3, 255]);
@@ -219,6 +222,7 @@ try {
   });
   assert.equal(cleanup.status, 200);
   assert.equal((await destinationClient.query('SELECT count(*) FROM media_assets')).rows[0].count, '1', 'failed staged bytes can be safely cleaned up');
+  console.log('PASS: failed import left entry/media state unchanged, staged bytes stayed inaccessible, and explicit cleanup removed them.');
 
   // Exercise the real aggregate database quota boundary without uploading 256 MiB
   // over HTTP: per-row CHECK limits are honored while disposable fixture rows fill
@@ -239,8 +243,12 @@ try {
   const quotaUpload = await postImage(source, makePng([10, 20, 30, 255]));
   assert.equal(quotaUpload.status, 507, 'storage quota rejects a new, valid, distinct image at the limit');
   assert.equal((await sourceClient.query('SELECT count(*) FROM media_assets')).rows[0].count, '129');
+  console.log('PASS: exact 256 MiB database quota rejected a distinct valid image with HTTP 507.');
 
   console.log('PASS: media bytes persisted and fetched from two PostgreSQL connections; export/import across distinct disposable databases preserved bytes and Markdown; invalid, oversized, staged-failure, and quota boundaries verified.');
+} catch (error) {
+  console.error('MEDIA_ROUNDTRIP_FAILURE', error instanceof Error ? error.stack ?? error.message : String(error));
+  throw error;
 } finally {
   await stopApi();
   await sourceClient.query(`DROP SCHEMA IF EXISTS ${sourceSchema} CASCADE`).catch(() => undefined);
