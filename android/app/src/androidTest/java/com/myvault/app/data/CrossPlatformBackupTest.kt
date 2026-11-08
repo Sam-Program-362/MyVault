@@ -32,13 +32,13 @@ class CrossPlatformBackupTest {
         val exported = File(app.cacheDir, "android-portable-${System.nanoTime()}.json")
         try {
             backup.writeText(
-                """{"version":2,"spaces":[{"id":"web-space","name":"From Web"}],"entries":[{"id":"web-entry","spaceId":"web-space","title":"Portable","content":"before ![photo]($dataUri) after\\n![same]($dataUri) and ![external](https://example.org/image.png)","coverImage":"$dataUri"}]}""",
+                """{"version":2,"spaces":[{"id":"web-space","name":"From Web"}],"entries":[{"id":"web-entry","spaceId":"web-space","title":"Portable","content":"before ![photo]($dataUri) after\n![same]($dataUri) and ![external](https://example.org/image.png)","coverImage":"$dataUri"}]}""",
             )
             val manager = BackupManager(app, db, app.settings, app.media)
             manager.importFrom(Uri.fromFile(backup), false)
             val imported = db.entryDao().getAll().single()
             assertTrue(imported.content.contains("before ![photo](file://"))
-            assertTrue(imported.content.contains("after\\n![same]("))
+            assertTrue(imported.content.contains("after\n![same]("))
             assertTrue(imported.content.contains("![external](https://example.org/image.png)"))
             val firstUri = Regex("!\\[photo]\\((file:[^)]*)\\)").find(imported.content)!!.groupValues[1]
             val secondUri = Regex("!\\[same]\\((file:[^)]*)\\)").find(imported.content)!!.groupValues[1]

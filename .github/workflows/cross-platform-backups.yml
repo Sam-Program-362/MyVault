@@ -1,4 +1,4 @@
-name: Scoped backup compatibility boundary
+name: Scoped backup and durable media verification
 on:
   pull_request:
     branches: [main]
@@ -28,6 +28,7 @@ jobs:
           --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       MIGRATION_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/migration_test
+      MEDIA_IMPORT_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/myvault_media_import_test
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -36,6 +37,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
+      - name: Create disposable destination database
+        run: PGPASSWORD=postgres createdb -h 127.0.0.1 -U postgres myvault_media_import_test
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin

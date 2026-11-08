@@ -768,6 +768,29 @@ mark {
   }
 }
 
+@media (max-width: 430px) {
+  .editor-toolbar {
+    flex-wrap: wrap;
+    min-height: 0;
+    row-gap: 0;
+    padding-top: max(4px, env(safe-area-inset-top, 0px));
+    padding-bottom: 4px;
+  }
+
+  .editor-toolbar-start {
+    flex: 0 0 100%;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .editor-toolbar-actions {
+    flex: 0 0 100%;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+}
+
 @media (max-width: 400px) {
   .editor-save-status span {
     position: absolute;

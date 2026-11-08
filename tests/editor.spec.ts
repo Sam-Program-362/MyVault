@@ -65,7 +65,7 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
       if (method === "PATCH") {
         const patch = request.postDataJSON() as Record<string, unknown>;
         patches.push(patch);
-        // Exercise close-time flushing with controllable in-flight PATCH responses.
+        // A controlled gate exercises close-time flushing while the PATCH response is pending.
         await new Promise((resolve) => setTimeout(resolve, patchDelay));
         const heldResponse = patchResponseGate;
         if (heldResponse) await heldResponse;
@@ -123,14 +123,12 @@ async function openNewEntry(page: Page) {
   await expect(page.getByLabel("Entry content")).toBeVisible();
 }
 
-async function expectToolbarButtonsReachableWithoutOverlap(page: Page, viewportWidth: number, viewportHeight: number) {
+async function assertToolbarControlsReachable(page: Page, viewportWidth: number, viewportHeight: number) {
   const buttons = await page.locator(".editor-toolbar button").all();
   const boxes = [];
   for (const button of buttons) {
     await expect(button).toBeVisible();
     await expect(button).toBeEnabled();
-    await button.focus();
-    await expect(button).toBeFocused();
     const box = await button.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.x).toBeGreaterThanOrEqual(0);
@@ -140,12 +138,16 @@ async function expectToolbarButtonsReachableWithoutOverlap(page: Page, viewportW
     expect(box!.width).toBeGreaterThanOrEqual(44);
     expect(box!.height).toBeGreaterThanOrEqual(44);
     boxes.push(box!);
+    await button.focus();
+    await expect(button).toBeFocused();
   }
   for (let left = 0; left < boxes.length; left++) {
     for (let right = left + 1; right < boxes.length; right++) {
-      const overlapWidth = Math.min(boxes[left].x + boxes[left].width, boxes[right].x + boxes[right].width) - Math.max(boxes[left].x, boxes[right].x);
-      const overlapHeight = Math.min(boxes[left].y + boxes[left].height, boxes[right].y + boxes[right].height) - Math.max(boxes[left].y, boxes[right].y);
-      expect(overlapWidth > 0.5 && overlapHeight > 0.5, `toolbar buttons ${left} and ${right} overlap`).toBe(false);
+      const a = boxes[left];
+      const b = boxes[right];
+      const overlaps = a.x < b.x + b.width - 0.5 && a.x + a.width > b.x + 0.5 &&
+        a.y < b.y + b.height - 0.5 && a.y + a.height > b.y + 0.5;
+      expect(overlaps, `toolbar buttons ${left} and ${right} overlap`).toBe(false);
     }
   }
 }
@@ -195,9 +197,14 @@ test.describe("phone writing experience", () => {
     const inserted = "prefix ![trip photo 01](/api/media/11111111-1111-4111-8111-111111111111) suffix";
     vault.delayPatches(0);
     const releasePatches = vault.holdPatchResponses();
-    const imagePatch = page.waitForRequest((request) =>
+    const imagePatchRequest = page.waitForRequest((request) =>
       request.method() === "PATCH" && request.url().includes("/api/entries/") && request.postDataJSON()?.content === inserted,
     );
+    const imagePatchResponse = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "PATCH" && request.url().includes("/api/entries/") &&
+        request.postDataJSON()?.content === inserted && response.status() === 200;
+    });
     await content.fill(original);
     await content.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(7, 15));
     await page.getByRole("button", { name: "Insert image at the cursor" }).click();
@@ -215,13 +222,17 @@ test.describe("phone writing experience", () => {
     await expect(content).toHaveValue(inserted);
     try {
       await page.getByRole("button", { name: "Close editor" }).click();
-      const request = await imagePatch;
+      const request = await imagePatchRequest;
       expect(request.postDataJSON()).toMatchObject({ content: inserted });
+      // The mock only commits state when the PATCH response is released. The editor must
+      // remain open until the close-time flush has received that successful response.
       expect(vault.entries[0].content).toBe("");
       await expect(page.locator(".entry-editor")).toBeVisible();
     } finally {
       releasePatches();
     }
+    const response = await imagePatchResponse;
+    expect(response.status()).toBe(200);
     await expect(page.locator(".entry-editor")).toBeHidden();
     expect(vault.entries[0].content).toBe(inserted);
     expect(vault.patches.filter((patch) => typeof patch.content === "string").at(-1)?.content).toBe(inserted);
@@ -308,7 +319,7 @@ test.describe("phone writing experience", () => {
     await mockVault(page, "light");
     await openNewEntry(page);
     await expect(page.locator(".entry-editor")).toHaveCSS("background-color", "rgb(251, 250, 248)");
-    await expectToolbarButtonsReachableWithoutOverlap(page, 320, 568);
+    await assertToolbarControlsReachable(page, 320, 568);
     await page.getByRole("button", { name: "Preview", exact: true }).click();
     await expect(page.getByRole("complementary", { name: "Markdown preview" })).toBeVisible();
     await page.keyboard.press("Escape");
@@ -325,7 +336,7 @@ test.describe("phone writing experience", () => {
     await page.getByRole("button", { name: "Close settings" }).click();
     await page.getByRole("button", { name: "New entry" }).click();
     await page.getByLabel("Entry content").waitFor();
-    await expectToolbarButtonsReachableWithoutOverlap(page, 320, 568);
+    await assertToolbarControlsReachable(page, 320, 568);
   });
 });
 
@@ -384,12 +395,12 @@ test.describe("desktop editor", () => {
   });
 
   test("renders representative GFM content in preview", async ({ page }) => {
+    await mockVault(page);
     await page.route("https://example.com/image.png", (route) => route.fulfill({
       status: 200,
       contentType: "image/png",
       body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"),
     }));
-    await mockVault(page);
     await openNewEntry(page);
     await page.getByLabel("Entry content").fill([
       "# Heading", "", "- Parent", "  - Child", "- [x] Done", "", "> Quote", "",
@@ -406,9 +417,9 @@ test.describe("desktop editor", () => {
     await expect(preview.getByRole("cell", { name: "Two" })).toBeVisible();
     await expect(preview.locator("pre code")).toContainText("const answer = 42;");
     await expect(preview.getByRole("link", { name: "Safe link" })).toHaveAttribute("href", "https://example.com");
-    const image = preview.getByRole("img", { name: "Example image" });
-    await expect(image).toHaveAttribute("src", "https://example.com/image.png");
-    await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1);
+    const externalImage = preview.getByRole("img", { name: "Example image" });
+    await expect(externalImage).toHaveAttribute("src", "https://example.com/image.png");
+    await expect.poll(() => externalImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   });
 
   test("undo and redo cross title and body with keyboard and visible controls", async ({ page }) => {

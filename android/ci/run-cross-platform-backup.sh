@@ -19,9 +19,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 instrument_log="$RUNNER_TEMP/scope-backup-export.log"
 adb shell am instrument -w -r -e class com.myvault.app.data.CrossPlatformBackupTest com.myvault.app.debug.test/androidx.test.runner.AndroidJUnitRunner | tee "$instrument_log"
-grep -Eq '^OK \(1 test\)' "$instrument_log" && ! grep -q 'FAILURES!!!' "$instrument_log"
+grep -Eq '^OK \(2 tests?\)' "$instrument_log" && ! grep -q 'FAILURES!!!' "$instrument_log"
 adb exec-out run-as com.myvault.app.debug cat files/cross-android.json > "$RUNNER_TEMP/cross-android.json"
 test -s "$RUNNER_TEMP/cross-android.json"
 cd ..
 ANDROID_BACKUP_FILE="$RUNNER_TEMP/cross-android.json" node scripts/test-scope-backup.mjs
-printf '::notice title=Scoped backup boundary::Android v2 export preserves Local/Global metadata and IDs; web rejects unknown tag identities transactionally until Unicode 15.1 enforcement is available.\n'
+node scripts/test-media-roundtrip.mjs
+printf '::notice title=Backup and media verification::Android v2 backup preserves tag identity and portable image bytes; two disposable PostgreSQL databases verify image export/import, durability, validation, atomicity and quota. Unknown tag identities still fail closed until Unicode 15.1 enforcement is available.\n'
