@@ -157,7 +157,7 @@ try {
       content: `before ![pixel](${stored.url}) after; ![remote](https://example.org/external.png)`,
     }),
   });
-  assert.equal(entryResponse.status, 201, await entryResponse.text());
+  assert.equal(entryResponse.status, 201, await entryResponse.clone().text());
   const createdEntry = await entryResponse.json();
   const exported = await fetch(`${source}/api/export`).then((response) => response.json());
   const exportedEntry = exported.entries.find((entry) => entry.id === createdEntry.id);
