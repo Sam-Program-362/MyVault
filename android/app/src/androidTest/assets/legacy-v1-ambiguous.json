@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "spaces": [{"id": "legacy-space", "name": "Legacy Space"}],
+  "tags": [
+    {"id": "legacy-1", "name": "Ideas", "reusable": false},
+    {"id": "legacy-2", "name": "ideas", "reusable": true}
+  ],
+  "entries": [{"id": "legacy-entry", "spaceId": "legacy-space", "content": "preserve", "tags": [
+    {"id": "legacy-1", "name": "Ideas", "reusable": false},
+    {"id": "legacy-2", "name": "ideas", "reusable": true}
+  ]}]
+}

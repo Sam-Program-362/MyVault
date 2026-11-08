@@ -93,6 +93,7 @@ import com.myvault.app.data.EntryTagCrossRef
 import com.myvault.app.data.MediaFiles
 import com.myvault.app.data.SpaceEntity
 import com.myvault.app.data.TagEntity
+import com.myvault.app.data.isVisibleInSpace
 
 /** The web dashboard's compact header, horizontal spaces and cover-first entry cards. */
 @Composable
@@ -117,7 +118,10 @@ fun EntriesScreen(
     var chooseSpace by rememberSaveable { mutableStateOf(false) }
     var creatingSpace by rememberSaveable { mutableStateOf(false) }
     var lastSpaceId by rememberSaveable { mutableStateOf(selectedSpaceId) }
-    LaunchedEffect(selectedSpaceId) { if (selectedSpaceId != null) lastSpaceId = selectedSpaceId }
+    LaunchedEffect(selectedSpaceId) {
+        if (selectedSpaceId != null) lastSpaceId = selectedSpaceId
+        tagFilter = null
+    }
     val space = spaces.find { it.id == selectedSpaceId }
     val filtered =
         remember(entries, tagRefs, selectedSpaceId, query, tagFilter) {
@@ -202,7 +206,7 @@ fun EntriesScreen(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                tags.forEach { tag ->
+                tags.filter { it.isVisibleInSpace(selectedSpaceId) }.forEach { tag ->
                     val selected = tagFilter == tag.id
                     val color = parseColor(tag.color)
                     Box(
@@ -212,21 +216,22 @@ fun EntriesScreen(
                                 role = Role.Checkbox,
                                 onClick = { tagFilter = if (selected) null else tag.id },
                             )
-                            .semantics { contentDescription = "Filter by ${tag.name}" },
+                            .semantics { contentDescription = "Filter by ${tag.name}, ${if (tag.scope == "local") "Local" else "Global"}" },
                         contentAlignment = Alignment.Center,
                     ) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = if (selected) color else color.copy(alpha = 0.14f),
+                            color = color.copy(alpha = if (selected) 0.18f else 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, color),
                         ) {
-                            Text(
-                                tag.name,
-                                color =
-                                    if (selected) parseColor(tag.textColor, Color.White) else color,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
+                            Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                            )
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(tag.name, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.width(5.dp))
+                                Text(if (tag.scope == "local") "Local" else "Global", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            }
                         }
                     }
                 }
@@ -809,16 +814,15 @@ private fun EntryCard(
                         tags.take(3).forEach { tag ->
                             val color = parseColor(tag.color)
                             Surface(
-                                color = color.copy(alpha = 0.14f),
+                                color = color.copy(alpha = 0.08f),
                                 shape = RoundedCornerShape(50),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, color),
                             ) {
-                                Text(
-                                    tag.name,
-                                    color = color,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                )
+                                Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(tag.name, color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, maxLines = 1)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(if (tag.scope == "local") "Local" else "Global", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                                }
                             }
                         }
                     }

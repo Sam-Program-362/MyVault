@@ -27,6 +27,9 @@ data class TagEntity(
     val textColor: String = "#FFFFFF",
     /** Whether this tag shows up as a suggestion for future entries. */
     val reusable: Boolean = true,
+    // Legacy tags remain global; scope is independent of suggestion reusability.
+    @ColumnInfo(defaultValue = "'global'") val scope: String = "global",
+    val ownerSpaceId: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
 )
 

@@ -80,7 +80,7 @@ checked 'Force-stop after choosing list layout' adb shell am force-stop "$app_id
 checked 'Restart with the saved list layout' adb shell am start -n "$app_id/com.myvault.app.MainActivity"
 run_instrumentation verify-layout com.myvault.app.ui.OfflineRestartTest -e myvault.restartPhase verifyLayout
 if [[ -n ${MYVAULT_PREVIOUS_APK:-} ]]; then
-  printf '::notice title=Offline upgrade and restart::The previous native APK wrote a vault in airplane mode; an in-place update and force-stop preserved its entries, tags, settings, images and the new list preference.\n'
+  printf '::notice title=Offline upgrade and restart::The previous native APK wrote a vault in airplane mode; an in-place update and force-stop preserved its entries, settings, images and the new list preference.\n'
 else
   printf '::notice title=Offline reinstall and restart::The debug APK wrote a vault in airplane mode; an in-place reinstall and force-stop preserved its data.\n'
 fi

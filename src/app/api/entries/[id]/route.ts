@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { entries, entryTags, tags } from "@/db/schema";
+import { tagsAllowedInSpace } from "@/lib/tag-scope";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -31,31 +32,32 @@ export async function PATCH(request: Request, { params }: Params) {
   const { id } = await params;
   const body = await request.json();
 
+  const current = await getEntryWithTags(id);
+  if (!current) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+  const spaceId = body.spaceId ?? current.spaceId;
+  const tagIds = Array.isArray(body.tagIds) ? body.tagIds : current.tags.map((tag) => tag.id);
+  if (typeof spaceId !== "string" || !tagIds.every((tagId: unknown) => typeof tagId === "string") || !(await tagsAllowedInSpace(tagIds, spaceId))) {
+    return NextResponse.json({ error: "Tags must belong to this Space or be global." }, { status: 400 });
+  }
   const allowed: Record<string, unknown> = {};
   for (const field of ["title", "content", "coverImage", "pinned", "spaceId"] as const) {
     if (field in body) allowed[field] = body[field];
   }
   allowed.updatedAt = new Date();
 
-  const [updated] = await db
-    .update(entries)
-    .set(allowed)
-    .where(eq(entries.id, id))
-    .returning();
-
-  if (!updated) {
-    return NextResponse.json({ error: "Entry not found" }, { status: 404 });
-  }
-
-  if (Array.isArray(body.tagIds)) {
-    await db.delete(entryTags).where(eq(entryTags.entryId, id));
-    if (body.tagIds.length > 0) {
-      await db
-        .insert(entryTags)
-        .values(body.tagIds.map((tagId: string) => ({ entryId: id, tagId })));
+  const updated = await db.transaction(async (tx) => {
+    const [entry] = await tx.update(entries).set(allowed).where(eq(entries.id, id)).returning();
+    if (!entry) return null;
+    if (Array.isArray(body.tagIds)) {
+      await tx.delete(entryTags).where(eq(entryTags.entryId, id));
+      if (body.tagIds.length > 0) {
+        await tx.insert(entryTags).values(body.tagIds.map((tagId: string) => ({ entryId: id, tagId })));
+      }
     }
-  }
+    return entry;
+  });
 
+  if (!updated) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
   const entry = await getEntryWithTags(id);
   return NextResponse.json(entry);
 }

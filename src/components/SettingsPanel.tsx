@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useAppData } from "@/context/AppDataContext";
 import { api } from "@/lib/api";
-import type { AppSettings } from "@/lib/types";
+import type { AppSettings, Tag } from "@/lib/types";
 
 const ACCENTS = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#06b6d4", "#8b5cf6", "#ef4444", "#0ea5e9"];
 const FONT_SIZES: { value: AppSettings["fontSize"]; label: string }[] = [
@@ -34,12 +34,13 @@ const RADII: { value: AppSettings["radius"]; label: string }[] = [
 ];
 
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const { settings, updateSettings, tags, refreshTags } = useAppData();
+  const { settings, updateSettings, tags, spaces, refreshTags } = useAppData();
   const [appName, setAppName] = useState(settings?.appName ?? "MyVault");
   const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<string | null>(null);
+  const [editingTag, setEditingTag] = useState<Tag | null>(null);
   const [tab, setTab] = useState<"theme" | "tags" | "data">("theme");
   const wallpaperInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -97,6 +98,15 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
   const reusableTags = tags.filter((t) => t.reusable);
   const oneOffTags = tags.filter((t) => !t.reusable);
+  const tagScopeLabel = (tag: Tag) => tag.scope === "local"
+    ? `Local · ${spaces.find((space) => space.id === tag.ownerSpaceId)?.name ?? "Unknown Space"}`
+    : "Global";
+  // Diagnostic only: this runtime's lowercase mapping is not the pinned Unicode identity.
+  const possibleLegacyGroups = [...tags.reduce((groups, tag) => {
+    const key = JSON.stringify([tag.name.toLowerCase(), tag.scope ?? "global", tag.ownerSpaceId ?? null]);
+    groups.set(key, [...(groups.get(key) ?? []), tag]);
+    return groups;
+  }, new Map<string, Tag[]>()).values()].filter((group) => group.length > 1);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -318,6 +328,12 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
           {tab === "tags" && (
             <div className="flex flex-col gap-5">
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+                <p>Unicode 15.1 conflict detection is not authoritative. Existing IDs and links are never auto-merged or changed.</p>
+                {possibleLegacyGroups.length === 0
+                  ? <p className="mt-1 opacity-70">No simple case-insensitive candidate groups found; other Unicode-equivalent variants may still exist.</p>
+                  : <div className="mt-1"><p>Possible legacy candidate groups (not a Unicode 15.1 verdict):</p>{possibleLegacyGroups.map((group) => <p key={group.map((tag) => tag.id).join(":")}>{group[0].name}: {group.map((tag) => tag.id).join(", ")}</p>)}</div>}
+              </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Saved reusable tags</p>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -325,10 +341,11 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                   {reusableTags.map((tag) => (
                     <span
                       key={tag.id}
-                      className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
-                      style={{ background: tag.color, color: tag.textColor }}
+                      className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
+                      style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                     >
-                      {tag.name}
+                      {tag.name} <span className="opacity-70">{tagScopeLabel(tag)}</span>
+                      <button type="button" aria-label={`Edit ${tag.name} tag`} onClick={() => setEditingTag(tag)}>Edit</button>
                       <button
                         onClick={async () => {
                           if (confirm(`Delete tag “${tag.name}” from all entries?`)) {
@@ -350,10 +367,11 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                   {oneOffTags.map((tag) => (
                     <span
                       key={tag.id}
-                      className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium opacity-80"
-                      style={{ background: tag.color, color: tag.textColor }}
+                      className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium opacity-80"
+                      style={{ borderColor: tag.color, background: `color-mix(in srgb, ${tag.color} 8%, transparent)`, color: "inherit" }}
                     >
-                      {tag.name}
+                      {tag.name} <span className="opacity-70">{tagScopeLabel(tag)}</span>
+                      <button type="button" aria-label={`Edit ${tag.name} tag`} onClick={() => setEditingTag(tag)}>Edit</button>
                       <button
                         onClick={async () => {
                           await api.tags.update(tag.id, { reusable: true });
@@ -367,6 +385,19 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {tab === "tags" && editingTag && (
+            <div className="ui-radius mt-4 flex flex-col gap-2 border border-black/10 p-3 dark:border-white/10" role="dialog" aria-label="Edit tag">
+              <label>Tag name <input aria-label="Tag name" value={editingTag.name} readOnly /></label>
+              <p>Scope: {editingTag.scope === "local" ? "Local to this Space" : "Global"}</p>
+              <label>Tag color <input type="color" aria-label="Tag color" value={editingTag.color} onChange={(e) => setEditingTag({ ...editingTag, color: e.target.value })} /></label>
+              <p className="text-xs">Name and scope edits are paused pending Unicode 15.1 database enforcement. Color and reusable settings remain editable.</p>
+              <div className="flex gap-3"><button type="button" onClick={async () => {
+                try { await api.tags.update(editingTag.id, { color: editingTag.color }); await refreshTags(); setEditingTag(null); }
+                catch (error) { alert(error instanceof Error ? error.message : "Could not update tag."); }
+              }}>Save color</button><button type="button" onClick={() => setEditingTag(null)}>Cancel</button></div>
             </div>
           )}
 
