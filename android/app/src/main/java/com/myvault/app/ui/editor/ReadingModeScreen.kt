@@ -56,6 +56,7 @@ import coil.ImageLoader
 import coil.compose.AsyncImage
 import com.myvault.app.data.EntryDto
 import com.myvault.app.data.MediaFiles
+import com.myvault.app.data.fallbackInvalidMarkdownImages
 import dev.jeziellago.compose.markdowntext.MarkdownText
 
 private fun findReaderMatches(text: String, query: String): List<Int> {

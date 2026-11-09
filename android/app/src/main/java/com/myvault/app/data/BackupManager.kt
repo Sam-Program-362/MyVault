@@ -57,10 +57,12 @@ class BackupManager(
     /** Write a standalone one-entry document using the backup media portability checks. */
     suspend fun exportEntryTo(uri: Uri, entryId: String): Int =
         withContext(Dispatchers.IO) {
-            val original = entryDao.getById(entryId) ?: error("This entry no longer exists.")
-            val space = spaceDao.getAll().firstOrNull { it.id == original.spaceId }
+            val entries = db.entryDao()
+            val spaces = db.spaceDao()
+            val original = entries.getById(entryId) ?: error("This entry no longer exists.")
+            val space = spaces.getAll().firstOrNull { it.id == original.spaceId }
                 ?: error("This entry’s Space could not be found.")
-            val entryTags = entryDao.tagsForEntry(entryId).map { it.toDto() }
+            val entryTags = entries.tagsForEntry(entryId).map { it.toDto() }
             val dto = original.toDto(entryTags)
             val budget = MediaBudget()
             val (portableContent, _) = portableSingleMarkdown(dto.content, budget)
