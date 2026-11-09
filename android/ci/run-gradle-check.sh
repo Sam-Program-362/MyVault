@@ -11,7 +11,12 @@ import sys
 import xml.etree.ElementTree as ET
 
 lines = pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines()
-errors = [line for line in lines if line.startswith("e: ") or line.startswith("* What went wrong:")]
+errors = [line for line in lines if line.startswith("e: ")]
+for index, line in enumerate(lines):
+    if line.startswith("* What went wrong:"):
+        # Include Gradle's explanation after the heading; the heading alone hides the cause
+        # in GitHub's compact check annotation when no Kotlin `e:` diagnostic is present.
+        errors.extend(lines[index:index + 32])
 for report in pathlib.Path("app/build/test-results").rglob("*.xml"):
     try:
         root = ET.parse(report).getroot()
