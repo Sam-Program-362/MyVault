@@ -100,7 +100,7 @@ fun ReadingModeScreen(
             val end = (selectedMatch + query.length + 72).coerceAtMost(entry.content.length)
             val snippet = entry.content.substring(start, end)
             val matchStart = selectedMatch - start
-            val AnnotatedString.Builder().apply {
+            AnnotatedString.Builder().apply {
                 append(if (start > 0) "…" else "")
                 append(snippet.substring(0, matchStart))
                 pushStyle(SpanStyle(background = Color(0xFFFFD54F), color = Color(0xFF241F12), fontWeight = FontWeight.Bold))

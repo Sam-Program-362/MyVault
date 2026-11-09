@@ -322,8 +322,9 @@ export default function EntryEditor({ entryId, spaces, onClose, onSaved, onDelet
 
   const handleInlineImageUpload = async (file: File) => {
     const element = textareaRef.current;
+    const remembered = selectionRef.current;
     const savedSelection: EditorSelection = element
-      ? { field: "content", start: element.selectionStart, end: element.selectionEnd }
+      ? (remembered.field === "content" ? remembered : { field: "content", start: element.selectionStart, end: element.selectionEnd })
       : { field: "content", start: draftRef.current.content.length, end: draftRef.current.content.length };
     setUploadingImage(true);
     try {
@@ -614,11 +615,11 @@ export default function EntryEditor({ entryId, spaces, onClose, onSaved, onDelet
             {displayedSaveState === "saving" ? <Loader2 size={13} className="animate-spin" /> : displayedSaveState === "saved" ? <Check size={13} /> : <AlertCircle size={14} />}
             <span>{displayedSaveState === "saving" ? "Saving…" : displayedSaveState === "saved" ? "Saved" : "Couldn’t save"}</span>
           </div>
-        </div>
-        <div className="editor-toolbar-actions" inert={closing}>
           <button ref={readingButtonRef} type="button" onClick={() => void openReadingMode()} disabled={preparingReading || processing || pendingImport !== null} className="editor-icon-button" aria-label="Reading mode" title="Read saved entry">
             <BookOpen size={17} />
           </button>
+        </div>
+        <div className="editor-toolbar-actions" inert={closing}>
           <button type="button" onClick={togglePin} className={`editor-icon-button ${pinned ? "is-pinned" : ""}`} aria-label={pinned ? "Unpin entry" : "Pin entry"} title={pinned ? "Unpin entry" : "Pin entry"}>
             {pinned ? <Pin size={17} /> : <PinOff size={17} />}
           </button>
@@ -633,7 +634,7 @@ export default function EntryEditor({ entryId, spaces, onClose, onSaved, onDelet
               <Eye size={17} />
             </button>
           </div>
-          <button type="button" onClick={() => inlineImageInputRef.current?.click()} disabled={uploadingImage || closing} className="editor-icon-button" aria-label="Insert image at the cursor" title="Insert image (PNG, JPEG, GIF, WebP; max 2 MB)">
+          <button type="button" onMouseDown={(event) => { if (textareaRef.current) rememberSelection("content", textareaRef.current); event.preventDefault(); }} onClick={() => inlineImageInputRef.current?.click()} disabled={uploadingImage || closing} className="editor-icon-button" aria-label="Insert image at the cursor" title="Insert image (PNG, JPEG, GIF, WebP; max 2 MB)">
             {uploadingImage ? <Loader2 size={17} className="animate-spin" /> : <ImagePlus size={17} />}
           </button>
           <button type="button" onClick={() => importInputRef.current?.click()} disabled={importingFile} className="editor-icon-button" aria-label="Import text or Markdown file" title="Import .txt / .md file">

@@ -339,7 +339,7 @@ test.describe("phone writing experience", () => {
     await page.getByLabel("Entry content").fill(source);
     await page.getByRole("button", { name: "Reading mode" }).click();
     const reader = page.getByRole("main", { name: "Reading mode" });
-    await expect(reader.getByRole("heading", { name: "Reader title" })).toBeVisible();
+    await expect(reader.getByRole("heading", { name: "Reader title", exact: true })).toBeVisible();
     await expect(reader.getByRole("heading", { name: "Saved reader title" })).toBeVisible();
     await expect(reader.getByText("Before", { exact: false })).toBeVisible();
     await expect(reader.getByText(/Image unavailable: missing/)).toBeVisible();
