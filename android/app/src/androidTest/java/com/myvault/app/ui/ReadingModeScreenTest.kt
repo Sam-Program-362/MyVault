@@ -8,23 +8,27 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.withText
+import org.hamcrest.Matchers.containsString
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import coil.ImageLoader
 import com.myvault.app.data.EntryDto
-import dev.jeziellago.compose.markdowntext.MarkdownText
-import com.myvault.app.data.fallbackInvalidMarkdownImages
 import com.myvault.app.ui.editor.ReadingModeScreen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -35,6 +39,11 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ReadingModeScreenTest {
     @get:Rule val compose = createComposeRule()
+
+    private fun assertRenderedMarkdownContains(text: String) {
+        val matcher = withText(containsString(text))
+        onView(matcher).check(matches(matcher))
+    }
 
     private fun sharedFixture(): String =
         InstrumentationRegistry.getInstrumentation().context.assets
@@ -70,21 +79,21 @@ class ReadingModeScreenTest {
                 }
             }
             compose.onNodeWithText("Saved reader title").assertIsDisplayed()
-            compose.onNodeWithText("Shared Markdown compatibility fixture", substring = true).assertExists()
-            compose.onNodeWithText("strong text", substring = true).assertExists()
-            compose.onNodeWithText("emphasis", substring = true).assertExists()
-            compose.onNodeWithText("inline code", substring = true).assertExists()
-            compose.onNodeWithText("ordered item one", substring = true).assertExists()
-            compose.onNodeWithText("nested unordered child", substring = true).assertExists()
-            compose.onNodeWithText("completed task", substring = true).assertExists()
-            compose.onNodeWithText("strikethrough", substring = true).assertExists()
-            compose.onNodeWithText("https://example.org/plain-url", substring = true).assertExists()
-            compose.onNodeWithText("A blockquote stays visible on both renderers.", substring = true).assertExists()
-            compose.onNodeWithText("fenced code", substring = true).assertExists()
-            compose.onNodeWithText("table", substring = true).assertExists()
-            compose.onNodeWithText("Text before a missing image", substring = true).assertExists()
-            compose.onNodeWithText("Image unavailable: missing test image", substring = true).assertExists()
-            compose.onNodeWithText("text after it must remain visible.", substring = true).assertExists()
+            assertRenderedMarkdownContains("Shared Markdown compatibility fixture")
+            assertRenderedMarkdownContains("strong text")
+            assertRenderedMarkdownContains("emphasis")
+            assertRenderedMarkdownContains("inline code")
+            assertRenderedMarkdownContains("ordered item one")
+            assertRenderedMarkdownContains("nested unordered child")
+            assertRenderedMarkdownContains("completed task")
+            assertRenderedMarkdownContains("strikethrough")
+            assertRenderedMarkdownContains("https://example.org/plain-url")
+            assertRenderedMarkdownContains("A blockquote stays visible on both renderers.")
+            assertRenderedMarkdownContains("fenced code")
+            assertRenderedMarkdownContains("table")
+            assertRenderedMarkdownContains("Text before a missing image")
+            assertRenderedMarkdownContains("Image unavailable: missing test image")
+            assertRenderedMarkdownContains("text after it must remain visible.")
         } finally {
             imageLoader.shutdown()
         }
@@ -159,7 +168,12 @@ class ReadingModeScreenTest {
                     }
                 }
             }
-            compose.onNodeWithText("Last scroll marker.").performScrollTo().assertIsDisplayed()
+            val scrollNode = compose.onNodeWithTag("reader-scroll")
+            val before = scrollNode.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+            scrollNode.performTouchInput { repeat(12) { swipeUp() } }
+            val after = scrollNode.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+            assertTrue("long reading content must scroll", after > before)
+            assertRenderedMarkdownContains("Last scroll marker.")
         } finally {
             imageLoader.shutdown()
         }

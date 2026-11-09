@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -212,7 +213,7 @@ fun ReadingModeScreen(
             }
 
             Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 22.dp),
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).testTag("reader-scroll").padding(horizontal = 20.dp, vertical = 22.dp),
             ) {
                 if (!entry.coverImage.isNullOrBlank()) {
                     AsyncImage(
