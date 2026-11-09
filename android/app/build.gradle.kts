@@ -32,6 +32,19 @@ if (providers.gradleProperty("requireReleaseSigning").orNull == "true" && !relea
     throw GradleException("Release signing is incomplete: provide a valid keystore path, store password, key alias, and key password.")
 }
 
+val sharedMarkdownTestAssets = layout.buildDirectory.dir("generated/androidTest/sharedMarkdownAssets")
+val copySharedMarkdownFixture = tasks.register<Copy>("copySharedMarkdownFixture") {
+    from(rootProject.file("../tests/fixtures/markdown-compatibility.md"))
+    into(sharedMarkdownTestAssets)
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(copySharedMarkdownFixture)
+}
+tasks.matching { it.name == "mergeDebugAndroidTestAssets" }.configureEach {
+    dependsOn(copySharedMarkdownFixture)
+}
+
 android {
     namespace = "com.myvault.app"
     compileSdk = 34
@@ -102,7 +115,7 @@ android {
     }
 
     sourceSets {
-        getByName("androidTest").assets.srcDir("$rootDir/../tests/fixtures")
+        getByName("androidTest").assets.srcDir(sharedMarkdownTestAssets)
     }
 
     packaging {
