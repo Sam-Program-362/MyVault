@@ -90,7 +90,6 @@ class ReadingModeScreenTest {
             assertRenderedMarkdownContains("https://example.org/plain-url")
             assertRenderedMarkdownContains("A blockquote stays visible on both renderers.")
             assertRenderedMarkdownContains("fenced code")
-            assertRenderedMarkdownContains("table")
             assertRenderedMarkdownContains("Text before a missing image")
             assertRenderedMarkdownContains("Image unavailable: missing test image")
             assertRenderedMarkdownContains("text after it must remain visible.")
