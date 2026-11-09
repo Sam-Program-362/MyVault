@@ -9,10 +9,12 @@ import androidx.room.withTransaction
 import com.myvault.app.MyVaultApplication
 import com.myvault.app.data.AppSettings
 import com.myvault.app.data.EditorDraftWriter
+import com.myvault.app.data.EntryDto
 import com.myvault.app.data.EntryEntity
 import com.myvault.app.data.EntryTagCrossRef
 import com.myvault.app.data.SpaceEntity
 import com.myvault.app.data.TagEntity
+import com.myvault.app.data.toDto
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -204,6 +206,19 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Flush and read the persisted snapshot before displaying it in read-only mode. */
+    suspend fun readSavedEntryForReading(entryId: String): EntryDto? {
+        val writer = currentWriter.value
+        if (writer != null && writer.state.value.value.id == entryId) {
+            debounce?.cancel()
+            if (!writer.flush()) return null
+        }
+        return withContext(Dispatchers.IO) {
+            val saved = entriesDao.getById(entryId) ?: return@withContext null
+            saved.toDto(entriesDao.tagsForEntry(entryId).map { it.toDto() })
+        }
+    }
+
     fun closeEditor() =
         action("Couldn’t close entry.") {
             val writer = currentWriter.value ?: return@action
@@ -305,6 +320,13 @@ class VaultViewModel(application: Application) : AndroidViewModel(application) {
         action("Couldn’t export backup.") {
             val result = app.backups.exportTo(uri)
             message("Backup saved.${imageWarning(result.externalImages)}")
+        }
+
+    fun exportSingleEntry(entryId: String, uri: Uri) =
+        action("Couldn’t export this entry.") {
+            val references = app.backups.exportEntryTo(uri, entryId)
+            val warning = if (references == 0) "" else " $references image reference(s) could not be embedded and were preserved as links."
+            message("Entry export saved.$warning")
         }
 
     fun importBackup(uri: Uri, applySettings: Boolean) =

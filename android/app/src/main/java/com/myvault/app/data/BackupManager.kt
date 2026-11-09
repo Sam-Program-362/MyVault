@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import java.io.File
+import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -51,6 +53,57 @@ class BackupManager(
                 externalImages(payload, true),
             )
         }
+
+    /** Write a standalone one-entry document using the backup media portability checks. */
+    suspend fun exportEntryTo(uri: Uri, entryId: String): Int =
+        withContext(Dispatchers.IO) {
+            val original = entryDao.getById(entryId) ?: error("This entry no longer exists.")
+            val space = spaceDao.getAll().firstOrNull { it.id == original.spaceId }
+                ?: error("This entry’s Space could not be found.")
+            val entryTags = entryDao.tagsForEntry(entryId).map { it.toDto() }
+            val dto = original.toDto(entryTags)
+            val budget = MediaBudget()
+            val (portableContent, _) = portableSingleMarkdown(dto.content, budget)
+            val portableCover = try {
+                portableReference(dto.coverImage, budget)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (dto.coverImage?.startsWith("file:", ignoreCase = true) == true || dto.coverImage?.startsWith("/") == true) {
+                    dto.coverImage
+                } else throw error
+            }
+            val portableEntry = dto.copy(content = portableContent, coverImage = portableCover)
+            val payload = SingleEntryExportPayload(
+                exportedAt = Instant.now().toString(),
+                space = space.toDto(),
+                entry = portableEntry,
+            )
+            val text = codec.encodeToString(payload)
+            require(text.length <= MAX_BACKUP_CHARS) { "This entry export is larger than the 128 MB limit." }
+            val output = context.contentResolver.openOutputStream(uri)
+                ?: error("Could not write the selected entry export.")
+            output.bufferedWriter(Charsets.UTF_8).use { it.write(text) }
+            listOfNotNull(portableEntry.coverImage).count { !it.startsWith("data:", ignoreCase = true) } +
+                findManagedMarkdownImages(portableEntry.content).count { !it.destination.startsWith("data:", ignoreCase = true) }
+        }
+
+    private suspend fun portableSingleMarkdown(markdown: String, budget: MediaBudget): Pair<String, Int> {
+        var result = markdown
+        var missing = 0
+        for (ref in findManagedMarkdownImages(markdown).asReversed()) {
+            val portable = try {
+                portableReference(ref.destination, budget) ?: ref.destination
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (ref.destination.startsWith("file:", ignoreCase = true) || ref.destination.startsWith("/")) {
+                    missing++
+                    ref.destination
+                } else throw error
+            }
+            result = result.replaceRange(ref.start, ref.end, portable)
+        }
+        return result to missing
+    }
 
     suspend fun importFrom(uri: Uri, applySettings: Boolean): Result =
         withContext(Dispatchers.IO) {

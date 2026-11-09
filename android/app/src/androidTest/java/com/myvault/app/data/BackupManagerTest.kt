@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.myvault.app.MyVaultApplication
 import java.io.File
+import java.time.Instant
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -109,6 +110,49 @@ class BackupManagerTest {
         assertEquals("existing", target.entryDao().getById("existing-entry")?.content)
         assertTrue(File(requireNotNull(Uri.parse(imported.coverImagePath).path)).isFile)
         assertNotNull(MediaFiles.displayModel(imported.coverImagePath))
+    }
+
+    @Test
+    fun singleEntryExportIsStandalonePreservesMetadataAndEmbedsInlineMedia() = runBlocking {
+        val image = File(tempDir, "entry-inline.png")
+        image.outputStream().use { output ->
+            Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+                .compress(Bitmap.CompressFormat.PNG, 100, output)
+        }
+        val space = SpaceEntity(id = "space-one", name = "Reading", description = "Private notes", createdAt = 1000)
+        val tag = TagEntity(id = "local-tag", name = "Ideas", scope = "local", ownerSpaceId = space.id, reusable = false, createdAt = 2000)
+        val content = "Before **bold** ![saved](${Uri.fromFile(image)}) and ![missing](file:///missing/not-here.png) after ![web](https://example.org/photo.png)."
+        source.spaceDao().upsert(space)
+        source.tagDao().upsert(tag)
+        source.entryDao().upsert(EntryEntity(
+            id = "entry-one", spaceId = space.id, title = "A reader entry", content = content,
+            coverImagePath = Uri.fromFile(image).toString(), pinned = true, createdAt = 3000, updatedAt = 4000,
+        ))
+        source.entryDao().addTagRef(EntryTagCrossRef("entry-one", tag.id))
+
+        val file = File(tempDir, "one-entry.myvault-entry.json")
+        val warningCount = BackupManager(app, source, app.settings, app.media).exportEntryTo(Uri.fromFile(file), "entry-one")
+        val json = file.readText()
+        val exported = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            .decodeFromString<SingleEntryExportPayload>(json)
+        assertEquals("myvault-entry", exported.format)
+        assertEquals(1, exported.formatVersion)
+        assertEquals("Reading", exported.space?.name)
+        assertEquals("local", exported.entry.tags.single().scope)
+        assertEquals(space.id, exported.entry.tags.single().ownerSpaceId)
+        assertEquals("A reader entry", exported.entry.title)
+        assertTrue(exported.entry.pinned)
+        assertEquals(3000L, Instant.parse(exported.entry.createdAt).toEpochMilli())
+        assertEquals(4000L, Instant.parse(exported.entry.updatedAt).toEpochMilli())
+        assertTrue(exported.entry.content.contains("Before **bold**"))
+        assertTrue(exported.entry.content.contains("![saved](data:image/png;base64,"))
+        assertTrue(exported.entry.content.contains("![missing](file:///missing/not-here.png)"))
+        assertTrue(exported.entry.content.contains("![web](https://example.org/photo.png)"))
+        assertTrue(exported.entry.coverImage!!.startsWith("data:image/png;base64,"))
+        assertFalse(json.contains("\"settings\""))
+        assertFalse(json.contains("\"entries\""))
+        assertEquals(1, source.entryDao().getAll().size)
+        assertTrue(warningCount >= 1)
     }
 
     @Test

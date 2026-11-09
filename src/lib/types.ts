@@ -58,3 +58,12 @@ export interface ExportPayload {
   tags: Tag[];
   entries: Entry[];
 }
+
+/** Standalone, export-only document; deliberately distinct from whole-vault backup formats. */
+export interface SingleEntryExport {
+  format: "myvault-entry";
+  formatVersion: 1;
+  exportedAt: string;
+  space: Pick<Space, "id" | "name" | "description" | "icon" | "color" | "sortOrder" | "createdAt"> | null;
+  entry: Entry;
+}

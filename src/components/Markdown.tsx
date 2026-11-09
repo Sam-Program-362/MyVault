@@ -16,10 +16,14 @@ function MarkdownImage({ src, alt }: ComponentProps<"img">) {
   );
 }
 
+function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
+  return <div className="md-table-scroll"><table {...props}>{children}</table></div>;
+}
+
 export default function Markdown({ content }: { content: string }) {
   return (
     <div className="md-body">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ img: MarkdownImage }}>{content || "*Nothing here yet.*"}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ img: MarkdownImage, table: MarkdownTable }}>{content || "*Nothing here yet.*"}</ReactMarkdown>
     </div>
   );
 }

@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+const sharedMarkdownFixture = readFileSync("tests/fixtures/markdown-compatibility.md", "utf8");
 
 const now = "2026-10-28T00:00:00.000Z";
 const reusableTag = { id: "tag-1", name: "Ideas", color: "#8b5cf6", textColor: "#ffffff", reusable: true, createdAt: now };
@@ -284,6 +287,101 @@ test.describe("phone writing experience", () => {
     expect(vault.entries[0].content).toBe("Saved even when closing immediately");
     await page.getByRole("button", { name: /A new idea/ }).click();
     await expect(page.getByLabel("Entry content")).toHaveValue("Saved even when closing immediately");
+  });
+
+  test("the shared GFM fixture renders in preview and the long read-only view scrolls on a phone", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mockVault(page);
+    await openNewEntry(page);
+    const longFixture = `${sharedMarkdownFixture}${"\n\nA long scrolling paragraph remains readable across the viewport.".repeat(80)}\n\nLast scroll marker.`;
+    await page.getByLabel("Entry content").fill(longFixture);
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    const preview = page.getByRole("complementary", { name: "Markdown preview" });
+    await expect(preview.getByRole("heading", { name: "Shared Markdown compatibility fixture" })).toBeVisible();
+    await expect(preview.getByRole("table")).toBeVisible();
+    await expect(preview.getByText("completed task")).toBeVisible();
+    await expect(preview.getByText("emphasis", { exact: true })).toBeVisible();
+    await expect(preview.getByText("inline code", { exact: true })).toBeVisible();
+    await expect(preview.locator(".md-body ol > li")).toHaveCount(2);
+    await expect(preview.locator(".md-body ul ul > li")).toHaveCount(1);
+    await expect(preview.locator("del")).toHaveText("strikethrough");
+    await expect(preview.getByRole("link", { name: "link" })).toHaveAttribute("href", "https://example.org/docs");
+    await expect(preview.getByRole("link", { name: /plain-url/ })).toHaveAttribute("href", "https://example.org/plain-url");
+    await expect(preview.getByText("fenced code")).toBeVisible();
+    await expect(preview.getByText("A blockquote stays visible on both renderers.")).toBeVisible();
+    await expect(preview.getByText("Text before a missing image")).toBeVisible();
+    await expect(preview.getByText("text after it must remain visible.")).toBeVisible();
+    await page.getByRole("button", { name: "Close preview" }).click();
+
+    await page.getByRole("button", { name: "Reading mode" }).click();
+    const reader = page.getByRole("main", { name: "Reading mode" });
+    await expect(reader.getByRole("heading", { name: "Untitled entry" })).toBeVisible();
+    await expect(reader.getByRole("heading", { name: "Shared Markdown compatibility fixture" })).toBeVisible();
+    await expect(reader.getByRole("table")).toBeVisible();
+    const scroll = reader.locator(".reader-scroll");
+    expect(await scroll.evaluate((element) => element.scrollHeight)).toBeGreaterThan(await scroll.evaluate((element) => element.clientHeight));
+    await scroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect(reader.getByText("Last scroll marker.")).toBeVisible();
+  });
+
+  test("Reading Mode searches without editing, copies the source, and exports one portable entry", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const vault = await mockVault(page);
+    const mediaId = "11111111-1111-4111-8111-111111111111";
+    await page.route(`**/api/media/${mediaId}`, (route) => route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"),
+    }));
+    await openNewEntry(page);
+    const source = `# Saved reader title\n\nOne needle and another **needle**.\n\nBefore ![saved](/api/media/${mediaId}) and ![missing](file:///missing/reader-image.png) after.`;
+    await page.getByLabel("Entry title").fill("Reader title");
+    await page.getByLabel("Entry content").fill(source);
+    await page.getByRole("button", { name: "Reading mode" }).click();
+    const reader = page.getByRole("main", { name: "Reading mode" });
+    await expect(reader.getByRole("heading", { name: "Reader title" })).toBeVisible();
+    await expect(reader.getByRole("heading", { name: "Saved reader title" })).toBeVisible();
+    await expect(reader.getByText("Before", { exact: false })).toBeVisible();
+    await expect(reader.getByText(/Image unavailable: missing/)).toBeVisible();
+    await expect(reader.getByText("after.", { exact: false })).toBeVisible();
+    expect(vault.entries).toHaveLength(1);
+    expect(vault.entries[0].content).toBe(source);
+
+    await reader.getByRole("button", { name: "Find in entry" }).click();
+    const query = reader.getByLabel("Find text in this entry");
+    await query.fill("needle");
+    await expect(reader.locator(".reader-match-count")).toHaveText("0 of 2 matches");
+    await reader.getByRole("button", { name: "Next match" }).click();
+    await expect(reader.locator(".reader-match-count")).toHaveText("1 of 2 matches");
+    await reader.getByRole("button", { name: "Next match" }).click();
+    await expect(reader.locator(".reader-match-count")).toHaveText("2 of 2 matches");
+    await query.fill("not-present");
+    await expect(reader.getByText("No matches found.")).toBeVisible();
+
+    await reader.getByRole("button", { name: "Copy original Markdown" }).click();
+    await expect(reader.getByRole("status").filter({ hasText: "Original Markdown copied." })).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(source);
+
+    const downloadPromise = page.waitForEvent("download");
+    await reader.getByRole("button", { name: "Export this entry" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe("myvault-Reader-title.myvault-entry.json");
+    const downloaded = JSON.parse(readFileSync((await download.path())!, "utf8"));
+    expect(downloaded).toMatchObject({
+      format: "myvault-entry", formatVersion: 1,
+      entry: { title: "Reader title", pinned: false, tags: [] },
+      space: { id: "space-1", name: "Notes" },
+    });
+    expect(downloaded.entry.content).toContain(`![saved](data:image/png;base64,`);
+    expect(downloaded.entry.content).toContain("file:///missing/reader-image.png");
+    expect(downloaded).not.toHaveProperty("settings");
+
+    await reader.getByRole("button", { name: "Return to editor" }).click();
+    await expect(page.getByLabel("Entry content")).toHaveValue(source);
+    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(page.getByLabel("Entry content")).toHaveValue("");
+    expect(vault.entries).toHaveLength(1);
   });
 
   test("Markdown images show a visible fallback without hiding neighboring text or external images", async ({ page }) => {

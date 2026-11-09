@@ -69,6 +69,16 @@ data class ExportPayload(
     val entries: List<EntryDto> = emptyList(),
 )
 
+/** A distinct export-only format; it is not a whole-vault backup or an import payload. */
+@Serializable
+data class SingleEntryExportPayload(
+    val format: String = "myvault-entry",
+    val formatVersion: Int = 1,
+    val exportedAt: String = Instant.now().toString(),
+    val space: SpaceDto? = null,
+    val entry: EntryDto,
+)
+
 data class ImportSummary(val spacesAdded: Int, val tagsAdded: Int, val entriesAdded: Int, val settingsApplied: Boolean)
 
 class ExportImportRepository(
@@ -240,7 +250,7 @@ class ExportImportRepository(
     }
 }
 
-private fun SpaceEntity.toDto() = SpaceDto(
+internal fun SpaceEntity.toDto() = SpaceDto(
     id = id,
     name = name,
     description = description,
@@ -250,7 +260,7 @@ private fun SpaceEntity.toDto() = SpaceDto(
     createdAt = Instant.ofEpochMilli(createdAt).toString(),
 )
 
-private fun TagEntity.toDto() = TagDto(
+internal fun TagEntity.toDto() = TagDto(
     id = id,
     name = name,
     color = color,
@@ -261,7 +271,7 @@ private fun TagEntity.toDto() = TagDto(
     createdAt = Instant.ofEpochMilli(createdAt).toString(),
 )
 
-private fun EntryEntity.toDto(tags: List<TagDto>) = EntryDto(
+internal fun EntryEntity.toDto(tags: List<TagDto>) = EntryDto(
     id = id,
     spaceId = spaceId,
     title = title,

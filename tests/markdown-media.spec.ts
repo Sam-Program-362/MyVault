@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { makePortableBackup } from "@/lib/api";
+import { makePortableBackup, makeSingleEntryExport } from "@/lib/api";
 import type { ExportPayload } from "@/lib/types";
 import {
   dataUriFromBytes,
@@ -60,6 +60,56 @@ test("Web backup export embeds durable media bytes and preserves external refere
     expect(exported.entries[0].content).toContain(" after ");
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("single-entry export has a distinct envelope and embeds only that entry's local media", async () => {
+  const bytes = Uint8Array.from(Buffer.from(validPngBase64, "base64"));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    expect(String(input)).toBe("/api/media/11111111-1111-4111-8111-111111111111");
+    return new Response(new Blob([bytes]), { status: 200, headers: { "content-type": "image/png" } });
+  };
+  try {
+    const entry = {
+      id: "entry-1", spaceId: "space-1", title: "Read me",
+      content: "Keep **Markdown** ![local](/api/media/11111111-1111-4111-8111-111111111111)",
+      coverImage: null, pinned: true, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-02T00:00:00.000Z",
+      tags: [{ ...({ id: "tag", name: "Ideas", color: "#6366f1", textColor: "#fff", reusable: true, createdAt: "2026-10-01T00:00:00.000Z" }) }],
+    };
+    const space = { id: "space-1", name: "Notes", description: null, icon: "📝", color: "#6366f1", sortOrder: 0, createdAt: "2026-10-01T00:00:00.000Z" };
+    const exported = await makeSingleEntryExport(entry, space);
+    expect(exported).toMatchObject({
+      format: "myvault-entry", formatVersion: 1,
+      space: { id: "space-1", name: "Notes" },
+      entry: { id: "entry-1", pinned: true, tags: [{ id: "tag", name: "Ideas" }] },
+    });
+    expect(exported.entry.content).toContain("Keep **Markdown** ![local](data:image/png;base64,");
+    expect(exported).not.toHaveProperty("settings");
+    expect(exported).not.toHaveProperty("entries");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("single-entry export preserves missing managed image references instead of dropping Markdown", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("Not found", { status: 404 });
+  const originalWarn = console.warn;
+  console.warn = () => undefined;
+  try {
+    const entry = {
+      id: "entry-missing", spaceId: "space-1", title: "Missing image",
+      content: "Before ![unavailable](/api/media/22222222-2222-4222-8222-222222222222) after.",
+      coverImage: null, pinned: false, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-02T00:00:00.000Z", tags: [],
+    };
+    const exported = await makeSingleEntryExport(entry, null);
+    expect(exported.entry.content).toBe(entry.content);
+    expect(exported.entry.content).toContain("Before ");
+    expect(exported.entry.content).toContain(" after.");
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
   }
 });
 

@@ -101,6 +101,10 @@ android {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
 
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$rootDir/../tests/fixtures")
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

@@ -1,4 +1,4 @@
-import type { AppSettings, Entry, ExportPayload, Space, Tag } from "./types";
+import type { AppSettings, Entry, ExportPayload, SingleEntryExport, Space, Tag } from "./types";
 import {
   dataUriFromBytes,
   findMarkdownImages,
@@ -158,6 +158,33 @@ export async function makePortableBackup(payload: ExportPayload): Promise<Export
   if (typeof settings.wallpaperUrl === "string") settings.wallpaperUrl = await portableReference(settings.wallpaperUrl);
   if (missingCount) console.warn(`${missingCount} missing image reference(s) were preserved in the backup.`);
   return cloned;
+}
+
+/** Build a one-entry archival document while reusing the backup media portability rules. */
+export async function makeSingleEntryExport(entry: Entry, space: Space | null): Promise<SingleEntryExport> {
+  const portable = await makePortableBackup({
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    settings: { wallpaperUrl: null } as AppSettings,
+    spaces: space ? [space] : [],
+    tags: entry.tags,
+    entries: [entry],
+  });
+  return {
+    format: "myvault-entry",
+    formatVersion: 1,
+    exportedAt: portable.exportedAt,
+    space: space ? {
+      id: space.id,
+      name: space.name,
+      description: space.description,
+      icon: space.icon,
+      color: space.color,
+      sortOrder: space.sortOrder,
+      createdAt: space.createdAt,
+    } : null,
+    entry: portable.entries[0],
+  };
 }
 
 export const api = {

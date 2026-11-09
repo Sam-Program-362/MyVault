@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
   AlertCircle,
+  BookOpen,
   Check,
   Code2,
   Eye,
@@ -19,9 +20,12 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Entry, Tag } from "@/lib/types";
+import type { Entry, Space, Tag } from "@/lib/types";
+import { makeSingleEntryExport } from "@/lib/api";
+import { findMarkdownImages } from "@/lib/markdown-media";
 import TagPicker from "@/components/TagPicker";
 import Markdown from "@/components/Markdown";
+import ReadingMode from "@/components/ReadingMode";
 import { coalescibleInputKey, EditorHistory, type EditorField, type EditorSelection, type EditorSnapshot } from "@/lib/editor-history";
 import { escapeMarkdownAlt, imageAltFromFilename } from "@/lib/markdown-media";
 
@@ -33,6 +37,7 @@ function searchRegex(query: string, wholeWord: boolean, flags: string) {
 
 interface Props {
   entryId: string;
+  spaces: Space[];
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
@@ -43,7 +48,7 @@ type EntryPatch = Partial<Entry> & { tagIds?: string[] };
 
 type SaveState = "saving" | "saved" | "error";
 
-export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Props) {
+export default function EntryEditor({ entryId, spaces, onClose, onSaved, onDeleted }: Props) {
   const [entry, setEntry] = useState<Entry | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [title, setTitle] = useState("");
@@ -52,6 +57,8 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const [pinned, setPinned] = useState(false);
   const [entryTags, setEntryTags] = useState<Tag[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [readingEntry, setReadingEntry] = useState<Entry | null>(null);
+  const [preparingReading, setPreparingReading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [closing, setClosing] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -80,6 +87,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const importInputRef = useRef<HTMLInputElement>(null);
   const previewButtonRef = useRef<HTMLButtonElement>(null);
   const previewCloseRef = useRef<HTMLButtonElement>(null);
+  const readingButtonRef = useRef<HTMLButtonElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftRef = useRef<Draft>({ title: "", content: "" });
   const dirtyDraft = useRef(false);
@@ -424,6 +432,9 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     setPendingImportName("");
   };
 
+  const processing = uploadingCover || uploadingImage || importingFile;
+  const displayedSaveState = processing && saveState !== "error" ? "saving" : saveState;
+
   const matchCount = useMemo(() => {
     const re = searchRegex(findQuery, wholeWord, "gi");
     return re ? (content.match(re) ?? []).length : 0;
@@ -505,6 +516,75 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     );
   };
 
+  const openReadingMode = async () => {
+    if (preparingReading || closing || uploadingCover || uploadingImage || importingFile || pendingImport !== null) return;
+    setPreparingReading(true);
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    try {
+      await draftSave.current?.catch(() => undefined);
+      await saveQueue.current;
+      if (dirtyDraft.current) {
+        dirtyDraft.current = false;
+        try {
+          await persist(draftRef.current);
+        } catch {
+          dirtyDraft.current = true;
+          return;
+        }
+      }
+      await saveQueue.current;
+      if (Object.keys(failedPatches.current).length > 0) {
+        try {
+          await persist({ ...failedPatches.current });
+        } catch {
+          return;
+        }
+      }
+      const saved = await api.entries.get(entryId);
+      setEntry(saved);
+      setTitle(saved.title);
+      setContent(saved.content);
+      draftRef.current = { title: saved.title, content: saved.content };
+      setCoverImage(saved.coverImage);
+      setPinned(saved.pinned);
+      setEntryTags(saved.tags);
+      setPreviewOpen(false);
+      setFindOpen(false);
+      setReadingEntry(saved);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Couldn’t open the saved entry.");
+    } finally {
+      setPreparingReading(false);
+    }
+  };
+
+  const exportReadingEntry = async (): Promise<string> => {
+    if (!readingEntry) throw new Error("There is no saved entry to export.");
+    const space = spaces.find((candidate) => candidate.id === readingEntry.spaceId) ?? null;
+    const document = await makeSingleEntryExport(readingEntry, space);
+    const safeTitle = readingEntry.title.normalize("NFKD").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "entry";
+    const blob = new Blob([JSON.stringify(document, null, 2)], { type: "application/vnd.myvault.entry+json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = window.document.createElement("a");
+    anchor.href = url;
+    anchor.download = `myvault-${safeTitle}.myvault-entry.json`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const unembedded = findMarkdownImages(document.entry.content).filter((image) => image.destination.startsWith("/api/media/")).length +
+      Number(document.entry.coverImage?.startsWith("/api/media/") ?? false);
+    return unembedded
+      ? `Export downloaded. ${unembedded} saved image reference(s) could not be embedded and were preserved as links.`
+      : "Single-entry export downloaded.";
+  };
+
+  const returnToEditor = () => {
+    setReadingEntry(null);
+    requestAnimationFrame(() => readingButtonRef.current?.focus());
+  };
+
   if (!entry) {
     return (
       <div className="entry-editor items-center justify-center">
@@ -522,12 +602,10 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     setPreviewOpen(false);
     previewButtonRef.current?.focus();
   };
-  const processing = uploadingCover || uploadingImage || importingFile;
-  const displayedSaveState = processing && saveState !== "error" ? "saving" : saveState;
 
   return (
     <div className="entry-editor" aria-label="Entry editor" onKeyDown={handleHistoryKeyDown}>
-      <header className="editor-toolbar">
+      <header className="editor-toolbar" inert={Boolean(readingEntry)}>
         <div className="editor-toolbar-start">
           <button type="button" onClick={handleClose} disabled={closing || processing} className="editor-icon-button" aria-label="Close editor" title="Close editor">
             <X size={19} />
@@ -538,6 +616,9 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
           </div>
         </div>
         <div className="editor-toolbar-actions" inert={closing}>
+          <button ref={readingButtonRef} type="button" onClick={() => void openReadingMode()} disabled={preparingReading || processing || pendingImport !== null} className="editor-icon-button" aria-label="Reading mode" title="Read saved entry">
+            <BookOpen size={17} />
+          </button>
           <button type="button" onClick={togglePin} className={`editor-icon-button ${pinned ? "is-pinned" : ""}`} aria-label={pinned ? "Unpin entry" : "Pin entry"} title={pinned ? "Unpin entry" : "Pin entry"}>
             {pinned ? <Pin size={17} /> : <PinOff size={17} />}
           </button>
@@ -565,7 +646,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
       </header>
 
       {findOpen && (
-        <div className="editor-find-bar" inert={closing}>
+        <div className="editor-find-bar" inert={closing || Boolean(readingEntry)}>
           <input value={findQuery} onChange={(event) => setFindQuery(event.target.value)} placeholder="Find word or phrase…" aria-label="Find word or phrase" className="editor-find-input" />
           <input value={replaceQuery} onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Replace with…" aria-label="Replace with" className="editor-find-input" />
           <label className="editor-find-whole flex items-center gap-1.5 whitespace-nowrap">
@@ -581,7 +662,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
         </div>
       )}
 
-      <div className="editor-document" inert={closing}>
+      <div className="editor-document" inert={closing || Boolean(readingEntry)}>
         {coverImage ? (
           <div className="editor-cover-image">
             {/* User-provided uploads can be local paths or remote URLs. */}
@@ -674,8 +755,8 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
         </div>
       </div>
 
-      <button type="button" className="editor-preview-backdrop" data-open={previewOpen} onClick={closePreview} tabIndex={-1} aria-hidden="true" />
-      <aside id="entry-preview" className="editor-preview" data-open={previewOpen} aria-label="Markdown preview" aria-hidden={!previewOpen} inert={!previewOpen}>
+      <button type="button" className="editor-preview-backdrop" data-open={previewOpen} onClick={closePreview} tabIndex={-1} aria-hidden="true" inert={Boolean(readingEntry)} />
+      <aside id="entry-preview" className="editor-preview" data-open={previewOpen} aria-label="Markdown preview" aria-hidden={!previewOpen} inert={!previewOpen || Boolean(readingEntry)}>
         <div className="editor-preview-header">
           <div>
             <h2 className="editor-preview-heading">Preview</h2>
@@ -688,6 +769,15 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
           <Markdown content={content} />
         </div>
       </aside>
+
+      {readingEntry && (
+        <ReadingMode
+          entry={readingEntry}
+          tags={readingEntry.tags}
+          onBack={returnToEditor}
+          onExport={exportReadingEntry}
+        />
+      )}
 
       {pendingImport !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="import-title">

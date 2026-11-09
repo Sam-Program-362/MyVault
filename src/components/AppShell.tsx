@@ -346,6 +346,7 @@ export default function AppShell() {
         <EntryEditor
           key={selectedEntryId}
           entryId={selectedEntryId}
+          spaces={spaces}
           onClose={() => {
             setSelectedEntryId(null);
             // A creation can invalidate a list request; always refresh the active filters.

@@ -71,6 +71,7 @@ fun MyVaultApp(vault: VaultViewModel) {
     var showTags by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var pendingBackup by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingEntryExportId by rememberSaveable { mutableStateOf<String?>(null) }
     var applySettings by rememberSaveable { mutableStateOf(false) }
     var importTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var selectionStart by rememberSaveable { mutableIntStateOf(0) }
@@ -115,6 +116,14 @@ fun MyVaultApp(vault: VaultViewModel) {
             ActivityResultContracts.CreateDocument("application/json")
         ) { uri ->
             uri?.let(vault::exportBackup)
+        }
+    val entryExportPicker =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/vnd.myvault.entry+json")
+        ) { uri ->
+            val entryId = pendingEntryExportId
+            pendingEntryExportId = null
+            if (uri != null && entryId != null) vault.exportSingleEntry(entryId, uri)
         }
     val importPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -203,6 +212,12 @@ fun MyVaultApp(vault: VaultViewModel) {
                                 textPicker.launch(arrayOf("text/*", "application/octet-stream"))
                             },
                             onDelete = { confirmDelete = true },
+                            onPrepareReading = { vault.readSavedEntryForReading(entry.id) },
+                            onExportEntry = { title ->
+                                val safeTitle = title.replace(Regex("[^A-Za-z0-9_-]+"), "-").trim('-').take(64).ifBlank { "entry" }
+                                pendingEntryExportId = entry.id
+                                entryExportPicker.launch("myvault-$safeTitle.myvault-entry.json")
+                            },
                         )
                     }
                     if (showTags)

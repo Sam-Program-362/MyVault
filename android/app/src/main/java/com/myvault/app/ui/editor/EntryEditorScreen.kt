@@ -38,6 +38,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
@@ -90,6 +91,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -100,8 +102,10 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil.ImageLoader
 import coil.compose.AsyncImage
+import com.myvault.app.data.EntryDto
 import com.myvault.app.data.MediaFiles
 import com.myvault.app.data.TagEntity
 import com.myvault.app.data.fallbackInvalidMarkdownImages
@@ -193,12 +197,16 @@ fun EntryEditorScreen(
     onRemoveTag: (TagEntity) -> Unit,
     onImport: (TextRange) -> Unit,
     onDelete: () -> Unit,
+    onPrepareReading: suspend () -> EntryDto?,
+    onExportEntry: (String) -> Unit,
     modifier: Modifier = Modifier,
     accent: Color = MaterialTheme.colorScheme.primary,
     externalUpdate: EditorContentUpdate? = null,
 ) {
     val palette = if (darkTheme) darkEditorPalette else lightEditorPalette
     var previewOpen by rememberSaveable(entryId) { mutableStateOf(false) }
+    var readingEntry by remember(entryId) { mutableStateOf<EntryDto?>(null) }
+    var preparingReading by remember(entryId) { mutableStateOf(false) }
     var findOpen by rememberSaveable(entryId) { mutableStateOf(false) }
     var findQuery by rememberSaveable(entryId) { mutableStateOf("") }
     var replaceQuery by rememberSaveable(entryId) { mutableStateOf("") }
@@ -255,6 +263,7 @@ fun EntryEditorScreen(
     }
     BackHandler(enabled = previewOpen) { previewOpen = false }
     BackHandler(enabled = findOpen && !previewOpen) { findOpen = false }
+    BackHandler(enabled = readingEntry != null) { readingEntry = null }
 
     fun applyHistorySnapshot(snapshot: EditorUndoSnapshot) {
         val previous = currentSnapshot()
@@ -334,6 +343,27 @@ fun EntryEditorScreen(
         previewOpen = !previewOpen
     }
 
+    fun openReadingMode() {
+        if (preparingReading) return
+        focusManager.clearFocus()
+        coroutineScope.launch {
+            preparingReading = true
+            try {
+                val saved = onPrepareReading()
+                if (saved == null) onImageError("Couldn’t open the saved entry. Your editor is still open.")
+                else {
+                    readingEntry = saved
+                    previewOpen = false
+                    findOpen = false
+                }
+            } catch (error: Exception) {
+                onImageError(error.message ?: "Couldn’t open the saved entry. Your editor is still open.")
+            } finally {
+                preparingReading = false
+            }
+        }
+    }
+
     fun findNext() {
         val selectionEnd = editorValue.selection.max
         val next = matches.firstOrNull { it.first >= selectionEnd } ?: matches.firstOrNull()
@@ -361,7 +391,7 @@ fun EntryEditorScreen(
         val compact = maxWidth < 420.dp
         val findMaxHeight = maxHeight * 0.4f
         val bodyHeight = (maxHeight - if (narrow) 245.dp else 200.dp).coerceAtLeast(220.dp)
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().semantics { if (readingEntry != null) invisibleToUser() }) {
             if (narrow) {
                 Row(
                     Modifier.fillMaxWidth().height(48.dp),
@@ -397,6 +427,8 @@ fun EntryEditorScreen(
                         previewOpen,
                         onWrite = { previewOpen = false },
                         onPreview = ::togglePreview,
+                        onRead = ::openReadingMode,
+                        readingEnabled = !preparingReading,
                         onImport = { onImport(editorValue.selection) },
                         onInsertImage = ::chooseInlineImage,
                         onDelete = onDelete,
@@ -432,6 +464,8 @@ fun EntryEditorScreen(
                         previewOpen,
                         onWrite = { previewOpen = false },
                         onPreview = ::togglePreview,
+                        onRead = ::openReadingMode,
+                        readingEnabled = !preparingReading,
                         onImport = { onImport(editorValue.selection) },
                         onInsertImage = ::chooseInlineImage,
                         onDelete = onDelete,
@@ -724,6 +758,17 @@ fun EntryEditorScreen(
                 }
             }
         }
+        readingEntry?.let { savedEntry ->
+            ReadingModeScreen(
+                entry = savedEntry,
+                darkTheme = darkTheme,
+                accent = accent,
+                imageLoader = markdownImageLoader,
+                onBack = { readingEntry = null },
+                onExport = onExportEntry,
+                modifier = Modifier.fillMaxSize().zIndex(20f),
+            )
+        }
     }
 }
 
@@ -733,6 +778,8 @@ private fun EditorViewActions(
     previewOpen: Boolean,
     onWrite: () -> Unit,
     onPreview: () -> Unit,
+    onRead: () -> Unit,
+    readingEnabled: Boolean,
     onImport: () -> Unit,
     onInsertImage: () -> Unit,
     onDelete: () -> Unit,
@@ -763,6 +810,13 @@ private fun EditorViewActions(
             )
         }
     }
+    EditorIcon(
+        Icons.Default.Book,
+        "Reading mode",
+        palette,
+        enabled = readingEnabled,
+        onClick = onRead,
+    )
     EditorIcon(
         Icons.Default.AddPhotoAlternate,
         "Insert image at the cursor",

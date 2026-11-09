@@ -92,3 +92,14 @@ database-verifiable Unicode implementation on Android SQLite and PostgreSQL;
 creation, identity edits and cross-platform tag remapping disabled while
 shipping the safe read/scope foundation. See `docs/tag-name-policy.md` for
 trade-offs. No further open-ended identity research is underway.
+
+## Phase 3 — shared Markdown and read-only Reading Mode
+
+This section supersedes the earlier Phase 3 “Missing” rows above for the features implemented on this branch. The preceding audit and roadmap sections remain as historical context.
+
+- A single Markdown source fixture now lives at `tests/fixtures/markdown-compatibility.md`; both the web Playwright suite and Android instrumentation reference that exact file. The assessed Android renderer remains `compose-markdown:0.5.4` (MIT); no renderer/dependency replacement was justified. See `docs/markdown-compatibility.md` for the tested syntax, upstream plugin assessment, renderer differences, and operational limitations.
+- Reading Mode is a read-only overlay in both apps. It flushes pending editor state and reads the saved record before showing rendered title/body, metadata, inline media and a responsive scrolling document. Returning keeps the same editor instance and history. Copy returns the exact Markdown body source. Find is non-mutating, has next/previous navigation and explicit no-match feedback.
+- Single-entry export writes a separate `myvault-entry` format v1 JSON document with the one entry, tags, relevant Space metadata and app-managed image bytes embedded when available. Missing managed image references are preserved and warned about. This is intentionally export-only and separate from existing whole-vault backup/import schemas; their behavior was not changed.
+- Web local verification completed: `npm run typecheck`, `npm run lint`, `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/app_db npm run build`, and all six `tests/markdown-media.spec.ts` tests passed. The full Playwright command discovered 42 tests: its 30 browser tests could not launch because the Playwright Chromium executable is absent here, while the 12 non-browser tests passed. The newly added browser assertions therefore remain unverified locally.
+- Android implementation and instrumentation tests are present, including shared-fixture/long-content/reader tests and a disposable in-memory single-entry media export test. This sandbox has no Java executable or Android SDK/emulator, so Android compilation and API 29/30/34 execution remain unverified locally. The separate API 30 synthetic DocumentsUI activation failure remains untouched.
+- Historical Phase 2 workflow results above are not Phase 3 evidence. Update this section only after new branch CI/device results are available; do not claim browser or Android pass status from the local checks above.
