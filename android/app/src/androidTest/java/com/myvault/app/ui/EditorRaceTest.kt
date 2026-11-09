@@ -51,6 +51,8 @@ class EditorRaceTest {
                     onRemoveTag = {},
                     onImport = {},
                     onDelete = {},
+                    onPrepareReading = { null },
+                    onExportEntry = {},
                     externalUpdate = imported,
                 )
             }

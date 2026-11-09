@@ -361,6 +361,8 @@ class VisualParityTest {
                         onRemoveTag = {},
                         onImport = {},
                         onDelete = {},
+                        onPrepareReading = { null },
+                        onExportEntry = {},
                     )
                 }
             }
@@ -402,6 +404,8 @@ class VisualParityTest {
                     onRemoveTag = {},
                     onImport = {},
                     onDelete = {},
+                    onPrepareReading = { null },
+                    onExportEntry = {},
                 )
             }
         }
