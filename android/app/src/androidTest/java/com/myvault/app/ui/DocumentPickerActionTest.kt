@@ -25,13 +25,28 @@ class DocumentPickerActionTest {
         var keyDownSent = false
         var keyUpSent = false
         var diagnostic = "No synthetic document row was found"
+        var windowsDiagnostic = "No accessibility windows"
         while (SystemClock.uptimeMillis() < deadline) {
-            val root = automation.rootInActiveWindow
-            // If a successful action already opened the app's confirmation, do not click again.
-            if (root?.findAccessibilityNodeInfosByText("Import backup?")?.isNotEmpty() == true) {
-                println("MYVAULT_PICKER rowActionSent=$rowActionSent focusAttempted=$focusAttempted focusSucceeded=$focusSucceeded")
+            val windows = automation.windows
+            val roots = windows.mapNotNull { it.root }
+            windowsDiagnostic = roots.joinToString(" | ") { windowRoot ->
+                val packageName = windowRoot.packageName?.toString() ?: "unknown-package"
+                val appConfirm =
+                    packageName.startsWith("com.myvault.app") &&
+                        windowRoot.findAccessibilityNodeInfosByText("Import backup?").isNotEmpty()
+                "$packageName confirmation=$appConfirm"
+            }
+            // During DocumentsUI's return transition the active root can still be
+            // the picker while the app's confirmation is already visible in another
+            // accessibility window. Observe every window, but never activate it here.
+            if (roots.any { windowRoot ->
+                windowRoot.packageName?.toString()?.startsWith("com.myvault.app") == true &&
+                    windowRoot.findAccessibilityNodeInfosByText("Import backup?").isNotEmpty()
+            }) {
+                println("MYVAULT_PICKER rowActionSent=$rowActionSent focusAttempted=$focusAttempted focusSucceeded=$focusSucceeded windows=$windowsDiagnostic")
                 return
             }
+            val root = automation.rootInActiveWindow
             // Ignore the grid's separate "Preview the file ..." thumbnail node.
             val file =
                 root?.findAccessibilityNodeInfosByText("myvault-ci-migration.json")?.firstOrNull {
@@ -82,7 +97,7 @@ class DocumentPickerActionTest {
             SystemClock.sleep(250)
         }
         fail(
-            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent, focusAttempted=$focusAttempted, focusSucceeded=$focusSucceeded, keyDownSent=$keyDownSent, keyUpSent=$keyUpSent). Accessibility chain: $diagnostic"
+            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent, focusAttempted=$focusAttempted, focusSucceeded=$focusSucceeded, keyDownSent=$keyDownSent, keyUpSent=$keyUpSent). Accessibility chain: $diagnostic; windows: $windowsDiagnostic"
         )
     }
 }

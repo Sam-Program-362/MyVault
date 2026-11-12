@@ -3,7 +3,6 @@ package com.myvault.app.ui
 import android.content.ClipboardManager
 import android.text.Spanned
 import android.text.style.ReplacementSpan
-import android.widget.TextView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -27,11 +26,11 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.hamcrest.Matchers.containsString
+import java.util.concurrent.atomic.AtomicReference
 import coil.ImageLoader
 import com.myvault.app.data.EntryDto
 import com.myvault.app.ui.editor.ReadingModeScreen
@@ -108,6 +107,7 @@ class ReadingModeScreenTest {
     fun gfmTableRowsRenderAllCellsInNativeMarkdownSpans() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val imageLoader = ImageLoader(context)
+        val nativeOutput = AtomicReference<Spanned?>()
         try {
             compose.setContent {
                 MaterialTheme {
@@ -116,16 +116,19 @@ class ReadingModeScreenTest {
                         style = TextStyle(color = Color.White),
                         imageLoader = imageLoader,
                         modifier = Modifier.fillMaxSize(),
+                        afterSetMarkdown = { view -> nativeOutput.set(view.text as? Spanned) },
                     )
                 }
             }
             // Markwon's table extension paints rows with a native ReplacementSpan, so
             // cell text is not part of TextView.text.toString() or Compose semantics.
-            // Inspect the actual rendered Spanned value and the extension's row cells.
-            val expectedCells = listOf("Syntax", "Expected", "table", "cells", "GFM", "visible")
-            onView(isAssignableFrom(TextView::class.java)).check { view, _ ->
-                val rendered = (view as TextView).text as? Spanned
-                    ?: throw AssertionError("Markwon output was not a Spanned native TextView value")
+            // The callback captures the actual TextView output without Espresso's
+            // window-focus assumptions on newer Android releases.
+            compose.waitUntil(5_000) { nativeOutput.get() != null }
+            compose.runOnIdle {
+                val rendered = nativeOutput.get()
+                    ?: throw AssertionError("Markwon did not publish a native Spanned output")
+                val expectedCells = listOf("Syntax", "Expected", "table", "cells", "GFM", "visible")
                 val tableRows = rendered.getSpans(0, rendered.length, ReplacementSpan::class.java)
                     .filter { it.javaClass.name == "io.noties.markwon.ext.tables.TableRowSpan" }
                 assertTrue("Expected three native Markwon table row spans, got ${tableRows.size}", tableRows.size >= 3)
