@@ -96,6 +96,14 @@ class DocumentPickerActionTest {
                         keyUpSent = automation.injectInputEvent(KeyEvent(now, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0), true)
                     }
                 }
+                // Do not keep the app under instrumentation after dispatch: Android 11
+                // can expose an empty/stale dialog accessibility root until the runner
+                // releases the window. The migration driver independently requires the
+                // real app confirmation and a successful import that survives restart.
+                if (rowActionSent || (focusSucceeded && keyDownSent && keyUpSent)) {
+                    println("MYVAULT_PICKER actionDispatched rowActionSent=$rowActionSent focusSucceeded=$focusSucceeded keyDownSent=$keyDownSent keyUpSent=$keyUpSent")
+                    return
+                }
             }
             SystemClock.sleep(250)
         }
