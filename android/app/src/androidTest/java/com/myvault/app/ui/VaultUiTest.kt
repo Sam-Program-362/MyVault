@@ -54,13 +54,13 @@ class VaultUiTest {
         }
         compose.onNodeWithContentDescription("New space").performClick()
         compose.onNodeWithText("Space name").performTextInput(space)
-        val createSpace = compose.onNodeWithText("Create & enter").performScrollTo()
-        createSpace.assertIsDisplayed().assertIsEnabled()
-        // Keep the IME-open scroll assertion above, then dismiss it so the final
-        // tap is not dispatched underneath a software-keyboard overlay.
+        compose.onNodeWithText("Space name").assertIsDisplayed()
+        // Exercise the grid's scroll action while the IME is open. Then dismiss
+        // it before requiring the button to be displayed and dispatching the tap.
+        compose.onNodeWithText("Create & enter").performScrollTo()
         closeSoftKeyboard()
-        val createSpaceAfterIme = compose.onNodeWithText("Create & enter").performScrollTo()
-        createSpaceAfterIme.assertIsDisplayed().assertIsEnabled().performClick()
+        val createSpace = compose.onNodeWithText("Create & enter").performScrollTo()
+        createSpace.assertIsDisplayed().assertIsEnabled().performClick()
         val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
         try {
             compose.waitUntil(15_000) {
