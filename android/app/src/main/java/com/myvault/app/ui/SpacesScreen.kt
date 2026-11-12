@@ -429,12 +429,15 @@ private fun NewSpaceForm(
             cursorColor = Color.White,
         )
     Surface(
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp).animateContentSize(),
         shape = RoundedCornerShape(16.dp),
         color = Color.White.copy(alpha = 0.09f),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },

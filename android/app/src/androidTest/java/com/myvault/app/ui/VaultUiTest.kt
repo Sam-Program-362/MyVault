@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -55,7 +56,11 @@ class VaultUiTest {
         compose.onNodeWithText("Space name").performTextInput(space)
         val createSpace = compose.onNodeWithText("Create & enter").performScrollTo()
         createSpace.assertIsDisplayed().assertIsEnabled()
-        createSpace.performClick()
+        // Keep the IME-open scroll assertion above, then dismiss it so the final
+        // tap is not dispatched underneath a software-keyboard overlay.
+        closeSoftKeyboard()
+        val createSpaceAfterIme = compose.onNodeWithText("Create & enter").performScrollTo()
+        createSpaceAfterIme.assertIsDisplayed().assertIsEnabled().performClick()
         val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
         try {
             compose.waitUntil(15_000) {
