@@ -45,7 +45,8 @@ def find(label, attribute="text", contains=False, timeout=25):
         if root is not None:
             for node in root.iter("node"):
                 value = node.get(attribute, "")
-                if (label in value if contains else label == value) and node.get("bounds"):
+                matches = label.casefold() in value.casefold() if contains else label.casefold() == value.casefold()
+                if matches and node.get("bounds"):
                     return node
         time.sleep(0.5)
     return None
@@ -116,9 +117,10 @@ def main():
             # DocumentsUI can expose an explicit action after a real tap/selection.
             # Activate only a visible system control; never pass a URI to the app.
             for label in ("Open", "Select", "Use this file"):
-                if find(label, timeout=1) is not None:
-                    click(label)
-                    return label
+                for attribute in ("text", "content-desc"):
+                    if find(label, attribute=attribute, contains=True, timeout=1) is not None:
+                        click(label, attribute=attribute, contains=True)
+                        return f"{attribute}={label}"
             return None
 
         click(name, contains=True)

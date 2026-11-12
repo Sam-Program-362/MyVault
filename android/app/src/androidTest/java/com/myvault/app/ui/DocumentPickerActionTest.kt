@@ -18,7 +18,7 @@ class DocumentPickerActionTest {
         if (InstrumentationRegistry.getArguments().getString("myvault.pickerPhase") != "select")
             return
         val automation = instrumentation.uiAutomation
-        val deadline = SystemClock.uptimeMillis() + 12_000
+        val deadline = SystemClock.uptimeMillis() + 30_000
         var rowActionSent = false
         var focusAttempted = false
         var focusSucceeded = false

@@ -1,6 +1,8 @@
 package com.myvault.app.ui
 
 import android.content.ClipboardManager
+import android.text.Spanned
+import android.text.style.ReplacementSpan
 import android.widget.TextView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -103,7 +105,7 @@ class ReadingModeScreenTest {
     }
 
     @Test
-    fun gfmTableCellsRemainInNativeMarkdownOutput() {
+    fun gfmTableRowsRenderAllCellsInNativeMarkdownSpans() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val imageLoader = ImageLoader(context)
         try {
@@ -117,17 +119,26 @@ class ReadingModeScreenTest {
                     )
                 }
             }
-            // compose-markdown hosts Markwon's rendered Spanned output in a native TextView.
-            // Inspect that actual view rather than Compose's wrapper semantics: table cells
-            // are drawn as spans and need not appear as standalone Compose text nodes.
+            // Markwon's table extension paints rows with a native ReplacementSpan, so
+            // cell text is not part of TextView.text.toString() or Compose semantics.
+            // Inspect the actual rendered Spanned value and the extension's row cells.
             val expectedCells = listOf("Syntax", "Expected", "table", "cells", "GFM", "visible")
             onView(isAssignableFrom(TextView::class.java)).check { view, _ ->
-                val rendered = (view as TextView).text.toString()
+                val rendered = (view as TextView).text as? Spanned
+                    ?: throw AssertionError("Markwon output was not a Spanned native TextView value")
+                val tableRows = rendered.getSpans(0, rendered.length, ReplacementSpan::class.java)
+                    .filter { it.javaClass.name == "io.noties.markwon.ext.tables.TableRowSpan" }
+                assertTrue("Expected three native Markwon table row spans, got ${tableRows.size}", tableRows.size >= 3)
+                val cellsField = tableRows.first().javaClass.getDeclaredField("cells").apply {
+                    isAccessible = true
+                }
+                val cellText = tableRows.flatMap { row ->
+                    @Suppress("UNCHECKED_CAST")
+                    val cells = cellsField.get(row) as List<Any>
+                    cells.map { cell -> cell.javaClass.getMethod("text").invoke(cell).toString() }
+                }
                 expectedCells.forEach { cell ->
-                    assertTrue(
-                        "GFM table cell '$cell' missing from Markwon's native output: $rendered",
-                        rendered.contains(cell),
-                    )
+                    assertTrue("GFM table cell '$cell' missing from Markwon row spans: $cellText", cellText.contains(cell))
                 }
             }
         } finally {
