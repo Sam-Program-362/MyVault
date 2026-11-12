@@ -171,8 +171,13 @@ class VaultUiTest {
         val body = compose.onNodeWithContentDescription("Entry content")
         title.performTextInput("Title draft")
         body.performTextInput("Body draft")
+        // Commit the IME's pending edit before invoking toolbar history controls.
+        closeSoftKeyboard()
         val undo = compose.onNodeWithContentDescription("Undo")
         undo.assertIsDisplayed().assertIsEnabled().performClick()
+        compose.waitUntil(5_000) {
+            body.fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty()
+        }
         body.assertEditableText("")
         undo.assertIsEnabled().performClick()
         title.assertEditableText("")
