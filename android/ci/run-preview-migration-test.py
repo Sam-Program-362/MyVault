@@ -2,6 +2,7 @@
 """Migrate a synthetic backup between two packages on an explicitly disposable emulator."""
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -111,12 +112,35 @@ def main():
                 click("List view", "content-desc")
             if find(name, contains=True, timeout=20) is None:
                 raise AssertionError("The synthetic backup is not visible in Downloads.")
+        def click_picker_action():
+            # DocumentsUI can expose an explicit action after a real tap/selection.
+            # Activate only a visible system control; never pass a URI to the app.
+            for label in ("Open", "Select", "Use this file"):
+                if find(label, timeout=1) is not None:
+                    click(label)
+                    return label
+            return None
+
         click(name, contains=True)
-        if api > 30 and find("Import backup?", timeout=8) is None and find("Open", timeout=3) is not None:
-            click("Open")
-        if api == 30 and find("Import backup?", timeout=8) is None:
-            # Exercise DocumentsUI's explicit selection mode on Android 11. This is
-            # still a real user gesture on the displayed document, not a supplied URI.
+        if api == 30 and find("Import backup?", timeout=2) is None:
+            # API 30 may treat the first tap as row focus/selection. Tap the same
+            # still-visible filename promptly, before waiting on other UI probes.
+            if find(name, contains=True, timeout=1) is not None:
+                click(name, contains=True, timeout=5)
+        if find("Import backup?", timeout=3) is None:
+            explicit_action = click_picker_action()
+            if explicit_action:
+                trace.append(f"activated visible DocumentsUI action {explicit_action!r}")
+        if find("Import backup?", timeout=3) is None and find(name, contains=True, timeout=5) is not None:
+            # If it remained selected after the first gesture, a normal second tap
+            # is also attempted on other DocumentsUI versions.
+            click(name, contains=True, timeout=5)
+        if find("Import backup?", timeout=3) is None:
+            explicit_action = click_picker_action()
+            if explicit_action:
+                trace.append(f"activated visible DocumentsUI action {explicit_action!r} after second tap")
+        if api == 30 and find("Import backup?", timeout=3) is None:
+            # Long-press is another real picker gesture that may expose selection actions.
             node = find(name, contains=True, timeout=5)
             if node is not None:
                 bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
@@ -125,8 +149,9 @@ def main():
                     x, y = (x1 + x2) // 2, (y1 + y2) // 2
                     trace.append(f"long-press filename x={x} y={y} duration=900ms")
                     adb("shell", "input", "swipe", str(x), str(y), str(x), str(y), "900")
-                    if find("Open", timeout=4) is not None:
-                        click("Open")
+                    explicit_action = click_picker_action()
+                    if explicit_action:
+                        trace.append(f"activated visible DocumentsUI action {explicit_action!r} after long-press")
         if find("Import backup?", timeout=8) is None:
             # Require the app's confirmation after any accessible action.
             activate_accessibly()
@@ -166,8 +191,13 @@ except Exception as exc:
     # Keep the actual picker screenshot for the separate evidence step.
     try:
         image = subprocess.run(["adb", "exec-out", "screencap", "-p"], check=True, capture_output=True, timeout=30).stdout
-        with open("/tmp/myvault-picker.png", "wb") as output:
+        screenshot = "/tmp/myvault-picker.png"
+        with open(screenshot, "wb") as output:
             output.write(image)
+        evidence_dir = "app/build/reports/synthetic-screenshots"
+        os.makedirs(evidence_dir, exist_ok=True)
+        shutil.copyfile(screenshot, os.path.join(evidence_dir, "myvault-picker.png"))
+        trace.append(f"picker failure screenshot copied to {evidence_dir}/myvault-picker.png")
     except Exception as capture_error:
         trace.append(f"screenshot capture failed: {capture_error}")
     try:

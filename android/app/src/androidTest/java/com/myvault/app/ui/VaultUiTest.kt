@@ -36,6 +36,7 @@ import com.myvault.app.data.EntryEntity
 import com.myvault.app.data.SpaceEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,18 +53,25 @@ class VaultUiTest {
         }
         compose.onNodeWithContentDescription("New space").performClick()
         compose.onNodeWithText("Space name").performTextInput(space)
-        compose.onNodeWithText("Create & enter").performScrollTo().performClick()
+        val createSpace = compose.onNodeWithText("Create & enter").performScrollTo()
+        createSpace.assertIsDisplayed().assertIsEnabled()
+        createSpace.performClick()
+        val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
         try {
+            compose.waitUntil(15_000) {
+                runBlocking { app.database.spaceDao().getAll().any { it.name == space } }
+            }
             compose.waitUntil(15_000) {
                 compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
             }
         } catch (failure: Throwable) {
-            val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
             val spaces = runBlocking { app.database.spaceDao().getAll().map { it.name } }
             val busy = ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
             val tree = compose.onRoot(useUnmergedTree = true).printToString(maxDepth = 12)
-            throw AssertionError("New entry did not appear after creating $space; persisted=$spaces busy=$busy\n$tree", failure)
+            throw AssertionError("Space creation/navigation did not complete for $space; persisted=$spaces busy=$busy\n$tree", failure)
         }
+        assertEquals(space, runBlocking { app.database.spaceDao().getAll().first { it.name == space }.name })
+        compose.onNodeWithContentDescription("New entry").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithContentDescription("New entry").performClick()
         compose.waitUntil(15_000) {
             compose

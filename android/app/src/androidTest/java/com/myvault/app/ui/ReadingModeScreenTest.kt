@@ -1,6 +1,7 @@
 package com.myvault.app.ui
 
 import android.content.ClipboardManager
+import android.widget.TextView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -19,17 +20,20 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
-import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.matcher.ViewMatchers.withText
-import org.hamcrest.Matchers.containsString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
+import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.hamcrest.Matchers.containsString
 import coil.ImageLoader
 import com.myvault.app.data.EntryDto
 import com.myvault.app.ui.editor.ReadingModeScreen
+import dev.jeziellago.compose.markdowntext.MarkdownText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -93,6 +97,39 @@ class ReadingModeScreenTest {
             assertRenderedMarkdownContains("Text before a missing image")
             assertRenderedMarkdownContains("Image unavailable: missing test image")
             assertRenderedMarkdownContains("text after it must remain visible.")
+        } finally {
+            imageLoader.shutdown()
+        }
+    }
+
+    @Test
+    fun gfmTableCellsRemainInNativeMarkdownOutput() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val imageLoader = ImageLoader(context)
+        try {
+            compose.setContent {
+                MaterialTheme {
+                    MarkdownText(
+                        markdown = sharedFixture(),
+                        style = TextStyle(color = Color.White),
+                        imageLoader = imageLoader,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            // compose-markdown hosts Markwon's rendered Spanned output in a native TextView.
+            // Inspect that actual view rather than Compose's wrapper semantics: table cells
+            // are drawn as spans and need not appear as standalone Compose text nodes.
+            val expectedCells = listOf("Syntax", "Expected", "table", "cells", "GFM", "visible")
+            onView(isAssignableFrom(TextView::class.java)).check { view, _ ->
+                val rendered = (view as TextView).text.toString()
+                expectedCells.forEach { cell ->
+                    assertTrue(
+                        "GFM table cell '$cell' missing from Markwon's native output: $rendered",
+                        rendered.contains(cell),
+                    )
+                }
+            }
         } finally {
             imageLoader.shutdown()
         }
