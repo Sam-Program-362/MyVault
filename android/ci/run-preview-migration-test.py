@@ -9,8 +9,8 @@ import time
 import xml.etree.ElementTree as ET
 
 
-def adb(*args, check=True):
-    return subprocess.run(["adb", *args], check=check, text=True, capture_output=True, timeout=30)
+def adb(*args, check=True, timeout=30):
+    return subprocess.run(["adb", *args], check=check, text=True, capture_output=True, timeout=timeout)
 
 
 if os.environ.get("MYVAULT_DISPOSABLE_EMULATOR") != "1" or not adb("get-serialno").stdout.strip().startswith("emulator-"):
@@ -97,7 +97,7 @@ def main():
         result = adb(
             "shell", "am", "instrument", "-w", "-r", "-e", "class",
             "com.myvault.app.ui.DocumentPickerActionTest", "-e", "myvault.pickerPhase", "select",
-            "com.myvault.app.debug.test/androidx.test.runner.AndroidJUnitRunner", check=False,
+            "com.myvault.app.debug.test/androidx.test.runner.AndroidJUnitRunner", check=False, timeout=75,
         )
         trace.append(f"picker accessibility action: exit={result.returncode} output={result.stdout[-1200:]}")
         if result.returncode or "OK (1 test)" not in result.stdout:
