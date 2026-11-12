@@ -28,7 +28,10 @@ class DocumentPickerActionTest {
         var windowsDiagnostic = "No accessibility windows"
         while (SystemClock.uptimeMillis() < deadline) {
             val windows = automation.windows
-            val roots = windows.mapNotNull { it.root }
+            val activeRoot = automation.rootInActiveWindow
+            // Android 11 can return an empty windows list even though the active
+            // app/dialog root is readable. Include that root in confirmation checks.
+            val roots = windows.mapNotNull { it.root } + listOfNotNull(activeRoot)
             windowsDiagnostic = roots.joinToString(" | ") { windowRoot ->
                 val packageName = windowRoot.packageName?.toString() ?: "unknown-package"
                 val appConfirm =
@@ -46,7 +49,7 @@ class DocumentPickerActionTest {
                 println("MYVAULT_PICKER rowActionSent=$rowActionSent focusAttempted=$focusAttempted focusSucceeded=$focusSucceeded windows=$windowsDiagnostic")
                 return
             }
-            val root = automation.rootInActiveWindow
+            val root = activeRoot
             // Ignore the grid's separate "Preview the file ..." thumbnail node.
             val file =
                 root?.findAccessibilityNodeInfosByText("myvault-ci-migration.json")?.firstOrNull {
