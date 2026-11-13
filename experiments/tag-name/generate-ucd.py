@@ -50,3 +50,9 @@ def expected(s):
  s=''.join(fold.get(ord(c),c) for c in s)
  return u.normalize('NFD',u.normalize('NFC',s))
 open('experiments/tag-name/expected-keys.json','w',encoding='utf8').write(json.dumps([expected(s) for s in inputs],ensure_ascii=False,indent=2)+'\n')
+def identity_nfc(s):
+ s=' '.join(part for part in ''.join(' ' if c in white else c for c in s).split(' ') if part)
+ s=u.normalize('NFC',s)
+ s=''.join(fold.get(ord(c),c) for c in s)
+ return u.normalize('NFC',s)
+open('experiments/tag-name/expected-identity-nfc.json','w',encoding='utf8').write(json.dumps([identity_nfc(s) for s in inputs],ensure_ascii=False,indent=2)+'\n')

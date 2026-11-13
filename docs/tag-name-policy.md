@@ -55,8 +55,10 @@ equal. Do not use locale-specific Turkic casing. Scope is `(global, null)` or
    identity-preserving management only; leave create/name/scope edits and
    cross-platform tag import disabled.
 
-No further research is underway in this branch. The next step is a product
-choice between these bounded options, not another prototype cycle.
+At PR head `1be45e1`, the earlier investigation was closed pending a product
+choice. A later isolated architecture investigation is recorded in
+[`experiments/tag-name/production-architecture-research.md`](../experiments/tag-name/production-architecture-research.md);
+it does not enable writes or replace this fail-closed production boundary.
 
 ## Why the first SQL prototype was rejected
 

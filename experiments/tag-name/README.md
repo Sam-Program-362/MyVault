@@ -4,6 +4,18 @@ These experiments are **not** app code, migrations, or production-ready guards.
 They use only in-memory or disposable emulator databases. Do not connect them to
 user data.
 
+## Database-bound function architecture probes
+
+The separate `architecture-proof.mjs` (Node SQLite 3.51.3 UDF + CHECK/unique-index harness) and `postgres-architecture-proof.mjs` (PGlite 18.6, Unicode-table PL/pgSQL trigger/index harness) explore alternatives to the recursive SQL view. Install the existing ephemeral PGlite dependency, then run:
+
+```sh
+npm install --no-save --package-lock=false --ignore-scripts @electric-sql/pglite@0.5.13
+node --experimental-sqlite experiments/tag-name/architecture-proof.mjs
+node experiments/tag-name/postgres-architecture-proof.mjs
+```
+
+These are isolated host proofs, not Android Room/API 24+ or Neon tests, and must not be connected to app data. Their limitations, measurements, and the production decision are in [`production-architecture-research.md`](production-architecture-research.md). `expected-identity-nfc.json` is generated with the Unicode 15.1 expected outputs by `generate-ucd.py`.
+
 ## SQL
 
 Requires Node 22.13+ and an ephemeral local dependency:
