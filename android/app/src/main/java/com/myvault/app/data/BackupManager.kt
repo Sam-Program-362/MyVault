@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import java.io.File
+import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -29,12 +31,14 @@ class BackupManager(
     suspend fun exportTo(uri: Uri): Result =
         withContext(Dispatchers.IO) {
             val original = codec.decodeFromString<ExportPayload>(importer.export())
-            val entries =
-                original.entries.map { it.copy(coverImage = media.portableReference(it.coverImage)) }
-            val settingsValue =
-                original.settings?.let {
-                    it.copy(wallpaperUrl = media.portableReference(it.wallpaperUrl))
-                }
+            val budget = MediaBudget()
+            val entries = original.entries.map { entry ->
+                entry.copy(
+                    content = portableMarkdown(entry.content, budget),
+                    coverImage = portableReference(entry.coverImage, budget),
+                )
+            }
+            val settingsValue = original.settings?.let { it.copy(wallpaperUrl = portableReference(it.wallpaperUrl, budget)) }
             val payload = original.copy(entries = entries, settings = settingsValue)
             val text = codec.encodeToString(payload)
             require(text.length <= MAX_BACKUP_CHARS) { "The backup is larger than the 128 MB import limit." }
@@ -49,6 +53,59 @@ class BackupManager(
                 externalImages(payload, true),
             )
         }
+
+    /** Write a standalone one-entry document using the backup media portability checks. */
+    suspend fun exportEntryTo(uri: Uri, entryId: String): Int =
+        withContext(Dispatchers.IO) {
+            val entries = db.entryDao()
+            val spaces = db.spaceDao()
+            val original = entries.getById(entryId) ?: error("This entry no longer exists.")
+            val space = spaces.getAll().firstOrNull { it.id == original.spaceId }
+                ?: error("This entry’s Space could not be found.")
+            val entryTags = entries.tagsForEntry(entryId).map { it.toDto() }
+            val dto = original.toDto(entryTags)
+            val budget = MediaBudget()
+            val (portableContent, _) = portableSingleMarkdown(dto.content, budget)
+            val portableCover = try {
+                portableReference(dto.coverImage, budget)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (dto.coverImage?.startsWith("file:", ignoreCase = true) == true || dto.coverImage?.startsWith("/") == true) {
+                    dto.coverImage
+                } else throw error
+            }
+            val portableEntry = dto.copy(content = portableContent, coverImage = portableCover)
+            val payload = SingleEntryExportPayload(
+                exportedAt = Instant.now().toString(),
+                space = space.toDto(),
+                entry = portableEntry,
+            )
+            val text = codec.encodeToString(payload)
+            require(text.length <= MAX_BACKUP_CHARS) { "This entry export is larger than the 128 MB limit." }
+            val output = context.contentResolver.openOutputStream(uri)
+                ?: error("Could not write the selected entry export.")
+            output.bufferedWriter(Charsets.UTF_8).use { it.write(text) }
+            listOfNotNull(portableEntry.coverImage).count { !it.startsWith("data:", ignoreCase = true) } +
+                findManagedMarkdownImages(portableEntry.content).count { !it.destination.startsWith("data:", ignoreCase = true) }
+        }
+
+    private suspend fun portableSingleMarkdown(markdown: String, budget: MediaBudget): Pair<String, Int> {
+        var result = markdown
+        var missing = 0
+        for (ref in findManagedMarkdownImages(markdown).asReversed()) {
+            val portable = try {
+                portableReference(ref.destination, budget) ?: ref.destination
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (ref.destination.startsWith("file:", ignoreCase = true) || ref.destination.startsWith("/")) {
+                    missing++
+                    ref.destination
+                } else throw error
+            }
+            result = result.replaceRange(ref.start, ref.end, portable)
+        }
+        return result to missing
+    }
 
     suspend fun importFrom(uri: Uri, applySettings: Boolean): Result =
         withContext(Dispatchers.IO) {
@@ -70,17 +127,22 @@ class BackupManager(
                     result.toString()
                 }
             val original = codec.decodeFromString<ExportPayload>(text)
+            validateTagScopes(original)
             val createdFiles = mutableListOf<File>()
+            val budget = MediaBudget()
+            val restoredReferences = mutableMapOf<String, String>()
             var transactionStarted = false
             try {
-                val entries =
-                    original.entries.map {
-                        it.copy(coverImage = media.restoreReference(it.coverImage, createdFiles))
-                    }
+                val entries = original.entries.map { entry ->
+                    entry.copy(
+                        content = restoreMarkdown(entry.content, createdFiles, restoredReferences, budget),
+                        coverImage = restoreReference(entry.coverImage, createdFiles, restoredReferences, budget),
+                    )
+                }
                 val settingsValue =
                     if (applySettings)
                         original.settings?.let {
-                            it.copy(wallpaperUrl = media.restoreReference(it.wallpaperUrl, createdFiles))
+                            it.copy(wallpaperUrl = restoreReference(it.wallpaperUrl, createdFiles, restoredReferences, budget))
                         }
                     else original.settings
                 val restored = original.copy(entries = entries, settings = settingsValue)
@@ -101,6 +163,59 @@ class BackupManager(
                 throw error
             }
         }
+
+    private class MediaBudget {
+        private val seen = mutableSetOf<String>()
+        private var total = 0
+        fun include(reference: String?) {
+            if (reference.isNullOrBlank() || !reference.startsWith("data:image/", ignoreCase = true) || !seen.add(reference)) return
+            total += MediaFiles.dataImageByteSize(reference)
+            require(total <= MediaFiles.MAX_BACKUP_MEDIA_BYTES) { "Backup images exceed the 16 MB total limit." }
+        }
+    }
+
+    private suspend fun portableReference(reference: String?, budget: MediaBudget): String? {
+        val portable = media.portableReference(reference)
+        budget.include(portable)
+        return portable
+    }
+
+    private suspend fun portableMarkdown(markdown: String, budget: MediaBudget): String {
+        var result = markdown
+        for (ref in findManagedMarkdownImages(markdown).asReversed()) {
+            val portable = portableReference(ref.destination, budget) ?: ref.destination
+            result = result.replaceRange(ref.start, ref.end, portable)
+        }
+        return result
+    }
+
+    private suspend fun restoreReference(
+        reference: String?,
+        created: MutableList<File>,
+        cache: MutableMap<String, String>,
+        budget: MediaBudget,
+    ): String? {
+        if (reference.isNullOrBlank() || !reference.startsWith("data:image/", ignoreCase = true)) return reference
+        cache[reference]?.let { return it }
+        budget.include(reference)
+        val restored = media.restoreReference(reference, created)
+        if (restored != null) cache[reference] = restored
+        return restored
+    }
+
+    private suspend fun restoreMarkdown(
+        markdown: String,
+        created: MutableList<File>,
+        cache: MutableMap<String, String>,
+        budget: MediaBudget,
+    ): String {
+        var result = markdown
+        for (ref in findManagedMarkdownImages(markdown).asReversed()) {
+            val restored = restoreReference(ref.destination, created, cache, budget) ?: ref.destination
+            result = result.replaceRange(ref.start, ref.end, restored)
+        }
+        return result
+    }
 
     private fun externalImages(payload: ExportPayload, includeSettings: Boolean): Int {
         val refs =

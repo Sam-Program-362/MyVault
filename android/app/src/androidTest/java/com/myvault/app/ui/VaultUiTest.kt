@@ -1,15 +1,30 @@
 package com.myvault.app.ui
 
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.isDisplayed
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.printToString
@@ -18,8 +33,11 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.myvault.app.MainActivity
 import com.myvault.app.MyVaultApplication
+import com.myvault.app.data.EntryEntity
+import com.myvault.app.data.SpaceEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,10 +54,29 @@ class VaultUiTest {
         }
         compose.onNodeWithContentDescription("New space").performClick()
         compose.onNodeWithText("Space name").performTextInput(space)
-        compose.onNodeWithText("Create & enter").performScrollTo().performClick()
-        compose.waitUntil(15_000) {
-            compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+        compose.onNodeWithText("Space name").assertIsDisplayed()
+        // Exercise the grid's scroll action while the IME is open. Then dismiss
+        // it before requiring the button to be displayed and dispatching the tap.
+        compose.onNodeWithText("Create & enter").performScrollTo()
+        closeSoftKeyboard()
+        val createSpace = compose.onNodeWithText("Create & enter").performScrollTo()
+        createSpace.assertIsDisplayed().assertIsEnabled().performClick()
+        val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
+        try {
+            compose.waitUntil(15_000) {
+                runBlocking { app.database.spaceDao().getAll().any { it.name == space } }
+            }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("New entry").fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (failure: Throwable) {
+            val spaces = runBlocking { app.database.spaceDao().getAll().map { it.name } }
+            val busy = ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
+            val tree = compose.onRoot(useUnmergedTree = true).printToString(maxDepth = 12)
+            throw AssertionError("Space creation/navigation did not complete for $space; persisted=$spaces busy=$busy\n$tree", failure)
         }
+        assertEquals(space, runBlocking { app.database.spaceDao().getAll().first { it.name == space }.name })
+        compose.onNodeWithContentDescription("New entry").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithContentDescription("New entry").performClick()
         compose.waitUntil(15_000) {
             compose
@@ -83,63 +120,19 @@ class VaultUiTest {
         compose.onNodeWithContentDescription("Find and replace").performClick()
         compose.onNodeWithText("Add tag…", substring = true).performClick()
         compose.onNodeWithText("Find or create a tag").performTextInput("Journal")
-        val createTagButton = compose.onNodeWithText("Create & add tag").performScrollTo()
-        var busyBeforeTagClick = false
-        compose.runOnIdle {
-            busyBeforeTagClick =
-                ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Choose tag scope").fetchSemanticsNodes().isNotEmpty()
         }
-        createTagButton.performClick()
-        var createTagErrorSeen = false
-        try {
-            compose.waitUntil(15_000) {
-                if (
-                    compose
-                        .onAllNodesWithText("Couldn’t create tag.", substring = true)
-                        .fetchSemanticsNodes()
-                        .isNotEmpty()
-                )
-                    createTagErrorSeen = true
-                compose
-                    .onAllNodesWithContentDescription("Remove Journal tag")
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
-            }
-        } catch (failure: Throwable) {
-            // Report only boolean fixture state, never contents of an existing vault.
-            val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
-            val state = runBlocking {
-                val tag = app.database.tagDao().findByName("Journal")
-                val entry =
-                    app.database.entryDao().getAll().firstOrNull { it.title == "A saved note" }
-                val attached =
-                    entry != null &&
-                        tag != null &&
-                        app.database.entryDao().tagRefsForEntry(entry.id).any { it.tagId == tag.id }
-                "fixtureTagExists=${tag != null}, fixtureEntryExists=${entry != null}, attached=$attached"
-            }
-            val errorVisible =
-                compose
-                    .onAllNodesWithText("Couldn’t create tag.", substring = true)
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
-            val dialogVisible =
-                compose
-                    .onAllNodesWithText("Find or create a tag")
-                    .fetchSemanticsNodes()
-                    .isNotEmpty()
-            var busyAtFailure = false
-            compose.runOnIdle {
-                busyAtFailure =
-                    ViewModelProvider(compose.activity)[VaultViewModel::class.java].busy.value
-            }
-            throw AssertionError(
-                "Tag did not appear: $state, errorVisible=$errorVisible, " +
-                    "errorSeen=$createTagErrorSeen, dialogVisible=$dialogVisible, " +
-                    "busyBeforeClick=$busyBeforeTagClick, busyAtFailure=$busyAtFailure",
-                failure,
-            )
-        }
+        closeSoftKeyboard()
+        compose.onNodeWithText("Choose tag scope").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Local tag").assertIsDisplayed()
+        compose.onNodeWithText("Global tag").performScrollTo().assertIsDisplayed()
+        val createTagButton = compose.onNodeWithText("Create & add tag (paused)").performScrollTo()
+        createTagButton.assertIsNotEnabled()
+        compose.onNodeWithText("Global tag").performScrollTo().performClick()
+        createTagButton.assertIsNotEnabled()
+        compose.onNodeWithText("Creation is paused", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Done").performClick()
         compose.onNodeWithContentDescription("Close editor").performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodesWithText("A saved note").fetchSemanticsNodes().isNotEmpty()
@@ -156,7 +149,72 @@ class VaultUiTest {
             .onNodeWithContentDescription("Entry content")
             .assertTextContains("A small Markdown", substring = true)
         compose.onNodeWithContentDescription("Unpin entry").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Remove Journal tag").assertIsDisplayed()
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun undoRedoControlsAndKeyboardShortcutsCoverTitleAndBody() {
+        // Seed the editor directly so this test isolates undo/redo from the separately covered
+        // space-creation navigation and its asynchronous animation/Room transition.
+        val app = ApplicationProvider.getApplicationContext<MyVaultApplication>()
+        val suffix = System.currentTimeMillis()
+        val space = SpaceEntity(id = "undo-space-$suffix", name = "Undo space $suffix")
+        val entry = EntryEntity(id = "undo-entry-$suffix", spaceId = space.id, title = "")
+        runBlocking {
+            app.database.spaceDao().upsert(space)
+            app.database.entryDao().upsert(entry)
+        }
+        ViewModelProvider(compose.activity)[VaultViewModel::class.java].openEntry(entry.id)
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithContentDescription("Entry title").fetchSemanticsNodes().isNotEmpty()
+        }
+        val title = compose.onNodeWithContentDescription("Entry title")
+        val body = compose.onNodeWithContentDescription("Entry content")
+        title.performTextInput("Title draft")
+        body.performTextInput("Body draft")
+        // Commit the IME's pending edit before invoking toolbar history controls.
+        closeSoftKeyboard()
+        val undo = compose.onNodeWithContentDescription("Undo")
+        undo.assertIsDisplayed().assertIsEnabled().performClick()
+        compose.waitUntil(5_000) {
+            body.fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty()
+        }
+        body.assertEditableText("")
+        undo.assertIsEnabled().performClick()
+        title.assertEditableText("")
+        val redo = compose.onNodeWithContentDescription("Redo")
+        redo.assertIsEnabled().performClick()
+        title.assertTextEquals("Title draft")
+        title.performClick()
+        title.performKeyInput {
+            keyDown(Key.CtrlLeft)
+            keyDown(Key.ShiftLeft)
+            pressKey(Key.Z)
+            keyUp(Key.ShiftLeft)
+            keyUp(Key.CtrlLeft)
+        }
+        body.assertTextEquals("Body draft")
+        body.performClick()
+        body.performKeyInput {
+            keyDown(Key.CtrlLeft)
+            pressKey(Key.Z)
+            keyUp(Key.CtrlLeft)
+        }
+        compose.waitUntil(5_000) {
+            body.fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty()
+        }
+        body.assertEditableText("")
+        title.performClick()
+        title.performKeyInput {
+            keyDown(Key.CtrlLeft)
+            pressKey(Key.Y)
+            keyUp(Key.CtrlLeft)
+        }
+        compose.waitUntil(5_000) {
+            body.fetchSemanticsNode().config[SemanticsProperties.EditableText].text == "Body draft"
+        }
+        body.assertTextEquals("Body draft")
+        compose.onNodeWithContentDescription("Close editor").performClick()
     }
 
     @Test
@@ -183,3 +241,6 @@ class VaultUiTest {
         }
     }
 }
+
+private fun SemanticsNodeInteraction.assertEditableText(expected: String) =
+    assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(expected)))

@@ -44,11 +44,15 @@ class EditorRaceTest {
                     onClose = {},
                     onTogglePin = {},
                     onChooseCover = {},
+                    onStoreInlineImage = { "file:///test-image.png" },
+                    onImageError = {},
                     onRemoveCover = {},
                     onAddTag = {},
                     onRemoveTag = {},
                     onImport = {},
                     onDelete = {},
+                    onPrepareReading = { null },
+                    onExportEntry = {},
                     externalUpdate = imported,
                 )
             }

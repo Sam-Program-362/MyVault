@@ -33,6 +33,8 @@ export interface Tag {
   color: string;
   textColor: string;
   reusable: boolean;
+  scope?: "global" | "local";
+  ownerSpaceId?: string | null;
   createdAt: string;
 }
 
@@ -49,10 +51,19 @@ export interface Entry {
 }
 
 export interface ExportPayload {
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   settings: AppSettings;
   spaces: Space[];
   tags: Tag[];
   entries: Entry[];
+}
+
+/** Standalone, export-only document; deliberately distinct from whole-vault backup formats. */
+export interface SingleEntryExport {
+  format: "myvault-entry";
+  formatVersion: 1;
+  exportedAt: string;
+  space: Pick<Space, "id" | "name" | "description" | "icon" | "color" | "sortOrder" | "createdAt"> | null;
+  entry: Entry;
 }

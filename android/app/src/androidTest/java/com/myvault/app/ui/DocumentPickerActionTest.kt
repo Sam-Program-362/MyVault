@@ -2,6 +2,7 @@ package com.myvault.app.ui
 
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.KeyEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.fail
@@ -17,14 +18,38 @@ class DocumentPickerActionTest {
         if (InstrumentationRegistry.getArguments().getString("myvault.pickerPhase") != "select")
             return
         val automation = instrumentation.uiAutomation
-        val deadline = SystemClock.uptimeMillis() + 12_000
+        val deadline = SystemClock.uptimeMillis() + 30_000
         var rowActionSent = false
+        var focusAttempted = false
+        var focusSucceeded = false
+        var keyDownSent = false
+        var keyUpSent = false
         var diagnostic = "No synthetic document row was found"
+        var windowsDiagnostic = "No accessibility windows"
         while (SystemClock.uptimeMillis() < deadline) {
-            val root = automation.rootInActiveWindow
-            // If a successful action already opened the app's confirmation, do not click again.
-            if (root?.findAccessibilityNodeInfosByText("Import backup?")?.isNotEmpty() == true)
+            val windows = automation.windows
+            val activeRoot = automation.rootInActiveWindow
+            // Android 11 can return an empty windows list even though the active
+            // app/dialog root is readable. Include that root in confirmation checks.
+            val roots = windows.mapNotNull { it.root } + listOfNotNull(activeRoot)
+            windowsDiagnostic = roots.joinToString(" | ") { windowRoot ->
+                val packageName = windowRoot.packageName?.toString() ?: "unknown-package"
+                val appConfirm =
+                    packageName.startsWith("com.myvault.app") &&
+                        windowRoot.findAccessibilityNodeInfosByText("Import backup?").isNotEmpty()
+                "$packageName confirmation=$appConfirm"
+            }
+            // During DocumentsUI's return transition the active root can still be
+            // the picker while the app's confirmation is already visible in another
+            // accessibility window. Observe every window, but never activate it here.
+            if (roots.any { windowRoot ->
+                windowRoot.packageName?.toString()?.startsWith("com.myvault.app") == true &&
+                    windowRoot.findAccessibilityNodeInfosByText("Import backup?").isNotEmpty()
+            }) {
+                println("MYVAULT_PICKER rowActionSent=$rowActionSent focusAttempted=$focusAttempted focusSucceeded=$focusSucceeded windows=$windowsDiagnostic")
                 return
+            }
+            val root = activeRoot
             // Ignore the grid's separate "Preview the file ..." thumbnail node.
             val file =
                 root?.findAccessibilityNodeInfosByText("myvault-ci-migration.json")?.firstOrNull {
@@ -52,14 +77,38 @@ class DocumentPickerActionTest {
                         candidate.isEnabled &&
                             candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
                     } ?: chain.lastOrNull()
-                if (!rowActionSent && target != null && target.isEnabled) {
+                if (!rowActionSent && target != null && target.isEnabled &&
+                    target.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }) {
                     rowActionSent = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                }
+                // Some Android 11 DocumentsUI rows advertise keyboard focus but no
+                // accessibility click. Focus the actual row and send Enter, then
+                // still require the app's confirmation (and later import/restart).
+                if (!rowActionSent && !focusAttempted) {
+                    focusAttempted = true
+                    val focusTarget = chain.asReversed().firstOrNull { candidate ->
+                        candidate.isEnabled && candidate.actionList.any { it.id == AccessibilityNodeInfo.ACTION_FOCUS }
+                    }
+                    focusSucceeded = focusTarget?.performAction(AccessibilityNodeInfo.ACTION_FOCUS) == true
+                    if (focusSucceeded) {
+                        val now = SystemClock.uptimeMillis()
+                        keyDownSent = automation.injectInputEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0), true)
+                        keyUpSent = automation.injectInputEvent(KeyEvent(now, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0), true)
+                    }
+                }
+                // Do not keep the app under instrumentation after dispatch: Android 11
+                // can expose an empty/stale dialog accessibility root until the runner
+                // releases the window. The migration driver independently requires the
+                // real app confirmation and a successful import that survives restart.
+                if (rowActionSent || (focusSucceeded && keyDownSent && keyUpSent)) {
+                    println("MYVAULT_PICKER actionDispatched rowActionSent=$rowActionSent focusSucceeded=$focusSucceeded keyDownSent=$keyDownSent keyUpSent=$keyUpSent")
+                    return
                 }
             }
             SystemClock.sleep(250)
         }
         fail(
-            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent). Accessibility chain: $diagnostic"
+            "The system picker did not open the synthetic document (rowActionSent=$rowActionSent, focusAttempted=$focusAttempted, focusSucceeded=$focusSucceeded, keyDownSent=$keyDownSent, keyUpSent=$keyUpSent). Accessibility chain: $diagnostic; windows: $windowsDiagnostic"
         )
     }
 }

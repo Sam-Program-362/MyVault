@@ -78,26 +78,38 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.myvault.app.data.AppSettings
 import com.myvault.app.data.MediaFiles
+import com.myvault.app.data.SpaceEntity
 import com.myvault.app.data.TagEntity
+import java.util.Locale
 import kotlin.math.roundToInt
+
+private fun tagScopeLabel(tag: TagEntity, spaces: List<SpaceEntity>): String =
+    if (tag.scope == "local") "Local · ${spaces.firstOrNull { it.id == tag.ownerSpaceId }?.name ?: "Unknown Space"}" else "Global"
 
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
     tags: List<TagEntity>,
+    spaces: List<SpaceEntity> = emptyList(),
     onBack: () -> Unit,
     onUpdate: ((AppSettings) -> AppSettings) -> Unit,
     onChooseWallpaper: () -> Unit,
-    onCreateTag: (String, String, Boolean) -> Unit,
+    onCreateTag: (String, String, Boolean, String) -> Unit,
     onSetReusable: (TagEntity, Boolean) -> Unit,
     onDeleteTag: (TagEntity) -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
     visible: Boolean = true,
+    scopeSpaceId: String? = null,
+    onEditTag: (TagEntity, String, String, String, String?) -> Unit = { _, _, _, _, _ -> },
 ) {
     var tab by rememberSaveable { mutableStateOf(0) }
     var deleting by remember { mutableStateOf<TagEntity?>(null) }
+    var editingTag by remember { mutableStateOf<TagEntity?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
+    val possibleLegacyGroups = tags
+        .groupBy { Triple(it.name.lowercase(Locale.ROOT), it.scope, it.ownerSpaceId) }
+        .values.filter { it.size > 1 }
     val visibility = remember { MutableTransitionState(false) }
     visibility.targetState = visible
     LaunchedEffect(visible) {
@@ -223,6 +235,19 @@ fun SettingsScreen(
                                 when (tab) {
                                     0 -> AppearanceSettings(settings, onUpdate, onChooseWallpaper)
                                     1 -> {
+                                        Text(
+                                            "Unicode 15.1 conflict scan is not authoritative. Existing IDs and links are never auto-merged or changed.",
+                                            color = MaterialTheme.colorScheme.error,
+                                            fontSize = 12.sp,
+                                        )
+                                        if (possibleLegacyGroups.isEmpty()) {
+                                            Text("No simple case-insensitive candidate groups found; other Unicode-equivalent variants may still exist.", fontSize = 12.sp)
+                                        } else {
+                                            Text("Possible legacy name groups (approximate candidates, not a Unicode 15.1 verdict):", fontSize = 12.sp)
+                                            possibleLegacyGroups.forEach { group ->
+                                                Text("${group.first().name}: ${group.joinToString { it.id }}", fontSize = 11.sp)
+                                            }
+                                        }
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f)) {
                                                 Text(
@@ -276,16 +301,13 @@ fun SettingsScreen(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                 ) {
                                                     Surface(
-                                                        color = parseColor(tag.color),
-                                                        shape = MaterialTheme.shapes.small,
+                                                        color = parseColor(tag.color).copy(alpha = 0.08f),
+                                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                                                        border = BorderStroke(1.dp, parseColor(tag.color)),
                                                     ) {
                                                         Text(
                                                             tag.name,
-                                                            color =
-                                                                parseColor(
-                                                                    tag.textColor,
-                                                                    Color.White,
-                                                                ),
+                                                            color = MaterialTheme.colorScheme.onSurface,
                                                             fontSize = 13.sp,
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis,
@@ -298,13 +320,14 @@ fun SettingsScreen(
                                                     }
                                                     Spacer(Modifier.width(8.dp))
                                                     Text(
-                                                        if (tag.reusable) "Reusable" else "One-off",
+                                                        "${tagScopeLabel(tag, spaces)} · ${if (tag.reusable) "Reusable" else "One-off"}",
                                                         modifier = Modifier.weight(1f),
                                                         color =
                                                             MaterialTheme.colorScheme
                                                                 .onSurfaceVariant,
                                                         fontSize = 12.sp,
                                                     )
+                                                    TextButton(onClick = { editingTag = tag }) { Text("Edit") }
                                                     if (!tag.reusable)
                                                         TextButton(
                                                             onClick = { onSetReusable(tag, true) }
@@ -361,9 +384,15 @@ fun SettingsScreen(
         }
     }
     if (creating && visible) {
-        TagCreateDialog(onDismiss = { creating = false }) { name, color, reusable ->
+        TagCreateDialog(onDismiss = { creating = false }, allowLocal = scopeSpaceId != null) { name, color, reusable, scope ->
             creating = false
-            onCreateTag(name, color, reusable)
+            onCreateTag(name, color, reusable, scope)
+        }
+    }
+    editingTag?.let { tag ->
+        TagEditDialog(tag = tag, onDismiss = { editingTag = null }) { name, color, scope, owner ->
+            editingTag = null
+            onEditTag(tag, name, color, scope, owner)
         }
     }
     deleting?.let { tag ->
@@ -601,8 +630,9 @@ private fun SettingsCard(title: String, description: String, content: @Composabl
 }
 
 @Composable
-fun TagCreateDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -> Unit) {
+fun TagCreateDialog(onDismiss: () -> Unit, allowLocal: Boolean, onCreate: (String, String, Boolean, String) -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }
+    var scope by rememberSaveable { mutableStateOf("") }
     var color by rememberSaveable { mutableStateOf(paletteColors.first()) }
     var reusable by rememberSaveable { mutableStateOf(true) }
     AlertDialog(
@@ -617,6 +647,8 @@ fun TagCreateDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -
                     singleLine = true,
                 )
                 Spacer(Modifier.height(8.dp))
+                TagScopeChoices(scope, allowLocal) { scope = it }
+                Text("Creation is paused until both databases can enforce Unicode 15.1 tag-name uniqueness.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 ColorChoices(color) { color = it }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
@@ -632,10 +664,31 @@ fun TagCreateDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -
             }
         },
         confirmButton = {
-            TextButton(onClick = { onCreate(name, color, reusable) }, enabled = name.isNotBlank()) {
-                Text("Create")
+            TextButton(onClick = { onCreate(name, color, reusable, scope) }, enabled = false) {
+                Text("Create (paused)")
             }
         },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun TagEditDialog(tag: TagEntity, onDismiss: () -> Unit, onSave: (String, String, String, String?) -> Unit) {
+    val name = tag.name
+    var color by rememberSaveable(tag.id) { mutableStateOf(tag.color) }
+    val scope = tag.scope
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit tag") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            OutlinedTextField(value = name, onValueChange = {}, label = { Text("Tag name") }, singleLine = true, readOnly = true)
+            Text("Scope: ${if (scope == "local") "Local to this Space" else "Global"}", fontSize = 13.sp)
+            ColorChoices(color) { color = it }
+            Text("Name and scope edits are paused pending Unicode 15.1 database enforcement. Color and reusable settings remain editable.", fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = {
+            onSave(name, color, scope, tag.ownerSpaceId)
+        }) { Text("Save color") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

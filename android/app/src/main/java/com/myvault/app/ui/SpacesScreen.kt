@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -142,7 +143,10 @@ fun SpacesScreen(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns),
                 state = gridState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                // Keep the final form actions inside the scrollable viewport while the
+                // system keyboard is open; without this inset the IME can cover the
+                // Create button even though the grid itself reports a scroll target.
+                modifier = Modifier.weight(1f).fillMaxWidth().imePadding(),
                 contentPadding =
                     PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -425,12 +429,15 @@ private fun NewSpaceForm(
             cursorColor = Color.White,
         )
     Surface(
-        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp).animateContentSize(),
         shape = RoundedCornerShape(16.dp),
         color = Color.White.copy(alpha = 0.09f),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },

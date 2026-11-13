@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
   AlertCircle,
+  BookOpen,
   Check,
   Code2,
   Eye,
@@ -14,12 +15,19 @@ import {
   Replace,
   Search,
   Trash2,
+  Undo2,
+  Redo2,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Entry, Tag } from "@/lib/types";
+import type { Entry, Space, Tag } from "@/lib/types";
+import { makeSingleEntryExport } from "@/lib/api";
+import { findMarkdownImages } from "@/lib/markdown-media";
 import TagPicker from "@/components/TagPicker";
 import Markdown from "@/components/Markdown";
+import ReadingMode from "@/components/ReadingMode";
+import { coalescibleInputKey, EditorHistory, type EditorField, type EditorSelection, type EditorSnapshot } from "@/lib/editor-history";
+import { escapeMarkdownAlt, imageAltFromFilename } from "@/lib/markdown-media";
 
 function searchRegex(query: string, wholeWord: boolean, flags: string) {
   if (!query) return null;
@@ -29,6 +37,7 @@ function searchRegex(query: string, wholeWord: boolean, flags: string) {
 
 interface Props {
   entryId: string;
+  spaces: Space[];
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
@@ -39,7 +48,7 @@ type EntryPatch = Partial<Entry> & { tagIds?: string[] };
 
 type SaveState = "saving" | "saved" | "error";
 
-export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Props) {
+export default function EntryEditor({ entryId, spaces, onClose, onSaved, onDeleted }: Props) {
   const [entry, setEntry] = useState<Entry | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [title, setTitle] = useState("");
@@ -48,11 +57,13 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const [pinned, setPinned] = useState(false);
   const [entryTags, setEntryTags] = useState<Tag[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [readingEntry, setReadingEntry] = useState<Entry | null>(null);
+  const [preparingReading, setPreparingReading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [closing, setClosing] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [importingFile, setImportingFile] = useState(false);
-  const [creatingTag, setCreatingTag] = useState(false);
 
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -62,12 +73,21 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const [pendingImport, setPendingImport] = useState<string | null>(null);
   const [pendingImportName, setPendingImportName] = useState("");
 
+  const titleRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<EditorHistory | null>(null);
+  const selectionRef = useRef<EditorSelection>({ field: "content", start: 0, end: 0 });
+  const [historyRestore, setHistoryRestore] = useState<{ selection: EditorSelection; token: number } | null>(null);
+  const historyRestoreToken = useRef(0);
+  const handledRestoreToken = useRef(0);
+  const [historyAvailability, setHistoryAvailability] = useState({ canUndo: false, canRedo: false });
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const inlineImageInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const previewButtonRef = useRef<HTMLButtonElement>(null);
   const previewCloseRef = useRef<HTMLButtonElement>(null);
+  const readingButtonRef = useRef<HTMLButtonElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftRef = useRef<Draft>({ title: "", content: "" });
   const dirtyDraft = useRef(false);
@@ -76,6 +96,10 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
   const pendingSaves = useRef(0);
   const failedPatches = useRef<EntryPatch>({});
   const onSavedRef = useRef(onSaved);
+  const syncHistoryAvailability = () => {
+    const history = historyRef.current;
+    setHistoryAvailability({ canUndo: history?.canUndo ?? false, canRedo: history?.canRedo ?? false });
+  };
 
   useEffect(() => {
     onSavedRef.current = onSaved;
@@ -83,8 +107,14 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
   useEffect(() => {
     let active = true;
+    historyRef.current = null;
+    selectionRef.current = { field: "content", start: 0, end: 0 };
     api.entries.get(entryId).then((data) => {
       if (!active) return;
+      const initialSelection = { field: "content" as const, start: 0, end: 0 };
+      historyRef.current = new EditorHistory({ title: data.title, content: data.content, selection: initialSelection });
+      setHistoryAvailability({ canUndo: false, canRedo: false });
+      selectionRef.current = initialSelection;
       setEntry(data);
       setTitle(data.title);
       setContent(data.content);
@@ -155,20 +185,82 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     }, 700);
   };
 
-  const updateTitle = (nextTitle: string) => {
-    setTitle(nextTitle);
-    draftRef.current = { ...draftRef.current, title: nextTitle };
-    scheduleDraftSave(draftRef.current);
+  const applyDraft = (
+    nextDraft: Draft,
+    field: EditorField,
+    selection: EditorSelection,
+    coalesceKey: string | null = null,
+  ) => {
+    const history = historyRef.current;
+    history?.updateSelection(selectionRef.current);
+    history?.record({ ...nextDraft, selection }, { field, coalesceKey });
+    syncHistoryAvailability();
+    selectionRef.current = selection;
+    setTitle(nextDraft.title);
+    setContent(nextDraft.content);
+    draftRef.current = nextDraft;
+    scheduleDraftSave(nextDraft);
   };
 
-  const updateContent = (nextContent: string) => {
-    setContent(nextContent);
-    draftRef.current = { ...draftRef.current, content: nextContent };
+  const rememberSelection = (field: EditorField, element: HTMLInputElement | HTMLTextAreaElement) => {
+    const selection = {
+      field,
+      start: element.selectionStart ?? 0,
+      end: element.selectionEnd ?? element.selectionStart ?? 0,
+    };
+    selectionRef.current = selection;
+    historyRef.current?.updateSelection(selection);
+  };
+
+  const restoreHistorySnapshot = (snapshot: EditorSnapshot | null) => {
+    if (!snapshot) return;
+    setTitle(snapshot.title);
+    setContent(snapshot.content);
+    draftRef.current = { title: snapshot.title, content: snapshot.content };
+    selectionRef.current = snapshot.selection;
     scheduleDraftSave(draftRef.current);
+    historyRestoreToken.current += 1;
+    setHistoryRestore({ selection: { ...snapshot.selection }, token: historyRestoreToken.current });
+    syncHistoryAvailability();
+  };
+
+  const undo = () => restoreHistorySnapshot(historyRef.current?.undo() ?? null);
+  const redo = () => restoreHistorySnapshot(historyRef.current?.redo() ?? null);
+
+  useLayoutEffect(() => {
+    if (!historyRestore || handledRestoreToken.current === historyRestore.token) return;
+    handledRestoreToken.current = historyRestore.token;
+    const { selection } = historyRestore;
+    const element = selection.field === "title" ? titleRef.current : textareaRef.current;
+    if (element) {
+      element.focus();
+      const end = Math.min(selection.end, element.value.length);
+      element.setSelectionRange(Math.min(selection.start, end), end);
+      selectionRef.current = { ...selection, start: Math.min(selection.start, end), end };
+      historyRef.current?.updateSelection(selectionRef.current);
+    }
+  }, [historyRestore, title, content]);
+
+  const handleHistoryKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if ((target instanceof HTMLInputElement && target !== titleRef.current) ||
+        (target instanceof HTMLTextAreaElement && target !== textareaRef.current)) return;
+    if (event.nativeEvent.isComposing || event.altKey || !(event.ctrlKey || event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    if (key === "z" && event.shiftKey) {
+      event.preventDefault();
+      redo();
+    } else if (key === "z") {
+      event.preventDefault();
+      undo();
+    } else if (key === "y") {
+      event.preventDefault();
+      redo();
+    }
   };
 
   const handleClose = async () => {
-    if (closing || uploadingCover || importingFile || creatingTag) return;
+    if (closing || uploadingCover || uploadingImage || importingFile) return;
     setClosing(true);
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
@@ -228,8 +320,39 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     void persist({ coverImage: null }).catch(() => undefined);
   };
 
+  const handleInlineImageUpload = async (file: File) => {
+    const element = textareaRef.current;
+    const remembered = selectionRef.current;
+    const savedSelection: EditorSelection = element
+      ? (remembered.field === "content" ? remembered : { field: "content", start: element.selectionStart, end: element.selectionEnd })
+      : { field: "content", start: draftRef.current.content.length, end: draftRef.current.content.length };
+    setUploadingImage(true);
+    try {
+      const { url } = await api.inlineImage(file);
+      const current = draftRef.current;
+      const start = Math.max(0, Math.min(savedSelection.start, current.content.length));
+      const end = Math.max(start, Math.min(savedSelection.end, current.content.length));
+      const markdown = `![${escapeMarkdownAlt(imageAltFromFilename(file.name))}](${url})`;
+      const nextContent = current.content.slice(0, start) + markdown + current.content.slice(end);
+      const cursor = start + markdown.length;
+      applyDraft(
+        { ...current, content: nextContent },
+        "content",
+        { field: "content", start: cursor, end: cursor },
+      );
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(cursor, cursor);
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Image upload failed.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleDelete = async () => {
-    if (closing || uploadingCover || importingFile || creatingTag) return;
+    if (closing || uploadingCover || uploadingImage || importingFile) return;
     if (!confirm("Delete this entry permanently?")) return;
     setClosing(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -257,10 +380,15 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     try {
       const text = await file.text();
       if (!content.trim()) {
-        updateContent(text);
-        if (!title.trim() || title === "Untitled entry") {
-          updateTitle(file.name.replace(/\.[^.]+$/, ""));
-        }
+        const importedTitle = !title.trim() || title === "Untitled entry"
+          ? file.name.replace(/\.[^.]+$/, "")
+          : title;
+        applyDraft(
+          { title: importedTitle, content: text },
+          "content",
+          { field: "content", start: text.length, end: text.length },
+        );
+        requestAnimationFrame(() => textareaRef.current?.focus());
       } else {
         setPendingImport(text);
         setPendingImportName(file.name);
@@ -274,20 +402,39 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
   const resolveImport = (mode: "replace" | "insert" | "cancel") => {
     if (mode === "replace" && pendingImport !== null) {
-      updateContent(pendingImport);
+      applyDraft(
+        { ...draftRef.current, content: pendingImport },
+        "content",
+        { field: "content", start: pendingImport.length, end: pendingImport.length },
+      );
     } else if (mode === "insert" && pendingImport !== null) {
       const el = textareaRef.current;
+      const currentContent = draftRef.current.content;
       if (el) {
-        const start = el.selectionStart ?? content.length;
-        const end = el.selectionEnd ?? content.length;
-        updateContent(content.slice(0, start) + pendingImport + content.slice(end));
+        const start = el.selectionStart ?? currentContent.length;
+        const end = el.selectionEnd ?? currentContent.length;
+        const nextContent = currentContent.slice(0, start) + pendingImport + currentContent.slice(end);
+        const cursor = start + pendingImport.length;
+        applyDraft(
+          { ...draftRef.current, content: nextContent },
+          "content",
+          { field: "content", start: cursor, end: cursor },
+        );
       } else {
-        updateContent(`${content}\n\n${pendingImport}`);
+        const nextContent = `${currentContent}\n\n${pendingImport}`;
+        applyDraft(
+          { ...draftRef.current, content: nextContent },
+          "content",
+          { field: "content", start: nextContent.length, end: nextContent.length },
+        );
       }
     }
     setPendingImport(null);
     setPendingImportName("");
   };
+
+  const processing = uploadingCover || uploadingImage || importingFile;
+  const displayedSaveState = processing && saveState !== "error" ? "saving" : saveState;
 
   const matchCount = useMemo(() => {
     const re = searchRegex(findQuery, wholeWord, "gi");
@@ -329,6 +476,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     if (match) {
       el.focus();
       el.setSelectionRange(match.index, match.index + match[0].length);
+      rememberSelection("content", el);
       const lineHeight = parseFloat(window.getComputedStyle(el).lineHeight) || 24;
       const linesBefore = text.slice(0, match.index).split("\n").length;
       el.scrollTop = Math.max(0, (linesBefore - 3) * lineHeight);
@@ -346,8 +494,13 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     if (selected && match?.[0] === selected) {
       const start = el.selectionStart;
       const next = content.slice(0, start) + replaceQuery + content.slice(el.selectionEnd);
-      updateContent(next);
-      requestAnimationFrame(() => selectNextMatch(next, start + replaceQuery.length));
+      const cursor = start + replaceQuery.length;
+      applyDraft(
+        { ...draftRef.current, content: next },
+        "content",
+        { field: "content", start: cursor, end: cursor },
+      );
+      requestAnimationFrame(() => selectNextMatch(next, cursor));
     } else {
       findNext();
     }
@@ -355,7 +508,82 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
   const replaceAll = () => {
     const re = searchRegex(findQuery, wholeWord, "gi");
-    if (re) updateContent(content.replace(re, () => replaceQuery));
+    if (!re) return;
+    const next = content.replace(re, () => replaceQuery);
+    applyDraft(
+      { ...draftRef.current, content: next },
+      "content",
+      { field: "content", start: next.length, end: next.length },
+    );
+  };
+
+  const openReadingMode = async () => {
+    if (preparingReading || closing || uploadingCover || uploadingImage || importingFile || pendingImport !== null) return;
+    setPreparingReading(true);
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    try {
+      await draftSave.current?.catch(() => undefined);
+      await saveQueue.current;
+      if (dirtyDraft.current) {
+        dirtyDraft.current = false;
+        try {
+          await persist(draftRef.current);
+        } catch {
+          dirtyDraft.current = true;
+          return;
+        }
+      }
+      await saveQueue.current;
+      if (Object.keys(failedPatches.current).length > 0) {
+        try {
+          await persist({ ...failedPatches.current });
+        } catch {
+          return;
+        }
+      }
+      const saved = await api.entries.get(entryId);
+      setEntry(saved);
+      setTitle(saved.title);
+      setContent(saved.content);
+      draftRef.current = { title: saved.title, content: saved.content };
+      setCoverImage(saved.coverImage);
+      setPinned(saved.pinned);
+      setEntryTags(saved.tags);
+      setPreviewOpen(false);
+      setFindOpen(false);
+      setReadingEntry(saved);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Couldn’t open the saved entry.");
+    } finally {
+      setPreparingReading(false);
+    }
+  };
+
+  const exportReadingEntry = async (): Promise<string> => {
+    if (!readingEntry) throw new Error("There is no saved entry to export.");
+    const space = spaces.find((candidate) => candidate.id === readingEntry.spaceId) ?? null;
+    const document = await makeSingleEntryExport(readingEntry, space);
+    const safeTitle = readingEntry.title.normalize("NFKD").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "entry";
+    const blob = new Blob([JSON.stringify(document, null, 2)], { type: "application/vnd.myvault.entry+json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = window.document.createElement("a");
+    anchor.href = url;
+    anchor.download = `myvault-${safeTitle}.myvault-entry.json`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const unembedded = findMarkdownImages(document.entry.content).filter((image) => image.destination.startsWith("/api/media/")).length +
+      Number(document.entry.coverImage?.startsWith("/api/media/") ?? false);
+    return unembedded
+      ? `Export downloaded. ${unembedded} saved image reference(s) could not be embedded and were preserved as links.`
+      : "Single-entry export downloaded.";
+  };
+
+  const returnToEditor = () => {
+    setReadingEntry(null);
+    requestAnimationFrame(() => readingButtonRef.current?.focus());
   };
 
   if (!entry) {
@@ -375,12 +603,10 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
     setPreviewOpen(false);
     previewButtonRef.current?.focus();
   };
-  const processing = uploadingCover || importingFile || creatingTag;
-  const displayedSaveState = processing && saveState !== "error" ? "saving" : saveState;
 
   return (
-    <div className="entry-editor" aria-label="Entry editor">
-      <header className="editor-toolbar">
+    <div className="entry-editor" aria-label="Entry editor" onKeyDown={handleHistoryKeyDown}>
+      <header className="editor-toolbar" inert={Boolean(readingEntry)}>
         <div className="editor-toolbar-start">
           <button type="button" onClick={handleClose} disabled={closing || processing} className="editor-icon-button" aria-label="Close editor" title="Close editor">
             <X size={19} />
@@ -389,6 +615,9 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
             {displayedSaveState === "saving" ? <Loader2 size={13} className="animate-spin" /> : displayedSaveState === "saved" ? <Check size={13} /> : <AlertCircle size={14} />}
             <span>{displayedSaveState === "saving" ? "Saving…" : displayedSaveState === "saved" ? "Saved" : "Couldn’t save"}</span>
           </div>
+          <button ref={readingButtonRef} type="button" onClick={() => void openReadingMode()} disabled={preparingReading || processing || pendingImport !== null} className="editor-icon-button" aria-label="Reading mode" title="Read saved entry">
+            <BookOpen size={17} />
+          </button>
         </div>
         <div className="editor-toolbar-actions" inert={closing}>
           <button type="button" onClick={togglePin} className={`editor-icon-button ${pinned ? "is-pinned" : ""}`} aria-label={pinned ? "Unpin entry" : "Pin entry"} title={pinned ? "Unpin entry" : "Pin entry"}>
@@ -405,6 +634,9 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
               <Eye size={17} />
             </button>
           </div>
+          <button type="button" onMouseDown={(event) => { if (textareaRef.current) rememberSelection("content", textareaRef.current); event.preventDefault(); }} onClick={() => inlineImageInputRef.current?.click()} disabled={uploadingImage || closing} className="editor-icon-button" aria-label="Insert image at the cursor" title="Insert image (PNG, JPEG, GIF, WebP; max 2 MB)">
+            {uploadingImage ? <Loader2 size={17} className="animate-spin" /> : <ImagePlus size={17} />}
+          </button>
           <button type="button" onClick={() => importInputRef.current?.click()} disabled={importingFile} className="editor-icon-button" aria-label="Import text or Markdown file" title="Import .txt / .md file">
             <FileUp size={17} />
           </button>
@@ -415,7 +647,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
       </header>
 
       {findOpen && (
-        <div className="editor-find-bar" inert={closing}>
+        <div className="editor-find-bar" inert={closing || Boolean(readingEntry)}>
           <input value={findQuery} onChange={(event) => setFindQuery(event.target.value)} placeholder="Find word or phrase…" aria-label="Find word or phrase" className="editor-find-input" />
           <input value={replaceQuery} onChange={(event) => setReplaceQuery(event.target.value)} placeholder="Replace with…" aria-label="Replace with" className="editor-find-input" />
           <label className="editor-find-whole flex items-center gap-1.5 whitespace-nowrap">
@@ -431,7 +663,7 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
         </div>
       )}
 
-      <div className="editor-document" inert={closing}>
+      <div className="editor-document" inert={closing || Boolean(readingEntry)}>
         {coverImage ? (
           <div className="editor-cover-image">
             {/* User-provided uploads can be local paths or remote URLs. */}
@@ -449,6 +681,10 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
           if (event.target.files?.[0]) void handleCoverUpload(event.target.files[0]);
           event.target.value = "";
         }} />
+        <input ref={inlineImageInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={(event) => {
+          if (event.target.files?.[0]) void handleInlineImageUpload(event.target.files[0]);
+          event.target.value = "";
+        }} />
         <input ref={importInputRef} type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" className="hidden" onChange={(event) => {
           if (event.target.files?.[0]) void handleImportFile(event.target.files[0]);
           event.target.value = "";
@@ -456,16 +692,56 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
 
         <div className="editor-paper">
           <div className="editor-meta">
-            <input value={title} disabled={closing} onChange={(event) => updateTitle(event.target.value)} placeholder="Entry title / manual name" aria-label="Entry title" className="editor-title" />
-            <div className="editor-tags"><TagPicker selected={entryTags} onChange={handleTagsChange} onPendingChange={setCreatingTag} /></div>
+            <div className="editor-history-controls" role="group" aria-label="Editing history">
+              <button type="button" className="editor-icon-button" aria-label="Undo" title="Undo" disabled={!historyAvailability.canUndo} onClick={undo}><Undo2 size={17} /></button>
+              <button type="button" className="editor-icon-button" aria-label="Redo" title="Redo" disabled={!historyAvailability.canRedo} onClick={redo}><Redo2 size={17} /></button>
+            </div>
+            <input
+              ref={titleRef}
+              autoCapitalize="sentences"
+              autoCorrect="on"
+              value={title}
+              disabled={closing}
+              onFocus={(event) => rememberSelection("title", event.currentTarget)}
+              onSelect={(event) => rememberSelection("title", event.currentTarget)}
+              onChange={(event) => {
+                const element = event.currentTarget;
+                const selection = { field: "title" as const, start: element.selectionStart ?? 0, end: element.selectionEnd ?? element.selectionStart ?? 0 };
+                const inputType = (event.nativeEvent as InputEvent).inputType;
+                applyDraft(
+                  { ...draftRef.current, title: element.value },
+                  "title",
+                  selection,
+                  coalescibleInputKey("title", inputType),
+                );
+              }}
+              placeholder="Entry title / manual name"
+              aria-label="Entry title"
+              className="editor-title"
+            />
+            <div className="editor-tags"><TagPicker spaceId={entry.spaceId} selected={entryTags} onChange={handleTagsChange} /></div>
           </div>
           <div className="editor-writing">
             {highlightedContent && <div ref={highlightRef} className="editor-highlight" aria-hidden="true">{highlightedContent}</div>}
             <textarea
               ref={textareaRef}
+              autoCapitalize="sentences"
+              autoCorrect="on"
               value={content}
-              disabled={closing}
-              onChange={(event) => updateContent(event.target.value)}
+              disabled={closing || uploadingImage}
+              onFocus={(event) => rememberSelection("content", event.currentTarget)}
+              onSelect={(event) => rememberSelection("content", event.currentTarget)}
+              onChange={(event) => {
+                const element = event.currentTarget;
+                const selection = { field: "content" as const, start: element.selectionStart, end: element.selectionEnd };
+                const inputType = (event.nativeEvent as InputEvent).inputType;
+                applyDraft(
+                  { ...draftRef.current, content: element.value },
+                  "content",
+                  selection,
+                  coalescibleInputKey("content", inputType),
+                );
+              }}
               onScroll={(event) => {
                 if (highlightRef.current) {
                   highlightRef.current.scrollTop = event.currentTarget.scrollTop;
@@ -480,8 +756,8 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
         </div>
       </div>
 
-      <button type="button" className="editor-preview-backdrop" data-open={previewOpen} onClick={closePreview} tabIndex={-1} aria-hidden="true" />
-      <aside id="entry-preview" className="editor-preview" data-open={previewOpen} aria-label="Markdown preview" aria-hidden={!previewOpen} inert={!previewOpen}>
+      <button type="button" className="editor-preview-backdrop" data-open={previewOpen} onClick={closePreview} tabIndex={-1} aria-hidden="true" inert={Boolean(readingEntry)} />
+      <aside id="entry-preview" className="editor-preview" data-open={previewOpen} aria-label="Markdown preview" aria-hidden={!previewOpen} inert={!previewOpen || Boolean(readingEntry)}>
         <div className="editor-preview-header">
           <div>
             <h2 className="editor-preview-heading">Preview</h2>
@@ -494,6 +770,15 @@ export default function EntryEditor({ entryId, onClose, onSaved, onDeleted }: Pr
           <Markdown content={content} />
         </div>
       </aside>
+
+      {readingEntry && (
+        <ReadingMode
+          entry={readingEntry}
+          tags={readingEntry.tags}
+          onBack={returnToEditor}
+          onExport={exportReadingEntry}
+        />
+      )}
 
       {pendingImport !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="import-title">

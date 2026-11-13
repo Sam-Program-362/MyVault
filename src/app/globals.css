@@ -151,6 +151,240 @@ mark {
   padding: 0 1px;
 }
 
+/* Dedicated, read-only entry view. The editor stays mounted beneath this layer so its history survives. */
+.reading-mode {
+  --reader-bg: var(--editor-bg);
+  --reader-fg: var(--editor-fg);
+  --reader-muted: var(--editor-muted);
+  --reader-line: var(--editor-line);
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--reader-bg);
+  color: var(--reader-fg);
+}
+
+.reader-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3.75rem;
+  padding: env(safe-area-inset-top, 0px) max(0.75rem, env(safe-area-inset-right, 0px)) 0 max(0.75rem, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--reader-line);
+}
+
+.reader-heading,
+.reader-actions,
+.reader-button {
+  display: flex;
+  align-items: center;
+}
+
+.reader-heading {
+  flex: none;
+  gap: 0.55rem;
+  color: var(--reader-muted);
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.reader-actions {
+  gap: 0.25rem;
+}
+
+.reader-button,
+.reader-small-button {
+  min-height: 44px;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0 0.65rem;
+  border: 1px solid transparent;
+  border-radius: min(var(--radius-ui), 0.55rem);
+  color: var(--reader-fg);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.reader-button:hover,
+.reader-small-button:hover:not(:disabled) {
+  background: var(--editor-hover);
+}
+
+.reader-button:disabled,
+.reader-small-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.reader-back {
+  border-color: var(--reader-line);
+}
+
+.reader-find {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem max(1rem, env(safe-area-inset-right, 0px)) 0.5rem max(1rem, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--reader-line);
+  background: var(--editor-subtle);
+  color: var(--reader-muted);
+  font-size: 0.78rem;
+}
+
+.reader-find input {
+  min-width: 8rem;
+  min-height: 40px;
+  flex: 1 1 12rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--reader-line);
+  border-radius: min(var(--radius-ui), 0.45rem);
+  outline: none;
+  background: var(--reader-bg);
+  color: var(--reader-fg);
+}
+
+.reader-find input:focus-visible {
+  border-color: var(--accent);
+}
+
+.reader-match-count {
+  min-width: 7rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.reader-small-button {
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-color: var(--reader-line);
+}
+
+.reader-no-matches {
+  color: var(--reader-muted);
+}
+
+.reader-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+.reader-document {
+  width: min(100%, 900px);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 2rem clamp(1.25rem, 5vw, 3.5rem) max(3rem, env(safe-area-inset-bottom, 0px));
+  overflow-wrap: anywhere;
+}
+
+.reader-cover {
+  display: block;
+  width: 100%;
+  max-height: min(32vh, 320px);
+  margin: 0 0 1.25rem;
+  border-radius: min(var(--radius-ui), 0.9rem);
+  object-fit: cover;
+}
+
+.reader-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+
+.reader-chip {
+  padding: 0.22rem 0.6rem;
+  border: 1px solid var(--reader-line);
+  border-radius: 999px;
+  color: var(--reader-muted);
+  font-size: 0.72rem;
+}
+
+.reader-title {
+  margin: 0;
+  font-size: clamp(1.8rem, 5vw, 2.5rem);
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+}
+
+.reader-dates {
+  margin: 0.55rem 0 2rem;
+  color: var(--reader-muted);
+  font-size: 0.75rem;
+}
+
+.reader-markdown {
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.reader-markdown img {
+  max-width: 100%;
+}
+
+.reader-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.reader-status {
+  position: absolute;
+  z-index: 1;
+  right: 1rem;
+  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  max-width: min(90vw, 36rem);
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--reader-bg) 92%, var(--reader-fg));
+  color: var(--reader-fg);
+  font-size: 0.78rem;
+  pointer-events: none;
+}
+
+@media (max-width: 520px) {
+  .reader-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding-top: max(4px, env(safe-area-inset-top, 0px));
+    padding-bottom: 0.25rem;
+  }
+
+  .reader-heading {
+    min-height: 40px;
+  }
+
+  .reader-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .reader-button {
+    flex: 1 1 auto;
+    padding-inline: 0.35rem;
+  }
+
+  .reader-button span {
+    font-size: 0.72rem;
+  }
+
+  .reader-document {
+    padding-top: 1.25rem;
+  }
+}
+
 /* Markdown content styling */
 .md-body h1,
 .md-body h2,
@@ -210,10 +444,31 @@ mark {
   color: var(--accent);
   text-decoration: underline;
 }
+.md-body img {
+  max-width: 100%;
+  max-height: 36rem;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.65rem;
+  margin: 0.75em 0;
+}
+.md-image-fallback {
+  display: inline-block;
+  color: var(--editor-muted, #74736d);
+  border: 1px dashed color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 0.4rem;
+  padding: 0.2em 0.5em;
+  font-size: 0.9em;
+}
 .md-body hr {
   border: none;
   border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
   margin: 1em 0;
+}
+.md-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 .md-body table {
   border-collapse: collapse;
@@ -484,6 +739,20 @@ mark {
   padding: 1rem clamp(1.25rem, 4vw, 3.5rem) 0;
 }
 
+.editor-history-controls {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+  margin: -0.25rem 0 0.25rem;
+}
+
+.editor-history-controls .editor-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .editor-title {
   display: block;
   width: 100%;
@@ -738,6 +1007,29 @@ mark {
   }
 }
 
+@media (max-width: 430px) {
+  .editor-toolbar {
+    flex-wrap: wrap;
+    min-height: 0;
+    row-gap: 0;
+    padding-top: max(4px, env(safe-area-inset-top, 0px));
+    padding-bottom: 4px;
+  }
+
+  .editor-toolbar-start {
+    flex: 0 0 100%;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .editor-toolbar-actions {
+    flex: 0 0 100%;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+}
+
 @media (max-width: 400px) {
   .editor-save-status span {
     position: absolute;
@@ -751,33 +1043,44 @@ mark {
 
 @media (max-width: 352px) {
   .editor-toolbar {
-    padding-right: 4px;
-    padding-left: 4px;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    justify-content: flex-start;
+    gap: 0;
+    min-height: 0;
+    height: auto;
+    padding: env(safe-area-inset-top, 0px) 4px 4px;
   }
 
   .editor-toolbar-start {
-    position: relative;
-    gap: 0;
+    flex: 0 0 100%;
+    width: 100%;
+    min-height: 44px;
+    gap: 0.25rem;
   }
 
-  /* Keep the save indicator available without overlapping adjacent touch targets. */
+  .editor-toolbar-actions {
+    flex: 0 0 100%;
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .editor-save-status {
-    position: absolute;
-    z-index: 1;
-    top: 0;
-    left: 32px;
+    position: static;
+    flex: none;
     pointer-events: none;
   }
 
   .editor-view-toggle {
     margin: 0;
   }
-}
 
-@media (pointer: coarse) and (max-width: 352px) {
-  .editor-icon-button,
-  .editor-view-toggle .editor-icon-button {
+  .editor-toolbar .editor-icon-button,
+  .editor-toolbar .editor-view-toggle .editor-icon-button {
     width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 

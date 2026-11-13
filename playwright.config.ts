@@ -5,7 +5,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000";
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
-  reporter: "list",
+  reporter: process.env.GITHUB_ACTIONS === "true" ? [["list"], ["github"]] : "list",
   use: {
     baseURL,
     trace: "retain-on-failure",

@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+const sharedMarkdownFixture = readFileSync("tests/fixtures/markdown-compatibility.md", "utf8");
 
 const now = "2026-10-28T00:00:00.000Z";
 const reusableTag = { id: "tag-1", name: "Ideas", color: "#8b5cf6", textColor: "#ffffff", reusable: true, createdAt: now };
@@ -28,9 +31,9 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
   let failedField: string | null = null;
   let fieldFailuresRemaining = 0;
   let uploadDelay = 0;
-  let tagCreateDelay = 0;
   let deleteFailuresRemaining = 0;
   let patchDelay = 80;
+  let patchResponseGate: Promise<void> | null = null;
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -43,12 +46,7 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
     }
     if (pathname === "/api/spaces") return json(spaces);
     if (pathname === "/api/tags") {
-      if (method === "POST") {
-        if (tagCreateDelay) await new Promise((resolve) => setTimeout(resolve, tagCreateDelay));
-        const tag = { ...reusableTag, ...request.postDataJSON(), id: `tag-${tags.length + 1}` };
-        tags.push(tag);
-        return json(tag, 201);
-      }
+      if (method === "POST") return json({ error: "Unicode 15.1 tag identity is not yet enforceable on both databases." }, 409);
       return json(tags);
     }
     if (pathname === "/api/entries") {
@@ -70,8 +68,10 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
       if (method === "PATCH") {
         const patch = request.postDataJSON() as Record<string, unknown>;
         patches.push(patch);
-        // Exercise closing while a save is still in flight.
+        // A controlled gate exercises close-time flushing while the PATCH response is pending.
         await new Promise((resolve) => setTimeout(resolve, patchDelay));
+        const heldResponse = patchResponseGate;
+        if (heldResponse) await heldResponse;
         if (draftFailuresRemaining > 0 && "content" in patch) {
           draftFailuresRemaining -= 1;
           return json({ error: "Temporary save failure" }, 500);
@@ -96,18 +96,26 @@ async function mockVault(page: Page, mode: "light" | "dark" = "dark", entriesLis
     }
     if (pathname === "/api/upload") {
       if (uploadDelay) await new Promise((resolve) => setTimeout(resolve, uploadDelay));
-      return json({ url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL6WQAAAABJRU5ErkJggg==" }, 201);
+      return json({ url: "/api/media/11111111-1111-4111-8111-111111111111" }, 201);
+    }
+    if (pathname === "/api/media" && method === "POST") {
+      if (uploadDelay) await new Promise((resolve) => setTimeout(resolve, uploadDelay));
+      return json({ id: "11111111-1111-4111-8111-111111111111", url: "/api/media/11111111-1111-4111-8111-111111111111", mimeType: "image/png", byteSize: 68 }, 201);
     }
     return json({ error: `Unexpected ${method} ${pathname}` }, 404);
   });
   return {
-    entries, patches, settings,
+    entries, patches, settings, tags,
     failDrafts: (count: number) => { draftFailuresRemaining = count; },
     failField: (field: string, count: number) => { failedField = field; fieldFailuresRemaining = count; },
     delayUpload: (milliseconds: number) => { uploadDelay = milliseconds; },
-    delayTagCreation: (milliseconds: number) => { tagCreateDelay = milliseconds; },
     failDeletes: (count: number) => { deleteFailuresRemaining = count; },
     delayPatches: (milliseconds: number) => { patchDelay = milliseconds; },
+    holdPatchResponses: () => {
+      let release!: () => void;
+      patchResponseGate = new Promise<void>((resolve) => { release = resolve; });
+      return () => { patchResponseGate = null; release(); };
+    },
   };
 }
 
@@ -116,6 +124,35 @@ async function openNewEntry(page: Page) {
   await page.getByRole("button", { name: /Notes/ }).first().click();
   await page.getByRole("button", { name: "New entry" }).click();
   await expect(page.getByLabel("Entry content")).toBeVisible();
+}
+
+async function assertToolbarControlsReachable(page: Page, viewportWidth: number, viewportHeight: number) {
+  const buttons = await page.locator(".editor-toolbar button").all();
+  const boxes = [];
+  for (const button of buttons) {
+    await expect(button).toBeVisible();
+    await expect(button).toBeEnabled();
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(viewportWidth);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewportHeight);
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    boxes.push(box!);
+    await button.focus();
+    await expect(button).toBeFocused();
+  }
+  for (let left = 0; left < boxes.length; left++) {
+    for (let right = left + 1; right < boxes.length; right++) {
+      const a = boxes[left];
+      const b = boxes[right];
+      const overlaps = a.x < b.x + b.width - 0.5 && a.x + a.width > b.x + 0.5 &&
+        a.y < b.y + b.height - 0.5 && a.y + a.height > b.y + 0.5;
+      expect(overlaps, `toolbar buttons ${left} and ${right} overlap`).toBe(false);
+    }
+  }
 }
 
 test.describe("phone writing experience", () => {
@@ -135,6 +172,73 @@ test.describe("phone writing experience", () => {
       expect(box!.x + box!.width).toBeLessThanOrEqual(320);
       expect(box!.height).toBeGreaterThanOrEqual(44);
     }
+  });
+
+  test("Undo and Redo controls are reachable with touch-sized targets", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    const title = page.getByLabel("Entry title");
+    await title.fill("Mobile draft");
+    const undo = page.getByRole("button", { name: "Undo" });
+    const redo = page.getByRole("button", { name: "Redo" });
+    await undo.scrollIntoViewIfNeeded();
+    const undoBox = await undo.boundingBox();
+    expect(undoBox!.x).toBeGreaterThanOrEqual(0);
+    expect(undoBox!.x + undoBox!.width).toBeLessThanOrEqual(390);
+    expect(undoBox!.height).toBeGreaterThanOrEqual(44);
+    await undo.click();
+    await expect(title).toHaveValue("Untitled entry");
+    await redo.click();
+    await expect(title).toHaveValue("Mobile draft");
+  });
+
+  test("inserts an uploaded image at the selected range with filename alt text and one undo step", async ({ page }) => {
+    const vault = await mockVault(page);
+    await openNewEntry(page);
+    const content = page.getByLabel("Entry content");
+    const original = "prefix selected suffix";
+    const inserted = "prefix ![trip photo 01](/api/media/11111111-1111-4111-8111-111111111111) suffix";
+    vault.delayPatches(0);
+    const releasePatches = vault.holdPatchResponses();
+    const imagePatchRequest = page.waitForRequest((request) =>
+      request.method() === "PATCH" && request.url().includes("/api/entries/") && request.postDataJSON()?.content === inserted,
+    );
+    const imagePatchResponse = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "PATCH" && request.url().includes("/api/entries/") &&
+        request.postDataJSON()?.content === inserted && response.status() === 200;
+    });
+    await content.fill(original);
+    await content.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(7, 15));
+    await page.getByRole("button", { name: "Insert image at the cursor" }).click();
+    await page.locator('input[type="file"][accept="image/png,image/jpeg,image/gif,image/webp"]').setInputFiles({
+      name: "trip_photo-01.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"),
+    });
+    await expect(content).toHaveValue(inserted);
+    const cursor = inserted.indexOf(" suffix");
+    await expect.poll(() => content.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(cursor);
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(content).toHaveValue(original);
+    await page.getByRole("button", { name: "Redo" }).click();
+    await expect(content).toHaveValue(inserted);
+    try {
+      await page.getByRole("button", { name: "Close editor" }).click();
+      const request = await imagePatchRequest;
+      expect(request.postDataJSON()).toMatchObject({ content: inserted });
+      // The mock only commits state when the PATCH response is released. The editor must
+      // remain open until the close-time flush has received that successful response.
+      expect(vault.entries[0].content).toBe("");
+      await expect(page.locator(".entry-editor")).toBeVisible();
+    } finally {
+      releasePatches();
+    }
+    const response = await imagePatchResponse;
+    expect(response.status()).toBe(200);
+    await expect(page.locator(".entry-editor")).toBeHidden();
+    expect(vault.entries[0].content).toBe(inserted);
+    expect(vault.patches.filter((patch) => typeof patch.content === "string").at(-1)?.content).toBe(inserted);
   });
 
   test("uses the whole page and opens a right-hand preview without losing the draft", async ({ page }) => {
@@ -185,6 +289,116 @@ test.describe("phone writing experience", () => {
     await expect(page.getByLabel("Entry content")).toHaveValue("Saved even when closing immediately");
   });
 
+  test("the shared GFM fixture renders in preview and the long read-only view scrolls on a phone", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mockVault(page);
+    await openNewEntry(page);
+    const longFixture = `${sharedMarkdownFixture}${"\n\nA long scrolling paragraph remains readable across the viewport.".repeat(80)}\n\nLast scroll marker.`;
+    await page.getByLabel("Entry content").fill(longFixture);
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    const preview = page.getByRole("complementary", { name: "Markdown preview" });
+    await expect(preview.getByRole("heading", { name: "Shared Markdown compatibility fixture" })).toBeVisible();
+    await expect(preview.getByRole("table")).toBeVisible();
+    await expect(preview.getByText("completed task")).toBeVisible();
+    await expect(preview.getByText("emphasis", { exact: true })).toBeVisible();
+    await expect(preview.getByText("inline code", { exact: true })).toBeVisible();
+    await expect(preview.locator(".md-body ol > li")).toHaveCount(2);
+    await expect(preview.locator(".md-body ul ul > li")).toHaveCount(1);
+    await expect(preview.locator("del")).toHaveText("strikethrough");
+    await expect(preview.getByRole("link", { name: "link" })).toHaveAttribute("href", "https://example.org/docs");
+    await expect(preview.getByRole("link", { name: /plain-url/ })).toHaveAttribute("href", "https://example.org/plain-url");
+    await expect(preview.getByText("fenced code")).toBeVisible();
+    await expect(preview.getByText("A blockquote stays visible on both renderers.")).toBeVisible();
+    await expect(preview.getByText("Text before a missing image")).toBeVisible();
+    await expect(preview.getByText("text after it must remain visible.")).toBeVisible();
+    await page.getByRole("button", { name: "Close preview" }).click();
+
+    await page.getByRole("button", { name: "Reading mode" }).click();
+    const reader = page.getByRole("main", { name: "Reading mode" });
+    await expect(reader.getByRole("heading", { name: "Untitled entry" })).toBeVisible();
+    await expect(reader.getByRole("heading", { name: "Shared Markdown compatibility fixture" })).toBeVisible();
+    await expect(reader.getByRole("table")).toBeVisible();
+    const scroll = reader.locator(".reader-scroll");
+    expect(await scroll.evaluate((element) => element.scrollHeight)).toBeGreaterThan(await scroll.evaluate((element) => element.clientHeight));
+    await scroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect(reader.getByText("Last scroll marker.")).toBeVisible();
+  });
+
+  test("Reading Mode searches without editing, copies the source, and exports one portable entry", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const vault = await mockVault(page);
+    const mediaId = "11111111-1111-4111-8111-111111111111";
+    await page.route(`**/api/media/${mediaId}`, (route) => route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"),
+    }));
+    await openNewEntry(page);
+    const source = `# Saved reader title\n\nOne needle and another **needle**.\n\nBefore ![saved](/api/media/${mediaId}) and ![missing](file:///missing/reader-image.png) after.`;
+    await page.getByLabel("Entry title").fill("Reader title");
+    await page.getByLabel("Entry content").fill(source);
+    await page.getByRole("button", { name: "Reading mode" }).click();
+    const reader = page.getByRole("main", { name: "Reading mode" });
+    await expect(reader.getByRole("heading", { name: "Reader title", exact: true })).toBeVisible();
+    await expect(reader.getByRole("heading", { name: "Saved reader title" })).toBeVisible();
+    await expect(reader.getByText("Before", { exact: false })).toBeVisible();
+    await expect(reader.getByText(/Image unavailable: missing/)).toBeVisible();
+    await expect(reader.getByText("after.", { exact: false })).toBeVisible();
+    expect(vault.entries).toHaveLength(1);
+    expect(vault.entries[0].content).toBe(source);
+
+    await reader.getByRole("button", { name: "Find in entry" }).click();
+    const query = reader.getByLabel("Find text in this entry");
+    await query.fill("needle");
+    await expect(reader.locator(".reader-match-count")).toHaveText("0 of 2 matches");
+    await reader.getByRole("button", { name: "Next match" }).click();
+    await expect(reader.locator(".reader-match-count")).toHaveText("1 of 2 matches");
+    await reader.getByRole("button", { name: "Next match" }).click();
+    await expect(reader.locator(".reader-match-count")).toHaveText("2 of 2 matches");
+    await query.fill("not-present");
+    await expect(reader.getByText("No matches found.")).toBeVisible();
+
+    await reader.getByRole("button", { name: "Copy original Markdown" }).click();
+    await expect(reader.getByRole("status").filter({ hasText: "Original Markdown copied." })).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(source);
+
+    const downloadPromise = page.waitForEvent("download");
+    await reader.getByRole("button", { name: "Export this entry" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe("myvault-Reader-title.myvault-entry.json");
+    const downloaded = JSON.parse(readFileSync((await download.path())!, "utf8"));
+    expect(downloaded).toMatchObject({
+      format: "myvault-entry", formatVersion: 1,
+      entry: { title: "Reader title", pinned: false, tags: [] },
+      space: { id: "space-1", name: "Notes" },
+    });
+    expect(downloaded.entry.content).toContain(`![saved](data:image/png;base64,`);
+    expect(downloaded.entry.content).toContain("file:///missing/reader-image.png");
+    expect(downloaded).not.toHaveProperty("settings");
+
+    await reader.getByRole("button", { name: "Return to editor" }).click();
+    await expect(page.getByLabel("Entry content")).toHaveValue(source);
+    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(page.getByLabel("Entry content")).toHaveValue("");
+    expect(vault.entries).toHaveLength(1);
+  });
+
+  test("Markdown images show a visible fallback without hiding neighboring text or external images", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    await page.route("**/api/media/22222222-2222-4222-8222-222222222222", (route) => route.fulfill({ status: 404, body: "Not found" }));
+    await page.route("https://example.org/image.png", (route) => route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64") }));
+    const content = page.getByLabel("Entry content");
+    await content.fill("Before ![missing local image](/api/media/22222222-2222-4222-8222-222222222222) after.\n![external](https://example.org/image.png)");
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    const preview = page.getByRole("complementary", { name: "Markdown preview" });
+    await expect(preview.getByText("[Image unavailable: missing local image]")).toBeVisible();
+    await expect(preview.getByText("Before", { exact: false })).toBeVisible();
+    await expect(preview.getByText("after.", { exact: false })).toBeVisible();
+    await expect(preview.locator('img[src="https://example.org/image.png"]')).toBeVisible();
+  });
+
   test("the writing page adapts when the mobile viewport becomes shorter", async ({ page }) => {
     await mockVault(page);
     await openNewEntry(page);
@@ -203,14 +417,7 @@ test.describe("phone writing experience", () => {
     await mockVault(page, "light");
     await openNewEntry(page);
     await expect(page.locator(".entry-editor")).toHaveCSS("background-color", "rgb(251, 250, 248)");
-    let previousRight = 0;
-    for (const button of await page.locator(".editor-toolbar button").all()) {
-      const box = await button.boundingBox();
-      expect(box!.x).toBeGreaterThanOrEqual(previousRight);
-      expect(box!.x + box!.width).toBeLessThanOrEqual(320);
-      expect(box!.width).toBeGreaterThanOrEqual(44);
-      previousRight = box!.x + box!.width;
-    }
+    await assertToolbarControlsReachable(page, 320, 568);
     await page.getByRole("button", { name: "Preview", exact: true }).click();
     await expect(page.getByRole("complementary", { name: "Markdown preview" })).toBeVisible();
     await page.keyboard.press("Escape");
@@ -227,13 +434,7 @@ test.describe("phone writing experience", () => {
     await page.getByRole("button", { name: "Close settings" }).click();
     await page.getByRole("button", { name: "New entry" }).click();
     await page.getByLabel("Entry content").waitFor();
-    let previousRight = 0;
-    for (const button of await page.locator(".editor-toolbar button").all()) {
-      const box = await button.boundingBox();
-      expect(box!.x).toBeGreaterThanOrEqual(previousRight);
-      expect(box!.x + box!.width).toBeLessThanOrEqual(320);
-      previousRight = box!.x + box!.width;
-    }
+    await assertToolbarControlsReachable(page, 320, 568);
   });
 });
 
@@ -291,6 +492,143 @@ test.describe("desktop editor", () => {
     await expect(preview).toBeHidden();
   });
 
+  test("renders representative GFM content in preview", async ({ page }) => {
+    await mockVault(page);
+    await page.route("https://example.com/image.png", (route) => route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"),
+    }));
+    await openNewEntry(page);
+    await page.getByLabel("Entry content").fill([
+      "# Heading", "", "- Parent", "  - Child", "- [x] Done", "", "> Quote", "",
+      "| Name | Value |", "| --- | --- |", "| One | Two |", "",
+      "```js", "const answer = 42;", "```", "", "[Safe link](https://example.com)",
+      "", "![Example image](https://example.com/image.png)",
+    ].join("\n"));
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    const preview = page.getByRole("complementary", { name: "Markdown preview" });
+    await expect(preview.getByRole("heading", { name: "Heading" })).toBeVisible();
+    await expect(preview.locator("li ul li")).toHaveText("Child");
+    await expect(preview.getByRole("checkbox")).toBeChecked();
+    await expect(preview.locator("blockquote")).toContainText("Quote");
+    await expect(preview.getByRole("cell", { name: "Two" })).toBeVisible();
+    await expect(preview.locator("pre code")).toContainText("const answer = 42;");
+    await expect(preview.getByRole("link", { name: "Safe link" })).toHaveAttribute("href", "https://example.com");
+    const externalImage = preview.getByRole("img", { name: "Example image" });
+    await expect(externalImage).toHaveAttribute("src", "https://example.com/image.png");
+    await expect.poll(() => externalImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  });
+
+  test("undo and redo cross title and body with keyboard and visible controls", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    const title = page.getByLabel("Entry title");
+    const content = page.getByLabel("Entry content");
+    const undo = page.getByRole("button", { name: "Undo" });
+    const redo = page.getByRole("button", { name: "Redo" });
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeDisabled();
+
+    await title.fill("Title draft");
+    await content.fill("Body draft");
+    await expect(undo).toBeEnabled();
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("Body draft");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Z");
+    await expect(title).toHaveValue("Untitled entry");
+    await page.keyboard.press("Control+Y");
+    await expect(title).toHaveValue("Title draft");
+    await undo.click();
+    await expect(title).toHaveValue("Untitled entry");
+    await redo.click();
+    await expect(title).toHaveValue("Title draft");
+
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.locator(".entry-editor")).toBeHidden();
+
+    await openNewEntry(page);
+    await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
+  test("typing coalesces, selection returns on undo, and imported text is one step", async ({ page }) => {
+    await mockVault(page);
+    await openNewEntry(page);
+    const content = page.getByLabel("Entry content");
+    await content.focus();
+    await page.keyboard.type("hello");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("hello");
+
+    await content.fill("abcdef");
+    await page.waitForTimeout(800); // Separate this selection replacement from prior typing coalescence.
+    await content.evaluate((element: HTMLTextAreaElement) => {
+      element.setSelectionRange(2, 4);
+      element.dispatchEvent(new Event("select", { bubbles: true }));
+    });
+    await page.keyboard.type("XY");
+    await expect(content).toHaveValue("abXYef");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("abcdef");
+    await expect.poll(() => content.evaluate((element: HTMLTextAreaElement) => [element.selectionStart, element.selectionEnd])).toEqual([2, 4]);
+
+    await content.fill("");
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Import text or Markdown file" }).click();
+    await (await chooser).setFiles({ name: "imported.md", mimeType: "text/markdown", buffer: Buffer.from("# Imported\nText") });
+    await expect(content).toHaveValue("# Imported\nText");
+    await expect(page.getByLabel("Entry title")).toHaveValue("imported");
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await expect(page.getByLabel("Entry title")).toHaveValue("Untitled entry");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("# Imported\nText");
+    await expect(page.getByLabel("Entry title")).toHaveValue("imported");
+  });
+
+  test("autosave during undo and redo retains the newest draft and retries failures", async ({ page }) => {
+    const vault = await mockVault(page);
+    vault.delayPatches(250);
+    await openNewEntry(page);
+    const content = page.getByLabel("Entry content");
+    const firstPatch = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/api/entries/"));
+    await content.fill("saved after redo");
+    await firstPatch;
+    await page.keyboard.press("Control+Z");
+    await expect(content).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(content).toHaveValue("saved after redo");
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.locator(".entry-editor")).toBeHidden();
+    expect(vault.entries[0].content).toBe("saved after redo");
+  });
+
+  test("save failure keeps the undo history and latest draft available for retry", async ({ page }) => {
+    const vault = await mockVault(page);
+    vault.failDrafts(2);
+    await openNewEntry(page);
+    const failedPatch = page.waitForRequest((request) => request.method() === "PATCH" && request.url().includes("/api/entries/"));
+    await page.getByLabel("Entry content").fill("retry this undoable draft");
+    await failedPatch;
+    await expect(page.getByRole("status")).toHaveText("Couldn’t save");
+    await page.keyboard.press("Control+Z");
+    await expect(page.getByLabel("Entry content")).toHaveValue("");
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.getByRole("status")).toHaveText("Couldn’t save");
+    await expect(page.getByRole("button", { name: "Redo" })).toBeEnabled();
+    await page.getByRole("button", { name: "Redo" }).click();
+    await expect(page.getByLabel("Entry content")).toHaveValue("retry this undoable draft");
+    await page.getByRole("button", { name: "Close editor" }).click();
+    await expect(page.locator(".entry-editor")).toBeHidden();
+    expect(vault.entries[0].content).toBe("retry this undoable draft");
+  });
+
   test("find and replace stays editable and treats special characters literally", async ({ page }) => {
     const vault = await mockVault(page);
     await openNewEntry(page);
@@ -328,11 +666,14 @@ test.describe("desktop editor", () => {
     await page.getByRole("button", { name: "Pin entry" }).click();
     await expect(page.getByRole("button", { name: "Unpin entry" })).toBeVisible();
     await page.getByLabel("Add tag").focus();
-    await page.locator(".tag-picker-menu").getByRole("button", { name: "Ideas" }).click();
+    await page.locator(".tag-picker-menu").getByRole("button", { name: /Ideas.*Global/ }).click();
     await expect(page.getByRole("button", { name: "Remove Ideas tag" })).toBeVisible();
+    const pill = page.getByRole("button", { name: "Remove Ideas tag" }).locator("..");
+    await expect(pill).toHaveCSS("border-top-width", "1px");
+    await expect(pill).toHaveCSS("border-top-color", "rgb(139, 92, 246)");
 
     await page.locator('input[accept="image/*"]').setInputFiles({
-      name: "cover.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL6WQAAAABJRU5ErkJggg==", "base64"),
+      name: "cover.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"),
     });
     await expect(page.getByRole("button", { name: "Remove cover image" })).toBeVisible();
     await page.getByRole("button", { name: "Remove cover image" }).click();
@@ -366,7 +707,7 @@ test.describe("desktop editor", () => {
     vault.delayUpload(700);
     await openNewEntry(page);
     await page.locator('input[accept="image/*"]').setInputFiles({
-      name: "cover.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL6WQAAAABJRU5ErkJggg==", "base64"),
+      name: "cover.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==", "base64"),
     });
     await expect(page.getByRole("button", { name: "Close editor" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Delete entry" })).toBeDisabled();
@@ -374,21 +715,44 @@ test.describe("desktop editor", () => {
     await expect(page.getByRole("button", { name: "Close editor" })).toBeEnabled();
     await page.getByRole("button", { name: "Close editor" }).click();
     await expect(page.locator(".entry-editor")).toBeHidden();
-    expect(vault.entries[0].coverImage).toMatch(/^data:image/);
+    expect(vault.entries[0].coverImage).toMatch(/^\/api\/media\/[0-9a-f-]{36}$/i);
   });
 
-  test("waits for a new tag to be created and attached before closing", async ({ page }) => {
+  test("scope-qualified suggestions stay in the entry Space and creation fails closed", async ({ page }) => {
     const vault = await mockVault(page);
-    vault.delayTagCreation(700);
+    vault.tags.push({ ...reusableTag, id: "local-a", name: "Local A", scope: "local", ownerSpaceId: "space-1" } as typeof reusableTag);
+    vault.tags.push({ ...reusableTag, id: "local-b", name: "Local B", scope: "local", ownerSpaceId: "space-2" } as typeof reusableTag);
     await openNewEntry(page);
-    await page.getByLabel("Add tag").fill("Slow tag");
-    await page.getByRole("button", { name: "Create & add tag" }).click();
-    await expect(page.getByRole("button", { name: "Close editor" })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "Remove Slow tag tag" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Close editor" })).toBeEnabled();
-    await page.getByRole("button", { name: "Close editor" }).click();
-    await expect(page.locator(".entry-editor")).toBeHidden();
-    expect(vault.entries[0].tags.map((tag) => tag.name)).toEqual(["Slow tag"]);
+    await page.getByLabel("Add tag").focus();
+    const menu = page.locator(".tag-picker-menu");
+    await expect(menu.getByRole("button", { name: /Local A/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /Local B/ })).toHaveCount(0);
+    await page.getByLabel("Add tag").fill("New local");
+    const create = page.getByRole("button", { name: /Create & add tag/ });
+    await expect(page.getByLabel("Local to this Space")).not.toBeChecked();
+    await expect(page.getByLabel("Global", { exact: true })).not.toBeChecked();
+    await expect(create).toBeDisabled();
+    await page.getByLabel("Local to this Space").check();
+    await expect(create).toBeDisabled();
+    await expect(menu.getByText(/Creation is paused until both databases/)).toBeVisible();
+    expect(vault.tags.some((tag) => tag.name === "New local")).toBe(false);
+    expect(vault.entries[0].tags).toEqual([]);
+  });
+
+  test("Global and applicable Local tags remain attachable; reusable is independent", async ({ page }) => {
+    const vault = await mockVault(page);
+    vault.tags[0].reusable = false;
+    vault.tags.push({ ...reusableTag, id: "local-a", name: "Local A", scope: "local", ownerSpaceId: "space-1", reusable: true } as typeof reusableTag);
+    vault.tags.push({ ...reusableTag, id: "local-b", name: "Local B", scope: "local", ownerSpaceId: "space-2", reusable: true } as typeof reusableTag);
+    await openNewEntry(page);
+    await page.getByLabel("Add tag").focus();
+    const menu = page.locator(".tag-picker-menu");
+    await expect(menu.getByRole("button", { name: /Ideas.*Global/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /Local A.*Local/ })).toBeVisible();
+    await expect(menu.getByRole("button", { name: /Local B.*Local/ })).toHaveCount(0);
+    await menu.getByRole("button", { name: /Local A.*Local/ }).click();
+    await expect(page.getByRole("button", { name: "Remove Local A tag" })).toBeVisible();
+    expect(vault.tags.find((tag) => tag.id === "tag-1")?.reusable).toBe(false);
   });
 
   test("a failed delete does not discard an unsaved draft", async ({ page }) => {
@@ -463,7 +827,7 @@ test.describe("desktop editor", () => {
     const vault = await mockVault(page, "light");
     Object.assign(vault.settings, {
       accent: "#10b981", fontSize: "lg", radius: "none", wallpaperEnabled: true,
-      wallpaperUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL6WQAAAABJRU5ErkJggg==",
+      wallpaperUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
       wallpaperOpacity: 68, wallpaperBlur: 3,
     });
     await page.goto("/");
