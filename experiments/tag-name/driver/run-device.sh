@@ -4,7 +4,7 @@
 # contaminate the platform test.
 set -uo pipefail
 root=experiments/tag-name/driver
-runner_temp=${RUNNER_TEMP:-/tmp}
+runner_temp=${TAG_PROOF_EVIDENCE_DIR:-${RUNNER_TEMP:-/tmp}}
 mkdir -p "$runner_temp"
 status=0
 read -r -a classes <<< "${PROOF_CLASSES:-PlatformSqlProofTest BundledDriverProofTest}"
