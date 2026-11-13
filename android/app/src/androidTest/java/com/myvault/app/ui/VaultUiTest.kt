@@ -184,6 +184,7 @@ class VaultUiTest {
         val redo = compose.onNodeWithContentDescription("Redo")
         redo.assertIsEnabled().performClick()
         title.assertTextEquals("Title draft")
+        title.performClick()
         title.performKeyInput {
             keyDown(Key.CtrlLeft)
             keyDown(Key.ShiftLeft)
@@ -192,16 +193,24 @@ class VaultUiTest {
             keyUp(Key.CtrlLeft)
         }
         body.assertTextEquals("Body draft")
+        body.performClick()
         body.performKeyInput {
             keyDown(Key.CtrlLeft)
             pressKey(Key.Z)
             keyUp(Key.CtrlLeft)
         }
+        compose.waitUntil(5_000) {
+            body.fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty()
+        }
         body.assertEditableText("")
+        title.performClick()
         title.performKeyInput {
             keyDown(Key.CtrlLeft)
             pressKey(Key.Y)
             keyUp(Key.CtrlLeft)
+        }
+        compose.waitUntil(5_000) {
+            body.fetchSemanticsNode().config[SemanticsProperties.EditableText].text == "Body draft"
         }
         body.assertTextEquals("Body draft")
         compose.onNodeWithContentDescription("Close editor").performClick()
