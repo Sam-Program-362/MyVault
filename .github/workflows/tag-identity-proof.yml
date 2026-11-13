@@ -51,39 +51,43 @@ jobs:
           packages: 'platform-tools'
       - name: Observe clean API 29 emulator without SQL workload
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        env:
+          TAG_PROOF_EVIDENCE_DIR: ${{ runner.temp }}
         with:
           api-level: 29
           target: google_apis
           arch: x86_64
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -uo pipefail
             export TAG_PROOF_EVIDENCE_DIR='${{ runner.temp }}'
-            mkdir -p "$TAG_PROOF_EVIDENCE_DIR"
-            adb logcat -c
+            evidence_dir="${TAG_PROOF_EVIDENCE_DIR:-${RUNNER_TEMP:-/tmp}}"
+            mkdir -p "$evidence_dir" || { echo "Could not create evidence directory: $evidence_dir"; exit 2; }
+            echo "Idle baseline evidence directory: $evidence_dir"
+            adb logcat -c || echo "WARN: adb logcat -c returned $?"
             {
               echo "host_time_utc=$(date -u +%FT%TZ)"
-              echo "api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
-              echo "release=$(adb shell getprop ro.build.version.release | tr -d '\r')"
-              echo "fingerprint=$(adb shell getprop ro.build.fingerprint | tr -d '\r')"
-              echo "abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
-              adb shell cat /proc/meminfo
-              adb shell dumpsys meminfo system_server
-            } | tee "$TAG_PROOF_EVIDENCE_DIR/tag-proof-api29-idle-device.txt"
-            adb logcat -b all -v threadtime > "$TAG_PROOF_EVIDENCE_DIR/tag-proof-api29-idle-live.log" 2>&1 &
+              echo "api=$(adb shell getprop ro.build.version.sdk | tr -d '\r' || true)"
+              echo "release=$(adb shell getprop ro.build.version.release | tr -d '\r' || true)"
+              echo "fingerprint=$(adb shell getprop ro.build.fingerprint | tr -d '\r' || true)"
+              echo "abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r' || true)"
+              adb shell cat /proc/meminfo || true
+              adb shell dumpsys meminfo system_server || true
+            } | tee "$evidence_dir/tag-proof-api29-idle-device.txt"
+            adb logcat -b all -v threadtime > "$evidence_dir/tag-proof-api29-idle-live.log" 2>&1 &
             logcat_pid=$!
             for sample in $(seq 1 30); do
               {
                 echo "sample=$sample host_time_utc=$(date -u +%FT%TZ)"
-                adb shell dumpsys meminfo system_server | grep -E 'Applications Memory Usage|Dalvik Heap|Native Heap|TOTAL PSS|TOTAL RSS|TOTAL SWAP|Objects' || true
-              } >> "$TAG_PROOF_EVIDENCE_DIR/tag-proof-api29-idle-system-memory.txt"
+                adb shell dumpsys meminfo system_server 2>&1 | grep -E 'Applications Memory Usage|Dalvik Heap|Native Heap|TOTAL PSS|TOTAL RSS|TOTAL SWAP|Objects' || true
+              } >> "$evidence_dir/tag-proof-api29-idle-system-memory.txt"
               sleep 10
             done
             kill "$logcat_pid" 2>/dev/null || true
             wait "$logcat_pid" 2>/dev/null || true
-            adb logcat -d -b crash -v threadtime > "$TAG_PROOF_EVIDENCE_DIR/tag-proof-api29-idle-crash.log" 2>&1 || true
-            if grep -q 'FATAL EXCEPTION IN SYSTEM PROCESS' "$TAG_PROOF_EVIDENCE_DIR/tag-proof-api29-idle-live.log"; then
-              grep -n -A50 -B5 'FATAL EXCEPTION IN SYSTEM PROCESS' "$TAG_PROOF_EVIDENCE_DIR/tag-proof-api29-idle-live.log" || true
+            adb logcat -d -b crash -v threadtime > "$evidence_dir/tag-proof-api29-idle-crash.log" 2>&1 || true
+            if grep -q 'FATAL EXCEPTION IN SYSTEM PROCESS' "$evidence_dir/tag-proof-api29-idle-live.log"; then
+              grep -n -A50 -B5 'FATAL EXCEPTION IN SYSTEM PROCESS' "$evidence_dir/tag-proof-api29-idle-live.log" || true
               echo '::error title=Idle API 29 emulator::System process crashed during idle baseline.'
               exit 1
             fi
