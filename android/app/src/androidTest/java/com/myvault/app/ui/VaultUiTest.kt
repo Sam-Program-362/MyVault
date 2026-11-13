@@ -123,6 +123,7 @@ class VaultUiTest {
         compose.waitUntil(5_000) {
             compose.onAllNodesWithText("Choose tag scope").fetchSemanticsNodes().isNotEmpty()
         }
+        closeSoftKeyboard()
         compose.onNodeWithText("Choose tag scope").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Local tag").assertIsDisplayed()
         compose.onNodeWithText("Global tag").performScrollTo().assertIsDisplayed()
