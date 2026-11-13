@@ -59,6 +59,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+        buildConfigField("boolean", "TAG_STAGING_ENABLED", "false")
     }
 
     signingConfigs {
@@ -108,6 +109,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {

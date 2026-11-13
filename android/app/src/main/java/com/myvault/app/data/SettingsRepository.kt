@@ -1,6 +1,7 @@
 package com.myvault.app.data
 
 import android.content.Context
+import com.myvault.app.BuildConfig
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -65,6 +66,15 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.data.map { prefs ->
             if (prefs[Keys.ENTRY_LAYOUT] == "list") "list" else "cards"
         }
+
+    companion object {
+        /** BuildConfig is authoritative; the default is false and nothing is persisted or backed up. */
+        val tagStagingEnabled: Boolean
+            get() = isTagStagingEnabled(BuildConfig.TAG_STAGING_ENABLED)
+
+        /** Nullable so missing configuration is explicitly fail-closed in focused tests. */
+        internal fun isTagStagingEnabled(buildConfigEnabled: Boolean?): Boolean = buildConfigEnabled == true
+    }
 
     suspend fun updateEntryLayout(layout: String) {
         context.dataStore.edit { prefs ->
