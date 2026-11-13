@@ -1,8 +1,12 @@
 package com.myvault.driverproof
 
+import android.app.ActivityManager
 import android.database.sqlite.SQLiteDatabase
 import android.os.Build
+import android.os.Debug
 import android.util.Log
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONArray
@@ -19,7 +23,10 @@ class PlatformSqlProofTest {
     @Test(timeout = 300_000) fun platformSqlComputesSharedUnicodeKeys() {
         val assets = InstrumentationRegistry.getInstrumentation().context.assets
         fun read(name: String) = assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val rows = JSONObject(read("ucd-15.1.json")).getJSONArray("rows")
+        val ucdJsonText = read("ucd-15.1.json")
+        val ucdJson = JSONObject(ucdJsonText)
+        val rows = ucdJson.getJSONArray("rows")
+        val compositions = ucdJson.getJSONArray("compositions")
         val expected = JSONArray(read("expected-keys.json"))
         val fixture = JSONObject(read("tag-name-policy-vectors.json"))
         val inputs = mutableListOf<String>()
@@ -34,6 +41,38 @@ class PlatformSqlProofTest {
             for (j in 0 until tags.length()) inputs.add(tags.getJSONObject(j).getString("name"))
         }
         inputs.addAll(listOf("", " \u00a0\t", "Café"))
+        val codePointLengths = inputs.map { it.codePointCount(0, it.length) }
+        val runtime = Runtime.getRuntime()
+        val memoryInfo = ActivityManager.MemoryInfo()
+        (InstrumentationRegistry.getInstrumentation().targetContext.getSystemService(android.content.Context.ACTIVITY_SERVICE) as ActivityManager)
+            .getMemoryInfo(memoryInfo)
+        Log.i("MVSqlProof", "INPUT rows=${inputs.size} expected=${expected.length()} minCodePoints=${codePointLengths.minOrNull()} medianCodePoints=${codePointLengths.sorted()[codePointLengths.size / 2]} maxCodePoints=${codePointLengths.maxOrNull()} maxUtf8Bytes=${inputs.maxOf { it.toByteArray(Charsets.UTF_8).size }} ucdRows=${rows.length()} compositions=${compositions.length()} ucdJsonBytes=${ucdJsonText.toByteArray(Charsets.UTF_8).size}")
+        Log.i("MVSqlProof", "DEVICE totalRamKb=${memoryInfo.totalMem / 1024} availableRamKb=${memoryInfo.availMem / 1024} memoryLow=${memoryInfo.lowMemory} runtimeHeapMaxBytes=${runtime.maxMemory()} processPssKb=${Debug.getPss()} api=${Build.VERSION.SDK_INT}")
+
+        fun measured(label: String, query: () -> Unit): Long {
+            val running = AtomicBoolean(true)
+            val maxPssKb = AtomicLong(Debug.getPss().toLong())
+            val maxHeapBytes = AtomicLong(runtime.totalMemory() - runtime.freeMemory())
+            val sampler = Thread {
+                while (running.get()) {
+                    maxPssKb.updateAndGet { current -> maxOf(current, Debug.getPss().toLong()) }
+                    maxHeapBytes.updateAndGet { current -> maxOf(current, runtime.totalMemory() - runtime.freeMemory()) }
+                    try { Thread.sleep(100) } catch (_: InterruptedException) { break }
+                }
+            }.apply { name = "sql-proof-memory-sampler"; isDaemon = true; start() }
+            val started = System.nanoTime()
+            var elapsedMs = 0L
+            try {
+                query()
+            } finally {
+                elapsedMs = (System.nanoTime() - started) / 1_000_000
+                running.set(false)
+                sampler.join(2_000)
+                Log.i("MVSqlProof", "MEASURE $label elapsedMs=$elapsedMs maxPssKb=${maxPssKb.get()} maxJavaHeapUsedBytes=${maxHeapBytes.get()} finalPssKb=${Debug.getPss()} finalJavaHeapUsedBytes=${runtime.totalMemory() - runtime.freeMemory()}")
+            }
+            return elapsedMs
+        }
+
         SQLiteDatabase.create(null).use { db ->
             fun exec(sql: String) {
                 Log.i("MVSqlProof", "BEGIN SQL: $sql")
@@ -59,7 +98,6 @@ class PlatformSqlProofTest {
                     if (row.isNull(2)) insert.bindNull(3) else insert.bindString(3,row.getString(2))
                     insert.bindLong(4,row.getLong(3)); insert.executeInsert()
                 }
-                val compositions = JSONObject(read("ucd-15.1.json")).getJSONArray("compositions")
                 val compose = db.compileStatement("INSERT INTO compositions VALUES(?,?,?)")
                 for (i in 0 until compositions.length()) {
                     val row = compositions.getJSONArray(i)
@@ -70,14 +108,18 @@ class PlatformSqlProofTest {
                 db.setTransactionSuccessful()
             } finally { db.endTransaction() }
             Log.i("MVSqlProof", "END load Unicode data")
+            db.rawQuery("PRAGMA page_count", null).use { c -> check(c.moveToFirst()); Log.i("MVSqlProof", "DB pageCount=${c.getLong(0)}") }
+            db.rawQuery("PRAGMA page_size", null).use { c -> check(c.moveToFirst()); Log.i("MVSqlProof", "DB pageSizeBytes=${c.getLong(0)}") }
+            db.rawQuery("PRAGMA cache_size", null).use { c -> check(c.moveToFirst()); Log.i("MVSqlProof", "DB cacheSizePages=${c.getLong(0)}") }
+            Log.i("MVSqlProof", "SQLite connection pre-query PSS=${Debug.getPss()}KiB JavaHeapUsed=${runtime.totalMemory() - runtime.freeMemory()} bytes")
             exec(read("sqlite-proof-view.sql"))
-            Log.i("MVSqlProof", "BEGIN SQL: SELECT identity FROM keys ORDER BY id")
-            db.rawQuery("SELECT identity FROM keys ORDER BY id",null).use { cursor ->
-                assertEquals(expected.length(),cursor.count)
-                var i=0
-                while (cursor.moveToNext()) { assertEquals("input $i: ${inputs[i]}",expected.getString(i),cursor.getString(0)); i++ }
+            measured("expected-keys-query rows=${inputs.size}") {
+                db.rawQuery("SELECT identity FROM keys ORDER BY id",null).use { cursor ->
+                    assertEquals(expected.length(),cursor.count)
+                    var i=0
+                    while (cursor.moveToNext()) { assertEquals("input $i: ${inputs[i]}",expected.getString(i),cursor.getString(0)); i++ }
+                }
             }
-            Log.i("MVSqlProof", "END SQL: SELECT identity FROM keys ORDER BY id")
             fun benchmark(label: String, values: List<String>) {
                 val samples = mutableListOf<Long>()
                 repeat(1) {
@@ -88,9 +130,10 @@ class PlatformSqlProofTest {
                         values.forEachIndexed { i, name -> statement.bindLong(1, i.toLong()); statement.bindString(2, name); statement.executeInsert() }
                         db.setTransactionSuccessful()
                     } finally { db.endTransaction() }
-                    val started = System.nanoTime()
-                    db.rawQuery("SELECT identity FROM keys ORDER BY id", null).use { c -> while (c.moveToNext()) c.getString(0) }
-                    samples += (System.nanoTime() - started) / 1_000_000
+                    val elapsed = measured("$label rows=${values.size}") {
+                        db.rawQuery("SELECT identity FROM keys ORDER BY id", null).use { c -> while (c.moveToNext()) c.getString(0) }
+                    }
+                    samples += elapsed
                 }
                 Log.i("MVSqlProof", "BENCH $label elapsedMs=${samples.single()} sqlite-rows=${values.size}")
             }

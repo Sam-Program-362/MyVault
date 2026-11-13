@@ -1,5 +1,6 @@
 name: Tag identity research prototypes
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
@@ -37,6 +38,63 @@ jobs:
           set -o pipefail
           node --experimental-sqlite experiments/tag-name/sql-proof.mjs | tee "$RUNNER_TEMP/sql-proof.log"
           while IFS= read -r line; do echo "::notice title=SQL proof::$line"; done < "$RUNNER_TEMP/sql-proof.log"
+  api29-idle-emulator-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools'
+      - name: Observe clean API 29 emulator without SQL workload
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            mkdir -p "$RUNNER_TEMP"
+            adb logcat -c
+            {
+              echo "host_time_utc=$(date -u +%FT%TZ)"
+              echo "api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+              echo "release=$(adb shell getprop ro.build.version.release | tr -d '\r')"
+              echo "fingerprint=$(adb shell getprop ro.build.fingerprint | tr -d '\r')"
+              echo "abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
+              adb shell cat /proc/meminfo
+              adb shell dumpsys meminfo system_server
+            } | tee "$RUNNER_TEMP/tag-proof-api29-idle-device.txt"
+            adb logcat -b all -v threadtime > "$RUNNER_TEMP/tag-proof-api29-idle-live.log" 2>&1 &
+            logcat_pid=$!
+            for sample in $(seq 1 30); do
+              {
+                echo "sample=$sample host_time_utc=$(date -u +%FT%TZ)"
+                adb shell dumpsys meminfo system_server | grep -E 'Applications Memory Usage|Dalvik Heap|Native Heap|TOTAL PSS|TOTAL RSS|TOTAL SWAP|Objects' || true
+              } >> "$RUNNER_TEMP/tag-proof-api29-idle-system-memory.txt"
+              sleep 10
+            done
+            kill "$logcat_pid" 2>/dev/null || true
+            wait "$logcat_pid" 2>/dev/null || true
+            adb logcat -d -b crash -v threadtime > "$RUNNER_TEMP/tag-proof-api29-idle-crash.log" 2>&1 || true
+            if grep -q 'FATAL EXCEPTION IN SYSTEM PROCESS' "$RUNNER_TEMP/tag-proof-api29-idle-live.log"; then
+              grep -n -A50 -B5 'FATAL EXCEPTION IN SYSTEM PROCESS' "$RUNNER_TEMP/tag-proof-api29-idle-live.log" || true
+              echo '::error title=Idle API 29 emulator::System process crashed during idle baseline.'
+              exit 1
+            fi
+            echo 'No system-process fatal exception observed during the five-minute SQL-free baseline.'
+      - name: Upload idle-baseline system evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tag-proof-api29-idle-baseline
+          path: ${{ runner.temp }}/tag-proof-api29-idle-*
+          if-no-files-found: warn
+          retention-days: 14
   android-driver-proof:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -57,6 +115,7 @@ jobs:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
       - name: Build isolated proof APK
+        id: proof-build
         run: |
           set -o pipefail
           bash android/gradlew -p experiments/tag-name/driver --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee "$RUNNER_TEMP/driver-proof-build.log"
@@ -67,19 +126,22 @@ jobs:
       - name: Report native ABI sizes in proof APK
         run: python3 -c 'import zipfile; z=zipfile.ZipFile("experiments/tag-name/driver/app/build/outputs/apk/debug/app-debug.apk"); [print("::notice title=Native library::",i.filename,i.file_size,"bytes uncompressed") for i in z.infolist() if i.filename.endswith(".so")]'
       - name: Enable emulator acceleration
+        id: kvm
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Test platform SQL and Room migration proofs
+      - name: Run platform SQL proof (repeat API 29 three times)
+        if: ${{ always() && steps.proof-build.conclusion == 'success' && steps.kvm.conclusion == 'success' }}
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: ${{ matrix.api }}
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: PROOF_CLASSES=PlatformSqlProofTest bash experiments/tag-name/driver/run-device.sh
-      - name: Test disposable Room v1-to-v3 migration
+          script: PROOF_REPEATS=${{ matrix.api == 29 && '3' || '1' }} PROOF_CLASSES=PlatformSqlProofTest bash experiments/tag-name/driver/run-device.sh
+      - name: Test disposable Room v1-to-v3 migration independently
+        if: ${{ always() && steps.proof-build.conclusion == 'success' && steps.kvm.conclusion == 'success' }}
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: ${{ matrix.api }}
@@ -87,3 +149,11 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: PROOF_CLASSES=RoomSqlMigrationProofTest bash experiments/tag-name/driver/run-device.sh
+      - name: Upload Android platform proof diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tag-identity-api-${{ matrix.api }}-diagnostics
+          path: ${{ runner.temp }}/tag-driver-proof-*
+          if-no-files-found: warn
+          retention-days: 14
